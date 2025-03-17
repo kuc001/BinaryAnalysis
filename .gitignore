@@ -1,0 +1,19 @@
+# 忽略 Python 编译缓存和开发文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 忽略 setuptools 生成的 egg-info 目录
+*.egg-info/
+dist/
+build/
+
+# 忽略虚拟环境目录（按需添加）
+venv/
+.env/
+venv*/
+.env*/
+
+# 其他常见忽略项（可选）
+.pytest_cache/
+.coverage
