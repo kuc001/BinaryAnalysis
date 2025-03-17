@@ -17,3 +17,8 @@ venv*/
 # 其他常见忽略项（可选）
 .pytest_cache/
 .coverage
+
+.DS_Store
+.idea/
+*.swp
+*.swo
