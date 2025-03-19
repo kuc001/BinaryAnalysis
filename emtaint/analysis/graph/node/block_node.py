@@ -5,8 +5,8 @@ from .node import Node, repr_addr
 class BlockNode(Node):
     __slots__ = ["ir"]
 
-    def __init__(self, addr: int, size, ir=None, **kwargs):
-        super().__init__(addr, size, **kwargs)
+    def __init__(self, addr: int, size, ir=None, graph=None, **kwargs):
+        super().__init__(addr, size, graph=graph, **kwargs)
         self.ir = ir
 
     def __repr__(self):

@@ -83,8 +83,8 @@ class TypeInference:
     
     @staticmethod
     def infer_type_by_expr(expr: IRExpr) -> EMType:
-        if not isinstance(expr, pyvex.expr.IRExpr):
+        if not isinstance(expr, IRExpr):
             raise ValueError("expr is not an instance of pyvex.expr.IRExpr")
         
-        
+
 

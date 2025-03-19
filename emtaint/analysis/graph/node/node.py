@@ -45,15 +45,15 @@ class Node:
     def set_graph(self, graph):
         self._graph = weakref.proxy(graph)
 
-    # def successors(self) -> list[CodeNode]:
-    #     if self._graph is None:
-    #         raise ValueError("Cannot calculate successors for graphless node")
-    #     return list(self._graph.successors(self))
-    #
-    # def predecessors(self):
-    #     if self._graph is None:
-    #         raise ValueError("Cannot calculate predecessors for graphless node")
-    #     return list(self._graph.predecessors(self))
+    def successors(self):
+        if self._graph is None:
+            raise ValueError("Cannot calculate successors for graphless node")
+        return list(self._graph.successors(self))
+    
+    def predecessors(self):
+        if self._graph is None:
+            raise ValueError("Cannot calculate predecessors for graphless node")
+        return list(self._graph.predecessors(self))
 
     def __getstate__(self):
         return (self.addr, self.size)

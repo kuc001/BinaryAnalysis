@@ -22,7 +22,7 @@ class Value:
         kind: 值的种类
         size: 值的大小
         value: 使用claripy表示的值(可选)
-        ty: 值的类型(可选)
+        ty: 变量（值变量或指针变量指向的对象）的类型(可选)
         loc: 值的位置(可选)
         expr: IR表达式(可选)
     """

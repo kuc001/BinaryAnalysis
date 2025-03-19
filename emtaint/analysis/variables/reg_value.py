@@ -7,4 +7,12 @@ class RegValue(Value):
         self.name = name    # 寄存器名
 
         self.add_ref(name)
-            
+
+    def __str__(self):
+        if self.value is not None:
+            return f"<RegValue[{self.loc}] {self.value}>"
+        else:
+            return f"<RegValue[{self.loc}] {self.name}>"
+
+    def __repr__(self):
+        return self.__str__()

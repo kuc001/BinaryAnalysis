@@ -13,5 +13,5 @@ class Const(Const):
     def accept(self, visitor: IRVisitor):
         return visitor.visit_const(self)
 
-    def get_cons(self):
+    def get_name(self):
         return self.con.value

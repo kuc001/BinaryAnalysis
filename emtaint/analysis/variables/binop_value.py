@@ -13,3 +13,12 @@ class BinopValue(Value):
         for arg, _ in self.args:
             if isinstance(arg, str):
                 self.add_ref(arg)
+    
+    def __str__(self):
+        if self.value is not None:
+            return f"<BinopValue[{self.loc}] {self.value}>"
+        else:
+            return f"<BinopValue[{self.loc}] {self.op}({self.args})>"
+
+    def __repr__(self):
+        return self.__str__()

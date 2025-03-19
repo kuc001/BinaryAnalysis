@@ -15,3 +15,6 @@ class Store(Store):
     
     def get_use(self):
         return self.data
+    
+    def get_def(self):
+        return self.addr

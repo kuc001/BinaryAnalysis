@@ -11,3 +11,7 @@ class Load(Load):
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_load(self)
+
+    def get_size(self):
+        return self.result_size(self.ty)
+    

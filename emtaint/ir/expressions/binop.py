@@ -21,5 +21,8 @@ class Binop(Binop):
         """
         info = []
         for arg in self.args:
-            info.append((arg.get_name(), arg.get_size()))
+            try:
+                info.append((arg.get_name(), arg.get_size()))
+            except AttributeError:
+                info.append((arg.get_name(), self.get_size()))
         return info

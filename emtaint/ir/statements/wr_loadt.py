@@ -13,3 +13,4 @@ class WrLoadTmp(WrTmp):
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_wr_load_tmp(self)
+    

@@ -11,7 +11,10 @@ class IMark(IMark):
     def __init__(self, addr: int, length: int, delta: int):
         super().__init__(addr, length, delta)
 
-        self.statements: list[IRStmt] = []
+        self.stmts: list[IRStmt] = []
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_imark(self)
+    
+    def get_statements(self):
+        return self.stmts

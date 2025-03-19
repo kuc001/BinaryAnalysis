@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from .default_cfg import CFG
 from ..node.block_node import BlockNode
@@ -30,17 +31,35 @@ class CFGBuilder:
 
             # Add node to cfg
             for node in frontend_graph.nodes():
-                block = function.get_block_with_size(node.addr, node.size)
-                if block is None:
-                    l.warning("Node %s does not match a block.", node)
+                em_block_node = self.add_node(node, function, cfg)
+                if em_block_node is None:
                     continue
 
-                em_block_node = BlockNode(node.addr, node.size, ir=block.ir())
-                cfg.add_node(em_block_node)
+                succ_nodes = node.successors()
+                for succ_node in succ_nodes:
+                    em_succ_node = self.add_node(succ_node, function, cfg)
+                    if em_succ_node is None:
+                        continue
 
-            # Add edge to cfg
-            for src, dst in frontend_graph.edges():
-                edge = CFGEdge(Kind.FALL_THROUGH, src, dst)
-                cfg.add_edge(edge)
-                # print(edge)
+                    edge = CFGEdge(Kind.FALL_THROUGH, em_block_node, em_succ_node)
+                    cfg.add_edge(edge)
 
+    def add_node(self, node, function, cfg) -> Optional[BlockNode]:
+        """
+        Adds a node to this CFG.
+        Args:
+            node: 要添加的节点
+        Returns:
+            添加的节点
+        """
+        if cfg.has_node(node):
+            return cfg.get_node(node.addr)
+        
+        block = function.get_block_with_size(node.addr, node.size)
+        if block is None:
+            l.warning("Node %s does not match a block.", node)
+            return None
+
+        em_block_node = BlockNode(node.addr, node.size, ir=block.ir(), graph=cfg.graph)
+        cfg.add_node(em_block_node)
+        return em_block_node

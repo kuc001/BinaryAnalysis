@@ -14,25 +14,12 @@ class AbstractCFG(ABC, Generic[N]):
     """
 
     def __init__(self):
-        # self.ir = ir
         self.entry: Optional[N] = None
         self.exit: Optional[N] = None
-        self.nodes: Set[N] = set()
+        self.nodes: Dict[int, N] = {}
         self.graph = networkx.DiGraph()
         self.in_edges: Dict[N, Set[CFGEdge]] = defaultdict(set)
         self.out_edges: Dict[N, Set[CFGEdge]] = defaultdict(set)
-
-    # def get_ir(self) -> IR:
-    #     """
-    #     Returns the IR of the method this CFG represents.
-    #     """
-    #     return self.ir
-    #
-    # def get_method(self) -> JMethod:
-    #     """
-    #     Returns the method this CFG represents.
-    #     """
-    #     return self.ir.get_method()
 
     def set_entry(self, entry: N) -> None:
         """
@@ -40,7 +27,7 @@ class AbstractCFG(ABC, Generic[N]):
         """
         assert self.entry is None, "CFG entry should be set only once"
         self.entry = entry
-        self.nodes.add(entry)
+        self.nodes[entry.addr] = entry
 
     def get_entry(self) -> Optional[N]:
         """
@@ -54,7 +41,7 @@ class AbstractCFG(ABC, Generic[N]):
         """
         assert self.exit is None, "CFG exit should be set only once"
         self.exit = exit
-        self.nodes.add(exit)
+        self.nodes[exit.addr] = exit
 
     def get_exit(self) -> Optional[N]:
         """
@@ -78,7 +65,7 @@ class AbstractCFG(ABC, Generic[N]):
         """
         Adds a node to this CFG.
         """
-        self.nodes.add(node)
+        self.nodes[node.addr] = node
         self.graph.add_node(node)
 
     def add_edge(self, edge: CFGEdge) -> None:
@@ -132,4 +119,16 @@ class AbstractCFG(ABC, Generic[N]):
         """
         Returns all nodes in this CFG.
         """
-        return self.nodes
+        return self.nodes.values()
+    
+    def has_node(self, node: N) -> bool:
+        """
+        Returns True if the given node is in this CFG, otherwise False.
+        """
+        return node.addr in self.nodes
+
+    def get_node(self, addr: int) -> Optional[N]:
+        """
+        Returns the node with the given address, or None if it is not in this CFG.
+        """
+        return self.nodes.get(addr)

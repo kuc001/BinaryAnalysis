@@ -55,8 +55,8 @@ class BlockIRBuilder():
             l.warning("The %s has no VEX IR", bb)
             return None
 
-        stmts = self.build_stmts(vex, arch)
-        return VexIR(self.block, stmts)
+        stmts, imarks = self.build_stmts(vex, arch)
+        return VexIR(self.block, stmts, imarks)
 
     def build_stmts(self, vex, arch):
         """
@@ -64,14 +64,15 @@ class BlockIRBuilder():
         :param arch: The architecture of the block
         """
         imark_with_stmts = []
-        new_stmts = []
+        new_stmts, new_imarks = [], []
         for ss in vex.statements:
             # print(ss)
             new_addr, new_data, new_stmt = None, None, None
 
             if isinstance(ss, pyvex.stmt.IMark):
                 new_stmt = IMark(ss.addr, ss.len, ss.delta)
-                imark_with_stmts = new_stmt.statements
+                imark_with_stmts = new_stmt.get_statements()
+                new_imarks.append(new_stmt)
 
             elif isinstance(ss, pyvex.stmt.WrTmp):
                 data = ss.data
@@ -263,4 +264,4 @@ class BlockIRBuilder():
             imark_with_stmts.append(new_stmt)
             new_stmts.append(new_stmt)
 
-        return new_stmts
+        return new_stmts, new_imarks

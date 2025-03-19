@@ -11,12 +11,17 @@ class VexIR(IR):
     """
 
     def __init__(self, block: Block,
-                 statements: List[IRStmt]):
+                 stmts: List[IRStmt],
+                 imarks: List[IRStmt] = None):
         self.block = block
-        self.statements = statements
+        self.stmts = stmts
+        self.imarks = imarks if imarks is not None else []
 
     def get_block(self) -> Block:
         return self.block
 
     def get_statements(self):
-        return self.statements
+        return self.stmts
+
+    def get_imarks(self):
+        return self.imarks
