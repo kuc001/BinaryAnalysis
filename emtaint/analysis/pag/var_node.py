@@ -12,12 +12,13 @@ class VarNode:
     
     _next_id = 0  # 类变量，用于跟踪下一个可用的ID
 
-    def __init__(self, value, kind=None):
+    def __init__(self, value, ud, kind=None, ):
         self.value = value
         self.kind = kind
         self.id = VarNode._next_id  # 分配唯一ID
         VarNode._next_id += 1       # ID自增
 
+        self.ues_or_def = ud  # 0: use, 1: def
         self.in_edges = set()   # 所有进入该节点的边
         self.out_edges = set()  # 所有从该节点出去的边
 
@@ -26,3 +27,12 @@ class VarNode:
 
     def __repr__(self):
         return self.__str__()
+    
+    def is_use(self):
+        return self.ues_or_def == 0
+    
+    def is_def(self):
+        return self.ues_or_def == 1
+    
+    def set_size(self, size):
+        self.value.size = size

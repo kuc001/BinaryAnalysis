@@ -1,18 +1,21 @@
 from enum import IntEnum
 
 class ValueKind(IntEnum):
-    Const = 0
-    Global = 1
-    Array = 2
-    Struct = 3
-    Pointer = 4
-    StackPtr = 5
-    StackAccess = 6
-    MemAccess = 7
-    ArrayAccess = 8
-    StructAccess = 9
-    FunctionPtr = 10
-    Unknown = 11
+    Const = 0  # 常量
+    Global = 1  # 全局变量
+    Array = 2  # 数组
+    Struct = 3  # 结构体
+    Pointer = 4  # 指针
+    StackPtr = 5  # 栈指针
+    GlobalPtr = 6  # 全局指针
+    CodePtr = 7  # 执行代码的
+    FunctionPtr = 8  # 函数指针
+    StackAccess = 9  # 栈访问
+    MemAccess = 10  # 内存访问
+    ArrayAccess = 11  # 数组访问
+    StructAccess = 12  # 结构体访问
+    Condition = 13  # 条件
+    Unknown = 14  # 未知
 
 class Value:
     """
@@ -45,3 +48,11 @@ class Value:
     def add_ref(self, ref):
         self.refs.add(ref)
     
+    def get_literal(self):
+        return None
+    
+    def get_value(self):
+        return self.value
+    
+    def get_type(self):
+        return self.type

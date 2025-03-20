@@ -3,16 +3,22 @@ from .var_node import VarNode
 
 
 class EdgeKind(IntEnum):
+    # 赋值边
     Assign = 0  # 赋值
-    StoreAssign = 1 # 存储赋值
-    LoadAssign = 2 # 加载赋值
-    BinopAssign = 3 # 二元运算赋值
-    UnaryopAssign = 4 # 一元运算赋值
-    Call = 5   # 调用
-    Return = 6 # 返回
-    Phi = 7    # Phi
-    Branch = 8 # 分支
-    Jump = 9   # 跳转
+    AssignIfTrue = 1 # 赋值（if true）
+    AssignIfFalse = 2 # 赋值（if false）
+    StoreAssign = 3 # 存储赋值
+    LoadAssign = 4 # 加载赋值
+    BinopAssign = 5 # 二元运算赋值
+    UnaryopAssign = 6 # 一元运算赋值
+
+    # 控制流边
+    Flow = 10 # 控制流
+    Jump = 11 # 跳转
+    Call = 12 # 调用
+    Ret = 13 # 返回
+    FakeRet = 14 # 假返回
+    
     
 
 class VarEdge:
@@ -25,10 +31,11 @@ class VarEdge:
         kind: 边类型
         stmt: 边对应的语句
     """
-    def __init__(self, src: VarNode, dst: VarNode, kind = None, stmt = None):
+    def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
         self.src = src
         self.dst = dst
         self.kind = kind
+        self.guard = guard
         self.stmt = stmt
     
     def get_src(self):

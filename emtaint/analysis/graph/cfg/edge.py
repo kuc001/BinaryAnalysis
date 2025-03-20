@@ -6,15 +6,17 @@ class Kind(Enum):
 
     FALL_THROUGH = 2    # Edge kind for fall-through to next statement.
 
-    GOTO = 3    # Edge kind for goto statements.
+    IF_TRUE = 3     # Edge kind for if statements when condition is true.
 
-    IF_TRUE = 4     # Edge kind for if statements when condition is true.
+    IF_FALSE = 4    # Edge kind for if statements when condition is false.
 
-    IF_FALSE = 5    # Edge kind for if statements when condition is false.
+    SWITCH_CASE = 5     # Edge kind for switch statements (explicit case).
 
-    SWITCH_CASE = 6     # Edge kind for switch statements (explicit case).
+    CALL = 6      # Edge kind for call statements.
 
-    RETURN = 7      # dge kind for return statements. These edges always go to the exit node of the CFG.
+    RET = 7      # Ed kind for return statements. These edges always go to the exit node of the CFG.
+
+    FAKE_RET = 8      # Edge kind for return statements. These edges is not real return edges.
 
 
 class CFGEdge:

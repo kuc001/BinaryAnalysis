@@ -10,7 +10,10 @@ class ConsValue(Value):
         if self.value is not None:
             return f"<ConsValue[{self.loc}] {self.value}>"
         else:
-            return f"<ConsValue[{self.loc}] {self.cons}>"
+            return f"<ConsValue[{self.loc}] 0x{self.cons:x}>"
 
     def __repr__(self):
         return self.__str__()
+    
+    def get_literal(self):
+        return self.cons

@@ -12,3 +12,15 @@ class LoadG(LoadG):
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_loadg(self)
+    
+    def get_def(self):
+        return 't%d' % self.dst
+    
+    def get_use_with_guard(self):
+        return self.addr
+    
+    def get_use_without_guard(self):
+        return self.alt
+    
+    def get_guard(self):
+        return self.guard

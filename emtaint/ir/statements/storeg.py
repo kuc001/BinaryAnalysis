@@ -11,3 +11,13 @@ class StoreG(StoreG):
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_storeg(self)
+    
+    def get_def(self):
+        return self.addr
+    
+    def get_use(self):
+        return self.data
+    
+    def get_guard(self):
+        return self.guard
+    

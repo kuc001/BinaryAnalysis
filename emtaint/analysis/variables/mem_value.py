@@ -14,7 +14,7 @@ class MemValue(Value):
             if isinstance(self.addr, int):
                 return f"<MemValue[{self.loc}] {self.action}(0x%x)" % self.addr
             else:
-                return f"<MemValue[{self.loc}] {self.action}({self.addr})>"
+                return f"<MemValue[{self.loc}] {self.action}({self.addr.value.get_literal()})>"
 
     def __repr__(self):
         return self.__str__()

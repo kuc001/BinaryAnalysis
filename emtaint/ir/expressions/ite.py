@@ -11,3 +11,12 @@ class ITE(ITE):
 
     def accept(self, visitor: IRVisitor):
         return visitor.visit_ite(self)
+    
+    def get_cond(self):
+        return self.cond
+    
+    def get_iffalse(self):
+        return self.iffalse
+    
+    def get_iftrue(self):
+        return self.iftrue

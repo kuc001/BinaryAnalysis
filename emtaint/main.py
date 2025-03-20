@@ -11,7 +11,7 @@ def main():
 
     em_program = EmProgram.build(binary)
 
-    IRGraphBuilder().analyze(em_program)
+    IRGraphBuilder().build(em_program)
 
 
 if __name__ == "__main__":

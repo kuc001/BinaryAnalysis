@@ -59,7 +59,7 @@ class AngrBuilder:
         for func in cfg.kb.functions.values():
             if func.addr != 0x16FD8:
                 continue
-            print(func)
+            # print(func)
             em_func = converter.convert_function(func)
             self._em_program.add_function(em_func)
             em_func.set_frontend_graph(func.graph)

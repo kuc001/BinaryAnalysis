@@ -1,3 +1,6 @@
+from emtaint.analysis.variables.reg_value import RegValue
+from emtaint.analysis.variables.mem_value import MemValue
+
 class IRGraph:
     """IR图的基类实现
     
@@ -41,4 +44,61 @@ class IRGraph:
     
     def add_block_exit_node(self, block_addr, node):
         self.block_exit_nodes[block_addr] = node
+    
+    def has_block_entry_node(self, block_addr):
+        return block_addr in self.block_entry_nodes
+    
+    def has_block_exit_node(self, block_addr):
+        return block_addr in self.block_exit_nodes
+    
+    def get_block_entry_node(self, block_addr):
+        return self.block_entry_nodes.get(block_addr)
+    
+    def get_block_exit_node(self, block_addr):
+        return self.block_exit_nodes.get(block_addr)
+    
+    def analyze_graph(self):
+        """
+        分析图
+        """
+        worklist = []
+        visited = set()
+        live_vars = {}
+        start_node = self.get_block_entry_node(0x16fd8)
+        worklist.append(start_node)
+        while worklist:
+            node = worklist.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            print(node)
+            self.add_live_vars(node, live_vars)
+            for edge in node.out_edges:
+                worklist.append(edge.get_dst())
+    
+    def add_live_vars(self, node, live_vars):
+        """
+        """
+        if node.is_use():
+            live_vars[node.id] = node
+        elif node.is_def():
+            self.kill_live_vars(node, live_vars)
+            live_vars[node.id] = node
+
+    def kill_live_vars(self, node, live_vars):
+        """
+        case one: register def, e.g., r1 = r2
+        case two: memory store def, e.g., store(r1+offset) = r2
+        """
+        keys = list(live_vars.keys())
+        for var_id in keys:
+            live_node = live_vars[var_id]
+
+            if isinstance(node.value, RegValue) and isinstance(live_node.value, RegValue):
+                if node.value.name == live_node.value.name:
+                    live_vars.pop(var_id)
+            elif isinstance(node.value, MemValue) and isinstance(live_node.value, MemValue):
+                if node.value.addr == live_node.value.addr:
+                    live_vars.pop(var_id)
+
         

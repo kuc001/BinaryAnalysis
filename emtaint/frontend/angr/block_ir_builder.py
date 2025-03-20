@@ -28,7 +28,7 @@ from emtaint.ir.expressions.rd_tmp import RdTmp
 from emtaint.ir.expressions.load import Load
 from emtaint.ir.expressions.const import Const
 from emtaint.ir.expressions.unop import Unop
-from emtaint.ir.expressions.condition import ITE
+from emtaint.ir.expressions.ite import ITE
 
 from emtaint.assembly.block import Block
 from emtaint.ir.vex_ir import VexIR
@@ -50,13 +50,16 @@ class BlockIRBuilder():
         bb: AngrBlock = self.block.get_block_source()
         vex = bb.vex
         arch = bb.arch
-        # print(vex)
         if vex is None:
             l.warning("The %s has no VEX IR", bb)
             return None
 
+        # DEBUG
+        # if self.block.addr == 0x16FD8:
+        #     vex.pp()
+
         stmts, imarks = self.build_stmts(vex, arch)
-        return VexIR(self.block, stmts, imarks)
+        return VexIR(self.block, stmts, imarks=imarks, vex=vex)
 
     def build_stmts(self, vex, arch):
         """
@@ -73,8 +76,10 @@ class BlockIRBuilder():
                 new_stmt = IMark(ss.addr, ss.len, ss.delta)
                 imark_with_stmts = new_stmt.get_statements()
                 new_imarks.append(new_stmt)
+                new_stmts.append(new_stmt)
+                continue
 
-            elif isinstance(ss, pyvex.stmt.WrTmp):
+            if isinstance(ss, pyvex.stmt.WrTmp):
                 data = ss.data
                 if isinstance(data, pyvex.expr.Get):
                     reg_name = arch.register_names[data.offset]
