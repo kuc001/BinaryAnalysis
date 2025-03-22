@@ -16,4 +16,9 @@ class ConsValue(Value):
         return self.__str__()
     
     def get_literal(self):
-        return self.cons
+        return f"0x{self.cons:x}"
+    
+    def with_same_value(self, other):
+        if not isinstance(other, ConsValue):
+            return False
+        return self.cons == other.cons

@@ -56,3 +56,8 @@ class Value:
     
     def get_type(self):
         return self.type
+    
+    def with_same_value(self, other):
+        if self.value is not None and other.value is not None:
+            return self.value == other.value and self.kind == other.kind
+        return False

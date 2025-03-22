@@ -19,3 +19,8 @@ class RegValue(Value):
     
     def get_literal(self):
         return self.name
+    
+    def with_same_value(self, other):
+        if not isinstance(other, RegValue):
+            return False
+        return self.name == other.name

@@ -1,6 +1,5 @@
 import logging
 from .value import Value
-from emtaint.analysis.pag.var_node import VarNode
 
 l = logging.getLogger(name=__name__)
 
@@ -16,8 +15,8 @@ class BinopValue(Value):
     
     def _initialize_refs(self):
         for arg in self.args:
-            if isinstance(arg, VarNode):
-                name = arg.value.get_literal()
+            if isinstance(arg, Value):
+                name = arg.get_literal()
                 if isinstance(name, str):
                     self.add_ref(name)
             else:
@@ -28,7 +27,10 @@ class BinopValue(Value):
             return f"<BinopValue[{self.loc}] {self.value}>"
         else:
             return "<BinopValue[{}] {}({})".format(self.loc, self.op[4:], 
-                                                   ",".join(str(a.value.get_literal()) for a in self.args))
+                                                   ",".join(str(a.get_literal()) for a in self.args))
 
     def __repr__(self):
         return self.__str__()
+    
+    def get_literal(self):
+        return "{}".format(",".join(str(a.get_literal()) for a in self.args))

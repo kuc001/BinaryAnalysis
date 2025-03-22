@@ -11,10 +11,10 @@ class MemValue(Value):
         if self.value is not None:
             return f"<MemValue[{self.loc}] {self.value}>"
         else:
-            if isinstance(self.addr, int):
-                return f"<MemValue[{self.loc}] {self.action}(0x%x)" % self.addr
+            if isinstance(self.addr, Value):
+                return f"<MemValue[{self.loc}] {self.action}({self.addr.get_literal()})>"
             else:
-                return f"<MemValue[{self.loc}] {self.action}({self.addr.value.get_literal()})>"
+                raise ValueError(f"The address of the mem value {self} is not a VarNode.")
 
     def __repr__(self):
         return self.__str__()

@@ -19,3 +19,8 @@ class TmpValue(Value):
     
     def get_literal(self):
         return self.name
+    
+    def with_same_value(self, other):
+        if not isinstance(other, TmpValue):
+            return False
+        return self.name == other.name

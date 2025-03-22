@@ -38,6 +38,7 @@ class IRGraphBuilder:
                     continue
                 # print(bb_node)
                 self._visitor.set_current_block_addr(bb_node.addr)
+                self._visitor.clear_block_tmp_nodes()
                 idx = 0
                 first_node, last_node = None, None
                 ir = bb_node.ir
@@ -62,12 +63,12 @@ class IRGraphBuilder:
                                 if stmt.tag == "Ist_IMark":
                                     l.warning("The first statement is IMark %s, which is not a valid statement.", stmt)
                                 else:
-                                    first_node = edge.get_src()
-                                    self.ir_graph.add_block_entry_node(bb_node.addr, edge.get_src())
+                                    first_node = edge.get_dst()
+                                    self.ir_graph.add_block_entry_node(bb_node.addr, first_node)
                         
                             if last_node is not None:
-                                flow_edge = VarEdge(last_node, edge.get_src(), kind=EdgeKind.Flow)
-                                edge.get_src().in_edges.add(flow_edge)
+                                flow_edge = VarEdge(last_node, edge.get_dst(), kind=EdgeKind.Flow)
+                                edge.get_dst().in_edges.add(flow_edge)
                                 last_node.out_edges.add(flow_edge)
                     
                         if len(edges) == 0:
@@ -100,9 +101,9 @@ class IRGraphBuilder:
                         pred_exit_node.out_edges.add(edge)
                         first_node.in_edges.add(edge)
 
-        for node in self.ir_graph.get_nodes():
-            print(node)
-        # self.ir_graph.analyze_graph()
+        # for node in self.ir_graph.get_nodes():
+        #     print(node)
+        self.ir_graph.analyze_graph()
                   
     def _process_statement(self, stmt):
         """

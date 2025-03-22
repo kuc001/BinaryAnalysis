@@ -12,6 +12,11 @@ class EdgeKind(IntEnum):
     BinopAssign = 5 # 二元运算赋值
     UnaryopAssign = 6 # 一元运算赋值
 
+    # 操作数边, 也属于赋值边，但不对应具体的语句
+    Binop = 7 # 二元运算
+    Unaryop = 8 # 一元运算
+    Addr = 9 # 地址
+
     # 控制流边
     Flow = 10 # 控制流
     Jump = 11 # 跳转
@@ -44,4 +49,59 @@ class VarEdge:
     def get_dst(self):
         return self.dst
     
+    def is_assign(self):
+        return self.kind <= EdgeKind.UnaryopAssign and self.kind >= EdgeKind.Assign
     
+    def get_use(self):
+        if self.src.is_use() and self.is_assign():
+            return self.src
+        return None
+
+    def get_def(self):
+        if self.dst.is_def() and self.is_assign():
+            return self.dst
+        return None
+    
+    def get_flow_node(self):
+        if self.kind >= EdgeKind.Flow and self.kind <= EdgeKind.FakeRet:
+            return self.dst
+        return None
+
+
+class AssignEdge(VarEdge):
+    """
+    赋值边类，表示程序中的赋值边。
+    
+    """
+    tag = "Assign"
+    def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
+        super().__init__(src, dst, kind, guard, stmt)
+
+class FlowEdge(VarEdge):
+    """
+    控制流边类，表示程序中的控制流边。
+    
+    """
+    tag = "Flow"
+    def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
+        super().__init__(src, dst, kind, guard, stmt)
+
+class OpEdge(VarEdge):
+    """
+    操作数边类，表示程序中的操作数边。
+    
+    """
+    tag = "Op"
+    def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None, op_idx = None):
+        super().__init__(src, dst, kind, guard, stmt)
+        self.op_idx = op_idx
+
+
+class AddrEdge(VarEdge):
+    """
+    地址边类，表示程序中的地址边。
+    
+    """
+    tag = "Addr"
+    def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
+        super().__init__(src, dst, kind, guard, stmt)
