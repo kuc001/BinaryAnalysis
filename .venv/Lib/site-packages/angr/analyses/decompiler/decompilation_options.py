@@ -1,0 +1,477 @@
+# decompilation options
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Callable
+
+from .structuring import structurer_class_from_name
+from .structuring.phoenix import MultiStmtExprMode
+
+
+class DecompilationOption[T]:
+    """
+    Describes a decompilation option.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        value_type: type[T],
+        cls: str,
+        param: str,
+        value_range=None,
+        category: str = "General",
+        default_value: T | None = None,
+        clears_cache: bool = True,
+        candidate_values: list[T] | None = None,
+        convert: Callable[[str], T] | None = None,
+    ):
+        self.NAME = name
+        self.DESCRIPTION = description
+        self.value_type = value_type
+        self.cls = cls
+        self.param = param
+        self.value_range = value_range
+        self.category = category
+        self.default_value = default_value
+        self.clears_cache = clears_cache
+        self.candidate_values = candidate_values
+        self.convert = convert
+
+    def __repr__(self):
+        return f"<DecOption [{self.category}] {self.NAME} ({self.cls}.{self.param})>"
+
+
+O = DecompilationOption
+
+# Complexity limits. A function larger than either bound aborts decompilation with an
+# AngrDecompilationComplexityError instead of running for an unbounded amount of time (see GitHub issue #6968).
+# Both defaults are ~10x the largest value measured over angr's test binary corpus (300 binaries, 14 architectures,
+# 726k functions: at most 5,356 blocks and 108,265 AIL statements in any one function); 0 disables a limit.
+DEFAULT_MAX_FUNCTION_BLOCKS = 50_000
+DEFAULT_MAX_AIL_STATEMENTS = 1_000_000
+
+
+def parse_known_patterns(value) -> str | tuple[str, ...] | None:
+    """Normalize the ``known_patterns`` option value into ``None`` (force-enable
+    nothing), the string ``"all"``, or a tuple of pattern names.
+
+    Both spellings are accepted so that the GUI can offer a single text field
+    (``"all"`` / ``"IsListEmpty, std::string::front"``) while API callers can
+    pass a list. Names are not resolved here; that happens against the
+    template registry, which is where an unknown name is reported."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        if value.lower() == "all":
+            return "all"
+        return tuple(n.strip() for n in value.split(",") if n.strip())
+    names = tuple(str(n).strip() for n in value if str(n).strip())
+    if len(names) == 1 and names[0].lower() == "all":
+        return "all"
+    return names or None
+
+
+# Serialization contract for display options (cls="codegen"): to survive Codegen serialization, an option's param
+# must have a matching optional scalar proto field, named identically, in the trailing display-option block of the
+# Codegen message (protos/codegen.proto). Options without such a field are dropped on round-trip.
+
+options = [
+    O(
+        "Aggressively remove dead memdefs",
+        "Allow the decompiler to aggressively remove memory definitions (such as stack variables) that are deemed dead."
+        " Generally, enabling this option will generate cleaner pseudocode; However, due to limitations of static "
+        "analysis, angr may miss certain uses to a memory definition, which may cause the removal of a memory "
+        "definition that is actually in use, and consequently lead to incorrect decompilation output.",
+        bool,
+        "clinic",
+        "remove_dead_memdefs",
+        category="Data flows",
+        default_value=False,
+    ),
+    O(
+        "Display exception edges (experimental)",
+        "Decompile and display exception handling code. Enabling this option generally degrades the readability of the "
+        "pseudo code. This is still an experimental feature.",
+        bool,
+        "clinic",
+        "exception_edges",
+        category="Graph",
+        default_value=False,
+    ),
+    O(
+        "Rewrite ITE expressions into diamond-shaped control-flow regions",
+        "Rewrite ITE expressions into diamond-shaped control-flow regions, which usually result in better decompilation"
+        " output.",
+        bool,
+        "clinic",
+        "rewrite_ites_to_diamonds",
+        category="Graph",
+        default_value=True,
+    ),
+    O(
+        "Name variables based on usage",
+        "Enable variable naming based on usage patterns. This usually results in more meaningful variable names for "
+        "unnamed variables.",
+        bool,
+        "clinic",
+        "semvar_naming",
+        category="Variables",
+        default_value=True,
+    ),
+    O(
+        "Identify and name loop counters",
+        "Identify and name loop counter variables using common naming patterns (e.g., i, j, k).",
+        bool,
+        "region_simplifier",
+        "loopctr_naming",
+        category="Variables",
+        default_value=True,
+    ),
+    O(
+        "Leave the largest loop successor tree outside the loop region",
+        "During region identification, treating the largest successor tree of a loop as a member of the loop body "
+        "sometimes leads to seemingly unnatural and gigantic loops. Enabling this option will treat such successor "
+        "trees not as a member of the loop body.",
+        bool,
+        "region_identifier",
+        "largest_successor_tree_outside_loop",
+        category="Graph",
+        default_value=True,
+    ),
+    O(
+        "Simplify switches by undoing switch clustering",
+        "Undoing switch clustering that modern compilers employ. Switch clustering will split a switch into "
+        "multiple pieces and transform (or lower) them piece-by-piece for better performance (and lower readability).",
+        bool,
+        "region_simplifier",
+        "simplify_switches",
+        category="Graph",
+        default_value=True,
+    ),
+    O(
+        "Simplify if-else to remove terminating else scopes",
+        "Removes terminating else scopes to make the code appear more flat.",
+        bool,
+        "region_simplifier",
+        "simplify_ifelse",
+        category="Graph",
+        default_value=True,
+    ),
+    O(
+        "Show casts",
+        "Disabling this option will blindly remove all C typecast constructs from pseudocode output.",
+        bool,
+        "codegen",
+        "show_casts",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Comment gotos",
+        "Disabling this option will uncomment gotos currently shown in output.",
+        bool,
+        "codegen",
+        "comment_gotos",
+        category="Display",
+        default_value=False,
+        clears_cache=False,
+    ),
+    O(
+        "Braces on own lines",
+        'Highly controversial. Disable this to see "} else {".',
+        bool,
+        "codegen",
+        "braces_on_own_lines",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Use compound assignment operators",
+        'Reduce statements "a = a + b" to "a += b".',
+        bool,
+        "codegen",
+        "use_compound_assignments",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Show local types",
+        "When decompilation generates typedefs, show them before the function body",
+        bool,
+        "codegen",
+        "show_local_types",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Show externs",
+        "Declare global variables used in this function with the `extern` keyword.",
+        bool,
+        "codegen",
+        "show_externs",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Show demangled name",
+        "Demangles names in higher-level languages like C++",
+        bool,
+        "codegen",
+        "show_demangled_name",
+        category="Display",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "Show disambiguated names",
+        "Disambiguate function names when they conflict with variables and other functions",
+        bool,
+        "codegen",
+        "show_disambiguated_name",
+        category="Display",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "Structuring algorithm",
+        "Select a structuring algorithm. Currently supports Dream and Phoenix.",
+        type,
+        "recursive_structurer",
+        "structurer_cls",
+        category="Structuring",
+        default_value="SAILR",
+        candidate_values=["SAILR", "Phoenix", "DREAM"],
+        clears_cache=True,
+        convert=structurer_class_from_name,
+    ),
+    O(
+        "C-style null compares",
+        "Rewrites the (x == 0) => (!x) && (x != 0) => (x)",
+        bool,
+        "codegen",
+        "cstyle_null_cmp",
+        category="Display",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "Simplified else",
+        "Removes redundant else scopes",
+        bool,
+        "codegen",
+        "simplify_else_scope",
+        category="Display",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "C-style if statements",
+        "Omits braces for single statement if blocks that have no else",
+        bool,
+        "codegen",
+        "cstyle_ifs",
+        category="Display",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "Show block addresses",
+        "Show block addresses as comments",
+        bool,
+        "codegen",
+        "display_block_addrs",
+        category="Display",
+        default_value=False,
+        clears_cache=True,
+    ),
+    O(
+        "Display decompilation notes as comments",
+        "Display decompilation notes in the output as function comments.",
+        bool,
+        "codegen",
+        "display_notes",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Truncate long constant strings",
+        "Truncate long constant strings in the decompilation output.",
+        int,
+        "codegen",
+        "max_str_len",
+        category="Display",
+        default_value=50,
+        clears_cache=True,
+    ),
+    O(
+        "Prettify C++/Rust method calls",
+        "Prettify method calls in C++ and Rust code by using (1) class constructors and destructors, (2) the '->' or "
+        "'.' operator, and (3) shorter method names where applicable.",
+        bool,
+        "codegen",
+        "prettify_thiscall",
+        category="Display",
+        default_value=False,
+        clears_cache=True,
+    ),
+    O(
+        "Show void for empty parameter list",
+        "Display (void) instead of () for functions with no parameters, following the C standard convention.",
+        bool,
+        "codegen",
+        "cstyle_void_param",
+        category="Display",
+        default_value=True,
+        clears_cache=False,
+    ),
+    O(
+        "Name STL field accesses after their accessors",
+        "Render a read of a field of an already-typed C++ STL container as the equivalent accessor call, e.g. "
+        '"std::string::c_str(s)" instead of "s->m_data". Only applies where type inference already recovered the '
+        "container type, so it cannot fire on unrelated pointers. Off by default: it reads well for a standalone "
+        "read but poorly when the field is the base of a larger address expression, and writes must stay field "
+        "stores, so enabling it makes the same slot appear in two spellings.",
+        bool,
+        "codegen",
+        "stl_accessor_calls",
+        category="Display",
+        default_value=False,
+        clears_cache=False,
+    ),
+    O(
+        "Indentation width",
+        "Number of space characters per indentation level in the pseudocode.",
+        int,
+        "codegen",
+        "indent_size",
+        category="Display",
+        default_value=4,
+        value_range=(1, 8),
+        clears_cache=False,
+    ),
+    O(
+        "Multi-expression statements generation",
+        "Should the structuring algorithm generate multi-expression statements? If so, under what conditions?",
+        type,
+        "recursive_structurer",
+        "use_multistmtexprs",
+        category="Structuring",
+        default_value=MultiStmtExprMode.MAX_ONE_CALL.value,
+        candidate_values=[op.value for op in MultiStmtExprMode],
+        clears_cache=True,
+        convert=MultiStmtExprMode,
+    ),
+    O(
+        "Refine decompilation output with LLM",
+        "Use a configured LLM (via pydantic-ai) to suggest improved variable names, function names, and variable types "
+        "for the decompiled code. Requires an LLM client to be configured on the project.",
+        bool,
+        "decompiler",
+        "llm_refine",
+        category="LLM",
+        default_value=False,
+        clears_cache=False,
+    ),
+    O(
+        "Constrain and improve callee function prototypes based on call site information",
+        "When enabled, the decompiler will analyze call sites and constrain the types of callee function arguments "
+        "based on facts observed at the call sites. This may improve the accuracy of callee function prototypes and "
+        "consequently enhance the decompilation output of the current function. Note that enabling this option may "
+        "change the prototypes of callee functions in the knowledge base, which could affect subsequent decompilation "
+        "results.",
+        bool,
+        "clinic",
+        "constrain_callee_prototypes",
+        category="Types",
+        default_value=True,
+        clears_cache=True,
+    ),
+    O(
+        "Maximum number of basic blocks per function",
+        "Refuse to decompile a function whose CFG has more basic blocks than this. The limit is checked before any "
+        "AIL is built, and exceeding it aborts decompilation with an AngrDecompilationComplexityError that names the "
+        "limit and the actual block count instead of running for an unbounded amount of time. Defaults to "
+        f"{DEFAULT_MAX_FUNCTION_BLOCKS}; set to 0 to disable the check.",
+        int,
+        "decompiler",
+        "max_function_blocks",
+        category="Complexity",
+        default_value=DEFAULT_MAX_FUNCTION_BLOCKS,
+        value_range=(0, 100_000_000),
+        clears_cache=True,
+    ),
+    O(
+        "Maximum number of AIL statements per function",
+        "Refuse to decompile a function whose AIL graph has more statements than this. The limit is checked right "
+        "after the AIL graph is built and before any simplification runs; exceeding it aborts decompilation with an "
+        "AngrDecompilationComplexityError that names the limit and the actual statement count instead of running for "
+        f"an unbounded amount of time. Defaults to {DEFAULT_MAX_AIL_STATEMENTS}; set to 0 to disable the check.",
+        int,
+        "clinic",
+        "max_ail_statements",
+        category="Complexity",
+        default_value=DEFAULT_MAX_AIL_STATEMENTS,
+        value_range=(0, 100_000_000),
+        clears_cache=True,
+    ),
+    O(
+        "Recognize known code patterns",
+        "Replace inlined library idioms with a call naming them: std::string::~string() for the SSO destructor "
+        "triangle, isspace() for a glibc ctype table lookup, std::swap() for a three-move exchange, and so on. "
+        "Turning this off decompiles the idioms as the arithmetic they are, which is what you want when you are "
+        "reading the machine code rather than the program.",
+        bool,
+        "clinic",
+        "recognize_known_patterns",
+        category="Patterns",
+        default_value=True,
+    ),
+    O(
+        "Force-enable known code patterns",
+        "Known code patterns (inlined library idioms such as std::string::length() or IsListEmpty()) whose shape is "
+        "too generic to recognize safely on every binary are opt-in: they only run when the user asks for them, or "
+        "when a pattern's own criteria gate opens for this target. Set this option to the names of the patterns to "
+        'force-enable (comma-separated, either the call name or the short name), or to "all" to run every known '
+        "pattern. Expect false positives: these idioms are opt-in precisely because their shapes also occur in "
+        "unrelated code. An unrecognized name is an error.",
+        str,
+        "clinic",
+        "known_patterns",
+        category="Patterns",
+        default_value=None,
+        clears_cache=True,
+        convert=parse_known_patterns,
+    ),
+]
+
+# NOTE: if you add a codegen option here, please add it to reapply_options
+
+options_by_category = defaultdict(list)
+PARAM_TO_OPTION = {}
+
+for o in options:
+    options_by_category[o.category].append(o)
+    PARAM_TO_OPTION[o.param] = o
+
+
+#
+# Option Helpers
+#
+
+
+def get_structurer_option() -> DecompilationOption | None:
+    for opt in options:
+        if opt.cls == "recursive_structurer" and opt.param == "structurer_cls":
+            return opt
+    return None

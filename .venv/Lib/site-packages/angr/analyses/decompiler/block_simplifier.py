@@ -1,0 +1,615 @@
+# pylint:disable=too-many-boolean-expressions
+from __future__ import annotations
+
+import logging
+from collections import defaultdict
+from collections.abc import Iterable, Mapping
+from typing import TYPE_CHECKING
+
+from angr.ailment.expression import (
+    Call,
+    Const,
+    Convert,
+    DirtyExpression,
+    Expression,
+    Load,
+    Phi,
+    Register,
+    Tmp,
+    VirtualVariable,
+)
+from angr.ailment.manager import Manager
+from angr.ailment.statement import Assignment, DirtyStatement, Jump, SideEffectStatement, Statement, Store
+from angr.analyses.s_propagator import SPropagator
+from angr.code_location import AILCodeLocation
+from angr.knowledge_plugins.key_definitions import atoms
+from angr.utils.ail import GraphVVarDefs, dirty_has_side_effects
+from angr.utils.ssa import get_tmp_deflocs, get_tmp_uselocs, has_reference_to_vvar
+
+from .block_walkers import HasCallExprWalker, HasCallNotification
+from .peephole_optimizations import (
+    EXPR_OPTS,
+    MULTI_STMT_OPTS,
+    STMT_OPTS,
+    PeepholeOptimizationExprBase,
+    PeepholeOptimizationMultiStmtBase,
+    PeepholeOptimizationStmtBase,
+)
+from .utils import (
+    _PeepholeExprsWalker,
+    build_stmt_opts_by_kind,
+    peephole_optimize_exprs,
+    peephole_optimize_multistmts,
+    peephole_optimize_stmts,
+)
+
+if TYPE_CHECKING:
+    from angr.ailment.block import Block
+    from angr.project import Project
+
+
+_l = logging.getLogger(name=__name__)
+
+
+_HAS_CALL_EXPR_WALKER = HasCallExprWalker()
+
+
+class PeepholeOptimizationBundle:
+    """
+    PeepholeOptimizationBundle describes a set of initialized peephole optimizer instances and the dispatch structures
+    derived from them. This bundle of peephole optimizations is reusable across `BlockSimplifier` invocations (so we
+    avoid rebuilding the same optimizer instances).
+    """
+
+    __slots__ = (
+        "_params",
+        "expr_opts",
+        "expr_walker",
+        "multistmt_opts",
+        "stmt_opts",
+        "stmt_opts_by_kind",
+    )
+
+    def __init__(
+        self,
+        project,
+        kb,
+        ail_manager: Manager,
+        func_addr: int | None = None,
+        preserve_vvar_ids: set[int] | None = None,
+        type_hints: list[tuple[atoms.VirtualVariable | atoms.MemoryLocation, str]] | None = None,
+        peephole_optimizations: Iterable[
+            type[PeepholeOptimizationStmtBase | PeepholeOptimizationExprBase | PeepholeOptimizationMultiStmtBase]
+        ]
+        | None = None,
+    ):
+        if peephole_optimizations is None:
+            expr_classes: Iterable = EXPR_OPTS
+            stmt_classes: Iterable = STMT_OPTS
+            multistmt_classes: Iterable = MULTI_STMT_OPTS
+        else:
+            peephole_optimizations = tuple(peephole_optimizations)
+            expr_classes = [cls for cls in peephole_optimizations if issubclass(cls, PeepholeOptimizationExprBase)]
+            stmt_classes = [cls for cls in peephole_optimizations if issubclass(cls, PeepholeOptimizationStmtBase)]
+            multistmt_classes = [
+                cls for cls in peephole_optimizations if issubclass(cls, PeepholeOptimizationMultiStmtBase)
+            ]
+
+        args = (project, kb, ail_manager, func_addr, preserve_vvar_ids, type_hints)
+        self.expr_opts = [cls(*args) for cls in expr_classes]
+        self.stmt_opts = [cls(*args) for cls in stmt_classes]
+        self.multistmt_opts = [cls(*args) for cls in multistmt_classes]
+        self.stmt_opts_by_kind = build_stmt_opts_by_kind(self.stmt_opts)
+        self.expr_walker = _PeepholeExprsWalker(expr_opts=self.expr_opts)
+        self._params = (project, ail_manager, func_addr, preserve_vvar_ids, type_hints, peephole_optimizations)
+
+    def matches(
+        self,
+        project,
+        ail_manager: Manager,
+        func_addr: int | None,
+        preserve_vvar_ids: set[int] | None,
+        type_hints: list | None,
+        peephole_optimizations,
+    ) -> bool:
+        p_project, p_manager, p_func_addr, p_preserve, p_hints, p_opts = self._params
+        return (
+            p_project is project
+            and p_manager is ail_manager
+            and p_func_addr == func_addr
+            and p_preserve is preserve_vvar_ids
+            and p_hints is type_hints
+            and (
+                p_opts is peephole_optimizations
+                or (
+                    p_opts is not None
+                    and peephole_optimizations is not None
+                    and p_opts == tuple(peephole_optimizations)
+                )
+            )
+        )
+
+
+#: The minimum number of replacements in a statement that triggers the growth watch.
+_STMT_GROWTH_WATCH_MIN_REPLACEMENTS = 4
+
+
+class BlockSimplifier:
+    """
+    Simplify an AIL block.
+
+    Deliberately not an :class:`Analysis`: it is instantiated once per block, hundreds of times per decompilation,
+    so it skips the analysis-factory ceremony. Instantiate it directly with the project as the first argument;
+    exceptions always propagate.
+    """
+
+    def __init__(
+        self,
+        project: Project,
+        block: Block | None,
+        ail_manager: Manager,
+        func_addr: int | None = None,
+        stack_pointer_tracker=None,
+        peephole_optimizations: Iterable[
+            type[PeepholeOptimizationStmtBase | PeepholeOptimizationExprBase | PeepholeOptimizationMultiStmtBase]
+        ]
+        | None = None,
+        preserve_vvar_ids: set[int] | None = None,
+        type_hints: list[tuple[atoms.VirtualVariable | atoms.MemoryLocation, str]] | None = None,
+        cached_propagator=None,
+        peephole_bundle: PeepholeOptimizationBundle | None = None,
+        graph_defs: GraphVVarDefs | None = None,
+    ):
+        """
+        :param block:   The AIL block to simplify. Setting it to None to skip calling self._analyze(), which is useful
+                        in test cases.
+        :param peephole_bundle: A pre-built PeepholeOptimizationBundle to reuse. Its construction parameters must
+                        match this BlockSimplifier's; callers that simplify many blocks should build one bundle and
+                        pass it to every BlockSimplifier they create.
+        :param graph_defs:  Unique vvar definitions of the graph the block belongs to, for peephole optimizations that
+                        see through definitions made in other blocks.
+        """
+
+        self.project = project
+        self.kb = project.kb
+        self.block = block
+        self.func_addr = func_addr
+
+        self._stack_pointer_tracker = stack_pointer_tracker
+        self._preserve_vvar_ids = preserve_vvar_ids
+        self._type_hints = type_hints
+        self._ail_manager = ail_manager
+        self._graph_defs = graph_defs
+
+        if peephole_bundle is None:
+            peephole_bundle = PeepholeOptimizationBundle(
+                self.project,
+                self.kb,
+                ail_manager,
+                func_addr=self.func_addr,
+                preserve_vvar_ids=self._preserve_vvar_ids,
+                type_hints=self._type_hints,
+                peephole_optimizations=peephole_optimizations,
+            )
+        self._expr_peephole_opts = peephole_bundle.expr_opts
+        self._stmt_peephole_opts = peephole_bundle.stmt_opts
+        self._multistmt_peephole_opts = peephole_bundle.multistmt_opts
+        self._stmt_peephole_opts_by_kind = peephole_bundle.stmt_opts_by_kind
+
+        self.result_block = None
+
+        # cached peephole expression walker
+        self._expr_peephole_walker = peephole_bundle.expr_walker
+
+        # cached Propagator result. Clear it if the block is updated
+        self._propagator = cached_propagator
+
+        if self.block is not None:
+            self._analyze()
+
+    def _analyze(self):
+        block = self.block
+        assert block is not None
+        ctr = 0
+
+        new_block, changed = self._eliminate_self_assignments(block)
+        # True once dead-assignment elimination is known to have nothing to do on the block the loop below starts
+        # from -- either because it just ran over it without a change, or because its gate is off for that block.
+        dead_assignments_clean = True
+        if self._count_nonconstant_statements(new_block) >= 2 and self._has_propagatable_assignments(new_block):
+            new_block, dead_changed = self._eliminate_dead_assignments(new_block)
+            changed |= dead_changed
+            dead_assignments_clean = not dead_changed
+        if changed:
+            self._clear_cache()
+            block = new_block
+
+        # Where the stack pointer is unresolved the propagator folds one link of a definition chain per
+        # pass, so a block can legitimately need one iteration for each statement it starts out with.
+        max_ctr = max(30, len(block.statements))
+
+        while True:
+            ctr += 1
+            # the entry peephole pass is only useful on the first iteration: every later iteration receives the
+            # output of the previous iteration's exit peephole pass, so running peephole again on entry is redundant.
+            new_block, changed = self._simplify_block_once(
+                block, entry_peephole=ctr == 1, dead_assignments_clean=dead_assignments_clean
+            )
+            if not changed:
+                break
+
+            assert new_block is not None
+            self._clear_cache()
+            block = new_block
+            if ctr >= max_ctr:
+                _l.error(
+                    "Simplification does not reach a fixed point after %d iterations. "
+                    "Block comparison is probably incorrect.",
+                    max_ctr,
+                )
+                break
+
+        self.result_block = block
+
+    def _compute_propagation(self, block) -> SPropagator:
+        if self._propagator is None:
+            self._propagator = SPropagator(
+                self.project,
+                subject=block,
+                func_addr=self.func_addr,
+                stack_pointer_tracker=self._stack_pointer_tracker,
+                ail_manager=self._ail_manager,
+            )
+        return self._propagator
+
+    def _clear_cache(self):
+        self._propagator = None
+
+    @staticmethod
+    def _has_propagatable_assignments(block) -> bool:
+        return any(isinstance(stmt, (Assignment, Store)) for stmt in block.statements)
+
+    @staticmethod
+    def _count_nonconstant_statements(block) -> int:
+        return sum(1 for stmt in block.statements if not (isinstance(stmt, Jump) and isinstance(stmt.target, Const)))
+
+    def _simplify_block_once(
+        self, block, entry_peephole: bool = True, dead_assignments_clean: bool = False
+    ) -> tuple[Block, bool]:
+        """
+        Run one round of simplification. Returns the new block and if any step reported a change.
+
+        :param dead_assignments_clean:  True if dead-assignment elimination is known to have nothing to do on
+                                        ``block`` as passed in. Only meaningful together with ``entry_peephole``.
+        """
+        changed = False
+        # True once we know ``block`` is untouched and already at the fixpoint of every pass that has run over it:
+        # re-running those passes on it cannot report a change.
+        clean = False
+        if entry_peephole:
+            block, peephole_changed, exprs_updated = self._peephole_optimize(block)
+            changed |= peephole_changed
+            clean = dead_assignments_clean and not peephole_changed and not exprs_updated
+
+        nonconstant_stmts = self._count_nonconstant_statements(block)
+        has_propagatable_assignments = self._has_propagatable_assignments(block)
+
+        # only call propagation if something is potentially propagatable
+        if nonconstant_stmts >= 2 and has_propagatable_assignments:
+            propagator = self._compute_propagation(block)
+            new_block = block
+            if propagator.model is not None:
+                replacements = propagator.model.replacements
+                if replacements:
+                    replaced, new_block = self.replace_and_build(
+                        block, replacements, self._ail_manager, replace_registers=True
+                    )
+                    changed |= replaced
+                    new_block, self_assign_changed = self._eliminate_self_assignments(new_block)
+                    changed |= self_assign_changed
+                    self._clear_cache()
+        else:
+            new_block = block
+
+        if clean and new_block is block:
+            return block, False
+
+        if nonconstant_stmts >= 2 and has_propagatable_assignments:
+            new_block, dead_changed = self._eliminate_dead_assignments(new_block)
+            changed |= dead_changed
+
+        new_block, peephole_changed, _ = self._peephole_optimize(new_block)
+        return new_block, changed | peephole_changed
+
+    @staticmethod
+    def _phi_collapses_to_const(phi: Phi, repls: Mapping[Expression, Expression], const: Const) -> bool:
+        const_by_varid = {
+            k.varid: v for k, v in repls.items() if isinstance(k, VirtualVariable) and isinstance(v, Const)
+        }
+        for _, vvar in phi.src_and_vvars:
+            if vvar is None:
+                return False
+            c = const_by_varid.get(vvar.varid)
+            if c is None or not c.likes(const) or c.value != const.value:
+                return False
+        return True
+
+    @staticmethod
+    def replace_and_build(
+        block: Block,
+        replacements: Mapping[AILCodeLocation, Mapping[Expression, Expression]],
+        ail_manager: Manager,
+        replace_assignment_dsts: bool = False,
+        replace_loads: bool = False,
+        gp: int | None = None,
+        replace_registers: bool = True,
+        max_expr_depth: int | None = 13,
+        max_stmt_size: int = 20_000,
+    ) -> tuple[bool, Block]:
+        new_statements = block.statements[::]
+        replaced = False
+
+        replacements_by_stmt: dict[int, list[tuple[AILCodeLocation, Expression, Expression]]] = defaultdict(list)
+        for codeloc, repls in replacements.items():
+            assert codeloc.stmt_idx is not None
+            for old, new in repls.items():
+                replacements_by_stmt[codeloc.stmt_idx].append((codeloc, old, new))
+
+        sizes: dict[int, int] = {}
+        saturated_stmts: set[int] = set()  # statements that have rejected replacements
+
+        def _rendering_size_of(stmt_idx: int) -> int:
+            """
+            Return the rendering size of the statement at the given index.
+            """
+            cached = sizes.get(stmt_idx)
+            if cached is None:
+                cached = len(str(new_statements[stmt_idx]))
+                sizes[stmt_idx] = cached
+            return cached
+
+        for stmt_idx, items in replacements_by_stmt.items():
+            watch_growth = len(items) >= _STMT_GROWTH_WATCH_MIN_REPLACEMENTS
+            if watch_growth and _rendering_size_of(stmt_idx) > max_stmt_size:
+                # statement is too large; skip future replacements
+                continue
+
+            for codeloc, old, new in items:
+                if watch_growth and (stmt_idx in saturated_stmts or _rendering_size_of(stmt_idx) > max_stmt_size):
+                    # checked before any work is done, so a saturated statement costs nothing
+                    break
+                new = new.deep_copy(ail_manager)
+                stmt = new_statements[codeloc.stmt_idx]
+                if (
+                    not replace_loads
+                    and isinstance(old, Load)
+                    and not isinstance(stmt, SideEffectStatement)
+                    and not (gp is not None and isinstance(new, Const) and new.value == gp)
+                ):
+                    # skip memory-based replacement for non-Call and non-gp-loading statements
+                    continue
+                if isinstance(stmt, SideEffectStatement) and stmt.expr == old:
+                    # the replacement must be a call, since replacements can only be expressions
+                    assert isinstance(new, Call)
+                    r = True
+                    new_stmt = SideEffectStatement(
+                        stmt.idx, new, ret_expr=stmt.ret_expr, fp_ret_expr=stmt.fp_ret_expr, **stmt.tags
+                    )
+                else:
+                    # replace the expressions involved in this statement
+
+                    if not replace_registers and isinstance(old, Register):
+                        # don't replace
+                        r = False
+                        new_stmt = None
+                    elif isinstance(old, VirtualVariable) and has_reference_to_vvar(stmt, old.varid):
+                        # never replace an l-value with an r-value
+                        r = False
+                        new_stmt = None
+                    elif isinstance(stmt, SideEffectStatement) and isinstance(new, Call) and old == stmt.ret_expr:
+                        # special case: do not replace the ret_expr of a call statement to another call statement
+                        r = False
+                        new_stmt = None
+                    elif isinstance(stmt, Assignment) and not replace_assignment_dsts:
+                        # special case: do not replace the dst
+                        new_stmt = None
+                        if stmt.src == old:
+                            r = True
+                            new_src = new.copy()
+                        elif (
+                            isinstance(stmt.src, Phi)
+                            and isinstance(new, Const)
+                            and BlockSimplifier._phi_collapses_to_const(stmt.src, replacements[codeloc], new)
+                        ):
+                            # a Phi only accepts vvar sources; it collapses when every source is rewritten to
+                            # the same constant
+                            replaced = True
+                            new_src = new
+                            new_statements[codeloc.stmt_idx] = Assignment(stmt.idx, stmt.dst, new_src, **stmt.tags)
+                            break
+                        else:
+                            r, new_src = stmt.src.replace(old, new)
+                            if (
+                                r
+                                and max_expr_depth is not None
+                                and new.depth > 1
+                                and new_src.depth >= old.depth
+                                and new_src.depth > max_expr_depth
+                            ):
+                                # avoid replacing if the new expression is too deep, to prevent exponential blowup.
+                                # atoms (depth <= 1) never cause blowups and are always replaced.
+                                r = False
+                        if r:
+                            new_stmt = Assignment(stmt.idx, stmt.dst, new_src, **stmt.tags)
+                    else:
+                        r, new_stmt = stmt.replace(old, new)
+                        if (
+                            r
+                            and max_expr_depth is not None
+                            and new.depth > 1
+                            and new_stmt.depth >= stmt.depth
+                            and new_stmt.depth > max_expr_depth - 1
+                        ):
+                            # avoid replacing if the new statement is too deep, to prevent exponential blowup.
+                            # atoms (depth <= 1) never cause blowups and are always replaced.
+                            r = False
+
+                if r and watch_growth:
+                    assert new_stmt is not None
+                    grown = _rendering_size_of(codeloc.stmt_idx) + len(str(new))
+                    if grown > max_stmt_size:
+                        # reject and mark the statement as saturated, so we don't try to replace it again.
+                        r = False
+                        saturated_stmts.add(codeloc.stmt_idx)
+                    else:
+                        sizes[codeloc.stmt_idx] = grown
+
+                if r:
+                    assert new_stmt is not None
+                    replaced = True
+                    new_statements[codeloc.stmt_idx] = new_stmt
+
+        if not replaced:
+            return False, block
+
+        new_block = block.copy()
+        new_block.statements = new_statements
+        return True, new_block
+
+    @staticmethod
+    def _eliminate_self_assignments(block) -> tuple[Block, bool]:
+        new_statements = []
+
+        for stmt in block.statements:
+            if isinstance(stmt, Assignment):
+                if stmt.dst.likes(stmt.src):
+                    continue
+                if (
+                    isinstance(stmt.dst, Register)
+                    and isinstance(stmt.src, Convert)
+                    and isinstance(stmt.src.operand, Register)
+                ) and (
+                    stmt.dst.size == stmt.src.size
+                    and stmt.dst.reg_offset == stmt.src.operand.reg_offset
+                    and not stmt.src.is_signed
+                ):
+                    # ignore statements like edi = convert(rdi, 32)
+                    continue
+            new_statements.append(stmt)
+
+        if len(new_statements) == len(block.statements):
+            # nothing was eliminated; keep the original block
+            return block, False
+        return block.copy(statements=new_statements), True
+
+    def _eliminate_dead_assignments(self, block) -> tuple[Block, bool]:
+        def _statement_has_calls(stmt: Statement) -> bool:
+            """
+            Check if a statement has any Call expressions.
+            """
+            try:
+                _HAS_CALL_EXPR_WALKER.walk_statement(stmt)
+            except HasCallNotification:
+                return True
+            return False
+
+        def _expression_has_calls(expr: Expression) -> bool:
+            """
+            Check if an expression has any Call expressions.
+            """
+            try:
+                _HAS_CALL_EXPR_WALKER.walk_expression(expr)
+            except HasCallNotification:
+                return True
+            return False
+
+        new_statements = []
+        if not block.statements:
+            return block, False
+
+        block_loc = (block.addr, block.idx)
+        # tmps are block-local, so their definition and use sites are all this pass needs
+        tmp_deflocs = get_tmp_deflocs([block]).get(block_loc, {})
+        tmp_uselocs = get_tmp_uselocs([block]).get(block_loc, {}) if tmp_deflocs else {}
+
+        # Find dead assignments
+        dead_defs_stmt_idx = {stmt_idx for tmp, stmt_idx in tmp_deflocs.items() if not tmp_uselocs.get(tmp)}
+
+        used_tmps: set[int] = set()
+        # micro optimization: if all statements that use a tmp are going to be removed, we remove this tmp as well
+        for tmp, used_locs in tmp_uselocs.items():
+            if tmp not in tmp_deflocs:
+                continue
+            used_at = {stmt_idx for _, stmt_idx in used_locs}
+            if used_at.issubset(dead_defs_stmt_idx):  # noqa:SIM102
+                # cannot remove this tmp if any use sites involve call expressions; this is basically a duplicate of
+                # the logic in the larger loop below
+                if all(not _statement_has_calls(block.statements[i]) for i in used_at):
+                    continue
+            used_tmps.add(tmp.tmp_idx)
+
+        # Remove dead assignments
+        changed = False
+        for idx, stmt in enumerate(block.statements):
+            if isinstance(stmt, Assignment):
+                # tmps can't execute new code
+                if (isinstance(stmt.dst, Tmp) and stmt.dst.tmp_idx not in used_tmps) or idx in dead_defs_stmt_idx:
+                    # is it assigning to an unused tmp or a dead virgin?
+
+                    if isinstance(stmt.src, DirtyExpression) and dirty_has_side_effects(stmt.src):
+                        # the result is dead but the helper touches memory; keep it as a statement
+                        new_statements.append(DirtyStatement(self._ail_manager.next_atom(), stmt.src, **stmt.tags))
+                        changed = True
+                        continue
+
+                    # does .src involve any Call expressions? if so, we cannot remove it
+                    if not _expression_has_calls(stmt.src):
+                        changed = True
+                        continue
+
+                    if isinstance(stmt.dst, Tmp) and isinstance(stmt.src, Call):
+                        # eliminate the assignment and replace it with the call
+                        stmt = SideEffectStatement(self._ail_manager.next_atom(), stmt.src, **stmt.tags)
+                        changed = True
+
+                if isinstance(stmt, Assignment) and stmt.src == stmt.dst:
+                    changed = True
+                    continue
+
+            new_statements.append(stmt)
+
+        if not changed:
+            # nothing was eliminated; keep the original block
+            return block, False
+        return block.copy(statements=new_statements), True
+
+    #
+    # Peephole optimization
+    #
+
+    def _peephole_optimize(self, block) -> tuple[Block, bool, bool]:
+        """
+        Run all three peephole optimization levels on the block.
+
+        :return:    (block, changed, exprs_updated), where ``changed`` is True if any optimization applied and
+                    ``exprs_updated`` is True if the expression walker rewrote any expression.
+        """
+        exprs_updated = peephole_optimize_exprs(
+            block, self._expr_peephole_opts, walker=self._expr_peephole_walker, graph_defs=self._graph_defs
+        )
+
+        # run statement-level optimizations
+        statements, stmts_updated = peephole_optimize_stmts(
+            block,
+            self._stmt_peephole_opts,
+            stmt_opts_by_kind=self._stmt_peephole_opts_by_kind,
+            fixpoint_exprs=self._expr_peephole_walker.fixpoint_stmts,
+        )
+
+        new_block = block.copy(statements=statements) if stmts_updated else block
+
+        statements, multi_stmts_updated = peephole_optimize_multistmts(new_block, self._multistmt_peephole_opts)
+
+        if multi_stmts_updated:
+            new_block = new_block.copy(statements=statements)
+        return new_block, stmts_updated or multi_stmts_updated, exprs_updated

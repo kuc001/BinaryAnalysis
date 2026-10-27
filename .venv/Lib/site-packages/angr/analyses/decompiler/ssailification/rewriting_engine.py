@@ -1,0 +1,1031 @@
+# pylint:disable=no-self-use,unused-argument,too-many-boolean-expressions
+from __future__ import annotations
+
+import logging
+from collections.abc import MutableMapping
+from typing import TYPE_CHECKING
+
+import archinfo
+
+from angr.ailment.block import Block
+from angr.ailment.expression import (
+    ITE,
+    Atom,
+    BinaryOp,
+    Call,
+    ComboRegister,
+    Const,
+    Convert,
+    DirtyExpression,
+    Expression,
+    Extract,
+    Insert,
+    IRegister,
+    Load,
+    Register,
+    Reinterpret,
+    StackBaseOffset,
+    Tmp,
+    UnaryOp,
+    VEXCCallExpression,
+    VirtualVariable,
+    VirtualVariableCategory,
+)
+from angr.ailment.manager import Manager
+from angr.ailment.statement import (
+    CAS,
+    Assignment,
+    ConditionalJump,
+    DirtyStatement,
+    Jump,
+    Return,
+    SideEffectStatement,
+    Statement,
+    Store,
+    WeakAssignment,
+)
+from angr.analyses.decompiler.variable_map import variable_map_of
+from angr.calling_conventions import call_clobbered_regs
+from angr.engines.light.engine import SimEngineNostmtAIL
+from angr.sim_type import SimTypeInt, SimTypeNum
+from angr.utils.ail import is_head_controlled_loop_jump
+
+from .consts import MAX_STACK_VAR_SIZE
+from .rewriting_state import RewritingState
+
+if TYPE_CHECKING:
+    from angr.analyses.decompiler.ssailification.ssailification import Def, UDef
+
+
+_l = logging.getLogger(__name__)
+
+
+class SimEngineSSARewriting(
+    SimEngineNostmtAIL[RewritingState, Expression | None, Statement | tuple[Statement, ...], None]
+):
+    """
+    This engine rewrites every block to insert phi variables and replaces every used variable with their versioned
+    copies at each use location.
+    """
+
+    def __init__(
+        self,
+        project,
+        *,
+        ail_manager: Manager,
+        def_to_udef: MutableMapping[Def, UDef],
+        extern_defs: set[UDef] | None = None,
+        incomplete_defs: set[Def],
+        vvar_id_start: int = 0,
+        rewrite_tmps: bool = False,
+        stackvars: bool = False,
+        fail_fast: bool = False,
+        clobber_defs_by_loc: dict[tuple[int, int, int], list[Def]] | None = None,
+    ):
+        super().__init__(project)
+        self.clobber_defs_by_loc = clobber_defs_by_loc if clobber_defs_by_loc is not None else {}
+        # (block addr, block idx) -> (position, count) of the phi statements the rewriting analysis inserted
+        self.phi_insertions: dict[tuple[int, int], tuple[int, int]] = {}
+
+        self.def_to_vvid_cache: dict[Def, int] = {}
+        self.tmp_to_vvid_cache: dict[tuple[int, int | None, int], int] = {}
+        self.rewrite_tmps = rewrite_tmps
+        self.ail_manager = ail_manager
+        self.hclb_side_exit_state: RewritingState | None = None
+        self.out_block: Block | None = None
+        self.def_to_udef = def_to_udef
+        self.extern_defs: set[UDef] = extern_defs if extern_defs is not None else set()
+        self.stackvars = stackvars
+        self.incomplete_defs = incomplete_defs
+        self._fail_fast = fail_fast
+
+        self._current_vvar_id = vvar_id_start
+        self._extra_defs: list[int] = []
+        self._varid_to_combo_reg = {}
+
+    @property
+    def current_vvar_id(self) -> int:
+        return self._current_vvar_id
+
+    @current_vvar_id.setter
+    def current_vvar_id(self, value: int) -> None:
+        self._current_vvar_id = value
+
+    #
+    # Util functions
+    #
+
+    #
+    # Handlers
+    #
+
+    def process(
+        self, state: RewritingState, *, block: Block | None = None, whitelist: set[int] | None = None, **kwargs
+    ) -> None:
+        super().process(state, block=block, whitelist=whitelist, **kwargs)
+
+    def _top(self, bits):
+        assert False, "Unreachable"
+
+    def _is_top(self, expr):
+        assert False, "Unreachable"
+
+    def _process_block_end(self, block, stmt_data, whitelist):
+        assert whitelist is None
+        if all(stmt is None for stmt in stmt_data):
+            self.out_block = block
+            return
+
+        self.out_block = Block(block.addr, block.original_size, idx=block.idx)
+        for stmt_idx, new_stmt in enumerate(stmt_data):
+            if new_stmt is not None:
+                if isinstance(new_stmt, tuple):
+                    for stmt_ in new_stmt:
+                        self.out_block.statements.append(stmt_)
+                else:
+                    self.out_block.statements.append(new_stmt)
+            else:
+                self.out_block.statements.append(block.statements[stmt_idx])
+
+    def _stmt(self, stmt: Statement):
+        self._extra_defs = []
+        result = super()._stmt(stmt)
+        pos, count = self.phi_insertions.get((self.block.addr, self.block.idx), (0, 0))
+        if pos <= self.stmt_idx < pos + count:
+            clobber_defs = ()  # an inserted phi statement
+        else:
+            orig_idx = self.stmt_idx - count if self.stmt_idx >= pos + count else self.stmt_idx
+            clobber_defs = self.clobber_defs_by_loc.get((self.block.addr, self.block.idx, orig_idx), ())
+        if clobber_defs and result is None:
+            result = stmt.copy()
+        clobber_tag: list[int] = []
+        # create the vvars that this call clobbers
+        for clobber_def in clobber_defs:
+            vvar = self._expr_to_vvar(clobber_def, True)
+            clobber_tag += [vvar.varid, vvar.reg_offset, vvar.bits]
+        for rstmt in result if isinstance(result, tuple) else [result] if isinstance(result, Statement) else []:
+            if self._extra_defs:
+                rstmt.tags["extra_defs"] = self._extra_defs
+            else:
+                rstmt.tags.pop("extra_defs", None)
+            if clobber_tag:
+                rstmt.tags["clobber_defs"] = clobber_tag
+        return result
+
+    def _handle_expr_VirtualVariable(self, expr):
+        return None
+
+    def _handle_stmt_Assignment(self, stmt):
+        new_src = self._expr(stmt.src)
+        new_dst = self._replace_def_expr(stmt.dst, new_src or stmt.src, stmt)
+        if new_dst is not None:
+            return new_dst
+
+        if new_src is not None:
+            return Assignment(
+                stmt.idx,
+                stmt.dst,
+                new_src,
+                **stmt.tags,
+            )
+        return None
+
+    def _handle_stmt_WeakAssignment(self, stmt) -> WeakAssignment | None:
+        new_src = self._expr(stmt.src)
+        new_dst = self._expr(stmt.dst)
+
+        if new_dst is not None or new_src is not None:
+            return WeakAssignment(
+                stmt.idx,
+                stmt.dst if new_dst is None else new_dst,  # type: ignore
+                stmt.src if new_src is None else new_src,
+                **stmt.tags,
+            )
+        return None
+
+    def _handle_stmt_CAS(self, stmt: CAS) -> CAS | None:
+        new_addr = self._expr(stmt.addr)
+        new_data_lo = self._expr(stmt.data_lo)
+        new_data_hi = self._expr(stmt.data_hi) if stmt.data_hi is not None else None
+        new_expd_lo = self._expr(stmt.expd_lo)
+        new_expd_hi = self._expr(stmt.expd_hi) if stmt.expd_hi is not None else None
+        new_old_lo = self._expr(stmt.old_lo)
+        new_old_hi = self._expr(stmt.old_hi) if stmt.old_hi is not None else None
+        assert new_old_lo is None or isinstance(new_old_lo, Atom)
+        assert new_old_hi is None or isinstance(new_old_hi, Atom)
+
+        if (
+            new_addr is not None
+            or new_old_lo is not None
+            or new_old_hi is not None
+            or new_data_lo is not None
+            or new_data_hi is not None
+            or new_expd_lo is not None
+            or new_expd_hi is not None
+        ):
+            return CAS(
+                stmt.idx,
+                stmt.addr if new_addr is None else new_addr,
+                stmt.data_lo if new_data_lo is None else new_data_lo,
+                stmt.data_hi if new_data_hi is None else new_data_hi,
+                stmt.expd_lo if new_expd_lo is None else new_expd_lo,
+                stmt.expd_hi if new_expd_hi is None else new_expd_hi,
+                stmt.old_lo if new_old_lo is None else new_old_lo,
+                stmt.old_hi if new_old_hi is None else new_old_hi,
+                stmt.endness,
+                **stmt.tags,
+            )
+        return None
+
+    def _handle_stmt_Store(self, stmt: Store) -> Store | Assignment | tuple[Assignment, ...] | None:
+        new_data = self._expr(stmt.data)
+        if self.stackvars and stmt.guard is None and isinstance(stmt.addr, StackBaseOffset):
+            # vvar assignment
+            vvar = self._expr_to_vvar(stmt.addr, False)
+            assert isinstance(stmt.addr.offset, int)
+            return self._vvar_update(vvar, stmt.addr.offset - vvar.stack_offset, new_data or stmt.data, stmt)
+
+        # fall back to Store
+        new_addr = self._expr(stmt.addr)
+        new_guard = self._expr(stmt.guard) if stmt.guard is not None else None
+
+        if new_addr is not None or new_data is not None or new_guard is not None:
+            return Store(
+                stmt.idx,
+                stmt.addr if new_addr is None else new_addr,
+                stmt.data if new_data is None else new_data,
+                stmt.size,
+                stmt.endness,
+                guard=stmt.guard if new_guard is None else new_guard,
+                **stmt.tags,
+            )
+
+        return None
+
+    def _handle_stmt_Jump(self, stmt: Jump) -> Jump | None:
+        new_target = self._expr(stmt.target)
+        if new_target is not None:
+            return Jump(stmt.idx, new_target, stmt.target_idx, **stmt.tags)
+        return None
+
+    def _handle_stmt_ConditionalJump(self, stmt: ConditionalJump) -> ConditionalJump | None:
+        new_cond = self._expr(stmt.condition)
+        new_true_target = self._expr(stmt.true_target) if stmt.true_target is not None else None
+        new_false_target = self._expr(stmt.false_target) if stmt.false_target is not None else None
+
+        if self.stmt_idx != len(self.block.statements) - 1 and is_head_controlled_loop_jump(self.block, stmt):
+            # the conditional jump is in the middle of the block (e.g., the block generated from lifting rep stosq).
+            # we need to make a copy of the state and use the state of this point in its successor
+            self.hclb_side_exit_state = self.state.copy()
+
+        if new_cond is not None or new_true_target is not None or new_false_target is not None:
+            return ConditionalJump(
+                stmt.idx,
+                stmt.condition if new_cond is None else new_cond,
+                stmt.true_target if new_true_target is None else new_true_target,
+                stmt.false_target if new_false_target is None else new_false_target,
+                true_target_idx=stmt.true_target_idx,
+                false_target_idx=stmt.false_target_idx,
+                **stmt.tags,
+            )
+        return None
+
+    def _resolve_call_target(self, expr):
+        """
+        Resolve the callee :class:`Function` of a call expression, or None if it cannot be determined.
+        """
+        if not isinstance(expr, Call):
+            return None
+        target = expr.target
+        if isinstance(target, Const) and isinstance(target.value, int):
+            addr = target.value
+            if self.project.kb.functions.contains_addr(addr):
+                return self.project.kb.functions.get_by_addr(addr, meta_only=True)
+            return None
+        if isinstance(target, str):
+            try:
+                return self.project.kb.functions[target]
+            except KeyError:
+                return None
+        return None
+
+    def _handle_stmt_SideEffectStatement(self, stmt: SideEffectStatement) -> Statement | tuple[Statement, ...] | None:
+        new_expr = self._expr(stmt.expr)
+        vm = variable_map_of(self.ail_manager)
+        cc = vm.calling_convention(stmt.expr)
+
+        # resolve the callee so that we honor its own calling convention (matching the traversal engine)
+        target = self._resolve_call_target(stmt.expr)
+
+        if cc is None and target is not None and target.calling_convention is not None:
+            # honor the callee's own calling convention before falling back to the platform default
+            cc = target.calling_convention
+        if cc is None:
+            cc = self.project.factory.cc()
+        if cc is not None:
+            # clean up all caller-saved registers (and their subregisters). Stack-probe callees
+            # (__chkstk / __alloca_probe) preserve argument registers, so call_clobbered_regs narrows the
+            # clobber set for them.
+            for reg_name in call_clobbered_regs(cc, target, self.arch):
+                base_off, base_size = self.arch.registers[reg_name]
+                for suboff in range(base_off, base_off + base_size):
+                    self.state.registers.pop(suboff, None)
+
+        new_stmt = None
+        if isinstance(stmt.ret_expr, ComboRegister) and self._returns_scalar(stmt.expr):
+            new_stmt = self._replace_def_scalar_combo_reg(
+                stmt.ret_expr, new_expr if new_expr is not None else stmt.expr, stmt
+            )
+        elif stmt.ret_expr is not None:
+            assert isinstance(stmt.ret_expr, Atom)
+            new_stmt = self._replace_def_expr(stmt.ret_expr, new_expr if new_expr is not None else stmt.expr, stmt)
+            # becomes an Assignment
+        elif stmt.fp_ret_expr is not None:
+            assert isinstance(stmt.fp_ret_expr, Atom)
+            new_stmt = self._replace_def_expr(stmt.fp_ret_expr, new_expr if new_expr is not None else stmt.expr, stmt)
+            # becomes an Assignment
+
+        if new_stmt is None and new_expr is not None:
+            # only create a new SideEffectStatement if we get a new inner expr
+            new_stmt = SideEffectStatement(self.ail_manager.next_atom(), new_expr, **stmt.tags)
+
+        return new_stmt
+
+    def _handle_stmt_DirtyStatement(self, stmt: DirtyStatement) -> DirtyStatement | None:
+        dirty_in = stmt.dirty
+        dirty = self._expr(dirty_in)
+        if dirty is None or dirty == dirty_in:
+            return None
+        assert isinstance(dirty, DirtyExpression)
+        return DirtyStatement(stmt.idx, dirty, **stmt.tags)
+
+    def _handle_expr_String(self, expr):
+        return expr
+
+    def _handle_expr_Struct(self, expr):
+        return expr
+
+    def _handle_expr_Array(self, expr):
+        return expr
+
+    def _handle_expr_Let(self, expr):
+        return expr
+
+    def _handle_expr_FunctionLikeMacro(self, expr):
+        return expr
+
+    def _handle_expr_Register(self, expr: Register) -> VirtualVariable | Expression | None:
+        vvar = self._expr_to_vvar(expr, True)
+        return self._vvar_extract(vvar, expr.size, expr.reg_offset - vvar.reg_offset, expr)
+
+    def _handle_expr_IRegister(self, expr: IRegister) -> VirtualVariable | Expression | None:
+        offset = expr.concrete_reg_offset()
+        if offset is not None:
+            reg = Register(expr.idx, offset, expr.bits, **expr.tags)
+            return self._handle_expr_Register(reg)
+        return None
+
+    def _handle_expr_Tmp(self, expr: Tmp) -> VirtualVariable | None:
+        if not self.rewrite_tmps:
+            return None
+        tmp_key = self.block.addr, self.block.idx, expr.tmp_idx
+        if (vvid := self.tmp_to_vvid_cache.get(tmp_key, None)) is None:
+            vvid = self.tmp_to_vvid_cache[tmp_key] = self._current_vvar_id
+            self._current_vvar_id += 1
+        return VirtualVariable(
+            expr.idx,
+            vvid,
+            expr.bits,
+            VirtualVariableCategory.TMP,
+            oident=expr.tmp_idx,
+            **(expr.tags | {"ins_addr": self.ins_addr}),
+        )
+
+    def _handle_expr_Load(self, expr: Load) -> Expression | None:
+        if self.stackvars and isinstance(expr.addr, StackBaseOffset):
+            # vvar assignment
+            vvar = self._expr_to_vvar(expr.addr, True, size_hint=expr.size)
+            assert isinstance(expr.addr.offset, int)
+            # If the state has a wider VVar (e.g. an 8-byte parameter) covering
+            # this load, prefer it so that sub-reads produce Extract operations
+            # rather than creating independent narrow VVars.
+            if vvar is not None and isinstance(expr.addr.offset, int):
+                state_vvar = self.state.stackvars.get(expr.addr.offset)
+                if (
+                    state_vvar is not None
+                    and state_vvar.was_parameter
+                    and state_vvar.size > vvar.size
+                    and state_vvar.stack_offset + state_vvar.size >= expr.addr.offset + expr.size
+                ):
+                    vvar = state_vvar
+            if vvar.stack_offset + vvar.size >= expr.addr.offset + expr.size:
+                return self._vvar_extract(vvar, expr.size, expr.addr.offset - vvar.stack_offset, expr)
+
+        new_addr = self._expr(expr.addr)
+        if new_addr is not None:
+            return Load(expr.idx, new_addr, expr.size, expr.endness, guard=expr.guard, alt=expr.alt, **expr.tags)
+        return None
+
+    def _handle_expr_Convert(self, expr: Convert) -> Convert | None:
+        new_operand = self._expr(expr.operand)
+        if new_operand is not None:
+            return Convert(
+                expr.idx,
+                expr.from_bits,
+                expr.to_bits,
+                expr.is_signed,
+                new_operand,
+                from_type=expr.from_type,
+                to_type=expr.to_type,
+                rounding_mode=expr.rounding_mode,
+                vector_count=expr.vector_count,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_stmt_Return(self, stmt: Return) -> Return | None:
+        if stmt.ret_exprs is None:
+            return None
+
+        updated = False
+        new_ret_exprs = []
+        for r in stmt.ret_exprs:
+            new_r = self._expr(r)
+            if new_r is not None:
+                updated = True
+                new_ret_exprs.append(new_r)
+            else:
+                new_ret_exprs.append(r)
+
+        if not updated:
+            return None
+        return Return(stmt.idx, new_ret_exprs, **stmt.tags)
+
+    def _handle_expr_BinaryOp(self, expr: BinaryOp) -> BinaryOp | None:
+        new_op0 = self._expr(expr.operands[0])
+        new_op1 = self._expr(expr.operands[1])
+
+        if new_op0 is not None or new_op1 is not None:
+            return BinaryOp(
+                expr.idx,
+                expr.op,
+                [
+                    expr.operands[0] if new_op0 is None else new_op0,
+                    expr.operands[1] if new_op1 is None else new_op1,
+                ],
+                expr.signed,
+                bits=expr.bits,
+                floating_point=expr.floating_point,
+                rounding_mode=expr.rounding_mode,
+                vector_count=expr.vector_count,
+                vector_size=expr.vector_size,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_UnaryOp(self, expr) -> UnaryOp | None:
+        new_op = self._expr(expr.operand)
+        if new_op is not None:
+            return UnaryOp(
+                expr.idx,
+                expr.op,
+                new_op,
+                bits=expr.bits,
+                floating_point=expr.floating_point,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_ITE(self, expr: ITE) -> ITE | None:
+        new_cond = self._expr(expr.cond)
+        new_iftrue = self._expr(expr.iftrue)
+        new_iffalse = self._expr(expr.iffalse)
+
+        if new_cond is not None or new_iftrue is not None or new_iffalse is not None:
+            return ITE(
+                expr.idx,
+                expr.cond if new_cond is None else new_cond,
+                expr.iftrue if new_iftrue is None else new_iftrue,
+                expr.iffalse if new_iffalse is None else new_iffalse,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_VEXCCallExpression(self, expr: VEXCCallExpression) -> VEXCCallExpression | None:
+        updated = False
+        new_operands = []
+        for operand in expr.operands:
+            new_operand = self._expr(operand)
+            if new_operand is not None:
+                updated = True
+                new_operands.append(new_operand)
+            else:
+                new_operands.append(operand)
+
+        if updated:
+            return VEXCCallExpression(expr.idx, expr.callee, tuple(new_operands), bits=expr.bits, **expr.tags)
+        return None
+
+    def _handle_expr_BasePointerOffset(self, expr):
+        return None
+
+    def _handle_expr_Call(self, expr):
+        new_args = None
+        if expr.args is not None:
+            new_args = []
+            for arg in expr.args:
+                new_arg = self._expr(arg)
+                if new_arg is not None:
+                    new_args.append(new_arg)
+                else:
+                    new_args.append(arg)
+
+        new_target = self._expr(expr.target) if not isinstance(expr.target, str) else None
+        if new_target is not None or new_args is not None:
+            # The new call reuses expr.idx, so its VariableMap entry (calling_convention/prototype) stays valid.
+            return Call(
+                expr.idx,
+                expr.target if new_target is None else new_target,
+                args=new_args if new_args is not None else expr.args,
+                bits=expr.bits,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_Const(self, expr):
+        return None
+
+    def _handle_expr_DirtyExpression(self, expr: DirtyExpression) -> DirtyExpression | None:
+        updated = False
+        new_operands = []
+        for operand in expr.operands:
+            new_operand = self._expr(operand)
+            if new_operand is not None:
+                updated = True
+                new_operands.append(new_operand)
+            else:
+                new_operands.append(operand)
+
+        new_guard = None
+        if expr.guard is not None:
+            new_guard = self._expr(expr.guard)
+            if new_guard is not None:
+                updated = True
+
+        if updated:
+            return DirtyExpression(
+                expr.idx,
+                expr.callee,
+                new_operands,
+                guard=new_guard,
+                mfx=expr.mfx,
+                maddr=expr.maddr,
+                msize=expr.msize,
+                bits=expr.bits,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_MultiStatementExpression(self, expr):
+        return None
+
+    def _handle_expr_Phi(self, expr):
+        return None
+
+    def _handle_expr_Reinterpret(self, expr: Reinterpret) -> Reinterpret | None:
+        new_operand = self._expr(expr.operand)
+        if new_operand is not None:
+            return Reinterpret(
+                expr.idx,
+                expr.from_bits,
+                expr.from_type,
+                expr.to_bits,
+                expr.to_type,
+                new_operand,
+                **expr.tags,
+            )
+        return None
+
+    def _handle_expr_StackBaseOffset(self, expr):
+        if not self.stackvars:
+            return None
+
+        # if we get here, it means it's NOT through a Load or Store
+        # so we won't get the opportunity to lift this into an appropriate Assignment
+        # so if we don't completely redefine the value we should not create a new vvar
+        if expr in self.incomplete_defs and expr.offset in self.state.stackvars:
+            self.def_to_udef.pop(expr, None)
+
+        vvar = self._expr_to_vvar(expr, True)
+        refers = UnaryOp(expr.idx, "Reference", vvar, bits=expr.bits, **expr.tags)
+        if expr in self.def_to_udef:
+            refers.tags["extra_def"] = True
+            self._extra_defs.append(vvar.varid)
+        if vvar.stack_offset == expr.offset:
+            return refers
+
+        return BinaryOp(
+            expr.idx,
+            "Add",
+            [refers, Const(self.ail_manager.next_atom(), expr.offset - vvar.stack_offset, refers.bits)],
+        )
+
+    def _handle_expr_Extract(self, expr: Extract):
+        base_in = expr.base
+        offset_in = expr.offset
+        base = self._expr(base_in) or base_in
+        offset = self._expr(offset_in) or offset_in
+
+        if base != base_in or offset != offset_in:
+            return Extract(expr.idx, expr.bits, base, offset, expr.endness, **expr.tags)
+        return None
+
+    def _handle_expr_Insert(self, expr: Insert):
+        base_in = expr.base
+        offset_in = expr.offset
+        value_in = expr.value
+        base = self._expr(base_in) or base_in
+        offset = self._expr(offset_in) or offset_in
+        value = self._expr(value_in) or value_in
+
+        if base != base_in or offset != offset_in or value != value_in:
+            return Insert(expr.idx, base, offset, value, expr.endness, **expr.tags)
+        return None
+
+    #
+    # Expression replacement
+    #
+
+    def _replace_def_expr(self, thing: Atom, value: Expression, orig_tags: Expression | Statement) -> Assignment | None:
+        """
+        Return a new virtual variable for the given defined expression.
+        """
+        if isinstance(thing, Register):
+            return self._replace_def_reg(thing, value, orig_tags)
+        if isinstance(thing, IRegister):
+            offset = thing.concrete_reg_offset()
+            if offset is None:
+                return None
+            reg = Register(thing.idx, offset, thing.bits, **thing.tags)
+            return self._replace_def_reg(reg, value, orig_tags)
+        if isinstance(thing, Tmp) and self.rewrite_tmps:
+            return self._replace_def_tmp(thing, value, orig_tags)
+        if isinstance(thing, ComboRegister):
+            return self._replace_def_combo_reg(thing, value, orig_tags)
+        if isinstance(thing, VirtualVariable):
+            # update liveness info
+            if thing.category == VirtualVariableCategory.REGISTER:
+                for suboff in range(thing.reg_offset, thing.reg_offset + thing.size):
+                    self.state.registers[suboff] = thing
+            elif thing.category == VirtualVariableCategory.STACK:
+                self.state.stackvars.assign(thing.stack_offset, thing.stack_offset + thing.size, thing)
+        return None
+
+    def _replace_def_combo_reg(
+        self, expr: ComboRegister, value: Expression, orig_tags: Expression | Statement
+    ) -> Assignment:
+        # Create individual register VirtualVariables for each sub-register
+        reg_vvars = []
+        for reg in expr.registers:
+            reg_varid = self._current_vvar_id
+            self._current_vvar_id += 1
+            reg_vvar = VirtualVariable(
+                self.ail_manager.next_atom(),
+                reg_varid,
+                reg.bits,
+                VirtualVariableCategory.REGISTER,
+                oident=reg.reg_offset,
+                **(reg.tags | {"ins_addr": self.ins_addr}),
+            )
+            for suboff in range(reg.reg_offset, reg.reg_offset + reg.size):
+                self.state.registers[suboff] = reg_vvar
+            reg_vvars.append(reg_vvar)
+
+        vvid = self._current_vvar_id
+        self._current_vvar_id += 1
+        result = VirtualVariable(
+            expr.idx,
+            vvid,
+            expr.bits,
+            VirtualVariableCategory.COMBO_REGISTER,
+            oident=tuple(reg.reg_offset for reg in expr.registers),
+            reg_vvars=reg_vvars,
+            **expr.tags,
+        )
+        for reg_vvar in result.reg_vvars:
+            self._varid_to_combo_reg[reg_vvar.varid] = result
+        return Assignment(self.ail_manager.next_atom(), result, value, **orig_tags.tags)
+
+    def _returns_scalar(self, call: Expression) -> bool:
+        if not isinstance(call, Call):
+            return False
+        proto = variable_map_of(self.ail_manager).prototype(call)
+        return proto is not None and isinstance(proto.returnty, (SimTypeInt, SimTypeNum))
+
+    def _replace_def_scalar_combo_reg(
+        self, expr: ComboRegister, value: Expression, orig_tags: Expression | Statement
+    ) -> tuple[Assignment, ...]:
+        """A scalar returned in several registers (a long long in edx:eax): define the whole value, then each
+        register as its slice of it, least significant first."""
+        vvid = self._current_vvar_id
+        self._current_vvar_id += 1
+        combo = VirtualVariable(
+            expr.idx,
+            vvid,
+            expr.bits,
+            VirtualVariableCategory.COMBO_REGISTER,
+            oident=tuple(reg.reg_offset for reg in expr.registers),
+            reg_vvars=[],
+            **expr.tags,
+        )
+        stmts = [Assignment(self.ail_manager.next_atom(), combo, value, **orig_tags.tags)]
+        shift = 0
+        for reg in expr.registers:
+            assert isinstance(reg, Register)
+            src: Expression = combo
+            if shift:
+                src = BinaryOp(
+                    self.ail_manager.next_atom(),
+                    "Shr",
+                    [combo, Const(self.ail_manager.next_atom(), shift, 8)],
+                    bits=combo.bits,
+                    **orig_tags.tags,
+                )
+            src = Convert(self.ail_manager.next_atom(), combo.bits, reg.bits, False, src, **orig_tags.tags)
+            reg_vvar = self._replace_def_reg(reg, src, orig_tags)
+            stmts.append(reg_vvar)
+            shift += reg.bits
+        return tuple(stmts)
+
+    def _replace_def_reg(self, expr: Register, value: Expression, orig_tags: Expression | Statement) -> Assignment:
+        """
+        Return a new virtual variable for the given defined register.
+        """
+        vvar = self._expr_to_vvar(expr, False)
+        return self._vvar_update(vvar, expr.reg_offset - vvar.reg_offset, value, orig_tags)
+
+    def _replace_def_tmp(self, expr: Tmp, value: Expression, orig_tags: Expression | Statement) -> Assignment:
+        if not self.rewrite_tmps:
+            return Assignment(orig_tags.idx, expr, value, **orig_tags.tags)
+        vvar = self._handle_expr_Tmp(expr)
+        assert vvar is not None
+        return self._vvar_update(vvar, 0, value, orig_tags)
+
+    #
+    # Utils
+    #
+
+    def _extern_def_covers(self, kind: str, offset: int) -> bool:
+        return any(k == kind and off <= offset < off + size for k, off, size in self.extern_defs)
+
+    def _expr_to_vvar(self, expr: Def, def_is_implicit: bool, size_hint: int | None = None) -> VirtualVariable:
+        # is this a use, not a def?
+        if (udef := self.def_to_udef.get(expr, None)) is None:
+            if isinstance(expr, StackBaseOffset):
+                assert isinstance(expr.offset, int)
+                kind, offset, live = "stack", expr.offset, self.state.stackvars
+            elif isinstance(expr, Register):
+                kind, offset, live = "reg", expr.reg_offset, self.state.registers
+                size_hint = expr.size if size_hint is None else size_hint
+            else:
+                raise TypeError(expr)
+            if offset in live:
+                return live[offset]
+
+            # no definition reaches this use on this path: a read of memory (or a register) the function never wrote
+            # before reading, which is legitimate. the entry state seeds every extern def, so an offset an extern def
+            # covers can only be missing when the analysis lost track of it.
+            if self._fail_fast and self._extern_def_covers(kind, offset):
+                raise KeyError(expr)
+            # guesstimate the udef: the size of the access when known, bounded by the next live offset (the stack map
+            # is an interval map, where offset itself is not bound here)
+            if kind == "stack":
+                next_off = self.state.stackvars.next_key(offset)
+            else:
+                next_off = min((o for o in self.state.registers if o > offset), default=None)
+            if size_hint is not None:
+                size = size_hint if next_off is None else min(size_hint, next_off - offset)
+            else:
+                size = 4 if next_off is None else next_off - offset
+        else:
+            # unpack udef
+            kind, offset, size = udef
+
+        if (varid := self.def_to_vvid_cache.get(expr, None)) is None:
+            varid = self.def_to_vvid_cache[expr] = self._current_vvar_id
+            self._current_vvar_id += 1
+        idx = self.ail_manager.next_atom()
+        # TODO replace these str kinds with VirtualVariableCategory I guess
+        if kind == "stack":
+            category = VirtualVariableCategory.STACK
+            oident = offset
+        elif kind == "reg":
+            category = VirtualVariableCategory.REGISTER
+            oident = offset
+        else:
+            raise TypeError(expr)
+
+        if kind == "stack" and size >= MAX_STACK_VAR_SIZE:
+            # limit the stack variable size
+            size = MAX_STACK_VAR_SIZE
+
+        vvar = VirtualVariable(idx, varid, size * 8, category, oident, **(expr.tags | {"ins_addr": self.ins_addr}))
+        if def_is_implicit:
+            if kind == "stack":
+                self.state.stackvars.assign(offset, offset + size, vvar)
+            elif kind == "reg":
+                for suboff in range(offset, offset + size):
+                    self.state.registers[suboff] = vvar
+        return vvar
+
+    def _vvar_extract(
+        self, vvar: VirtualVariable, size: int, offset: int, orig_tags: Expression | Statement
+    ) -> Extract | VirtualVariable | BinaryOp | Convert:
+        assert offset >= 0
+        if size == vvar.size:
+            return vvar
+        endness = (
+            self.project.arch.memory_endness
+            if vvar.was_stack or (vvar.was_parameter and vvar.parameter_category == VirtualVariableCategory.STACK)
+            else self.project.arch.register_endness
+        )
+        if size > vvar.size:
+            if self._fail_fast:
+                assert False, "Invariant failure: we generated a vvar which is smaller than one of its uses"
+            remainder = Const(self.ail_manager.next_atom(), 0, size * 8 - vvar.bits, uninitalized=True)
+            order = [vvar, remainder] if endness == archinfo.Endness.LE else [remainder, vvar]
+            return BinaryOp(
+                self.ail_manager.next_atom(),
+                "Concat",
+                order,
+                bits=size * 8,
+            )
+        # When reading a standard FP width from offset 0 of an 80-bit variable,
+        # emit an FP truncation Convert instead of a raw bit Extract.
+        # 80-bit variables only arise from x87 long double (fstpt/fldt), so
+        # extracting 32 or 64 bits at offset 0 is always an FP narrowing
+        # (e.g. fstpl truncating long double to double).
+        if vvar.bits == 80 and offset == 0 and size in (8, 4):
+            return Convert(
+                self.ail_manager.next_atom(),
+                vvar.bits,
+                size * 8,
+                False,
+                vvar,
+                from_type=Convert.TYPE_FP,
+                to_type=Convert.TYPE_FP,
+                **orig_tags.tags,
+            )
+        return Extract(
+            self.ail_manager.next_atom(),
+            size * 8,
+            vvar,
+            Const(self.ail_manager.next_atom(), offset, 64),
+            endness,
+            **orig_tags.tags,
+        )
+
+    def _vvar_update(
+        self, vvar: VirtualVariable, offset: int, value: Expression, orig_tags: Expression | Statement
+    ) -> Assignment:
+        assert offset >= 0
+        if value.bits == vvar.bits:
+            combined = value
+        else:
+            if vvar.category == VirtualVariableCategory.STACK:
+                base = self.state.stackvars.get(vvar.stack_offset, None)
+            elif vvar.category == VirtualVariableCategory.REGISTER:
+                base = self.state.registers.get(vvar.reg_offset, None)
+            else:
+                raise TypeError(vvar.category)
+            if base is None:
+                base = Const(self.ail_manager.next_atom(), 0, vvar.bits, uninitialized=True)
+            endness = (
+                self.project.arch.memory_endness
+                if vvar.was_stack or (vvar.was_parameter and vvar.parameter_category == VirtualVariableCategory.STACK)
+                else self.project.arch.register_endness
+            )
+            if base.bits < vvar.bits:
+                base = BinaryOp(
+                    self.ail_manager.next_atom(),
+                    "Concat",
+                    [base, Const(self.ail_manager.next_atom(), 0, vvar.bits - base.bits, uninitialized=True)],
+                    bits=vvar.bits,
+                )
+            elif base.bits > vvar.bits:
+                base = Extract(
+                    self.ail_manager.next_atom(),
+                    vvar.bits,
+                    base,
+                    Const(self.ail_manager.next_atom(), offset, 64),
+                    endness,
+                )
+            # When storing a standard FP width at offset 0 into an 80-bit variable
+            # whose base is uninitialized, emit FP widening Convert instead of
+            # Insert.  80-bit variables only arise from x87 long double, so this
+            # is always an FP promotion (e.g. tmp = (long double)x).
+            if (
+                vvar.bits == 80
+                and offset == 0
+                and value.bits in (32, 64)
+                and (base is None or (isinstance(base, Const) and base.tags.get("uninitialized")))
+            ):
+                combined = Convert(
+                    self.ail_manager.next_atom(),
+                    value.bits,
+                    vvar.bits,
+                    False,
+                    value,
+                    from_type=Convert.TYPE_FP,
+                    to_type=Convert.TYPE_FP,
+                    **orig_tags.tags,
+                )
+            else:
+                combined = Insert(
+                    self.ail_manager.next_atom(),
+                    base,
+                    Const(self.ail_manager.next_atom(), offset, 64),
+                    value,
+                    endness,
+                )
+
+        if vvar.category == VirtualVariableCategory.STACK:
+            self.state.stackvars.assign(vvar.stack_offset, vvar.stack_offset + vvar.size, vvar)
+        elif vvar.category == VirtualVariableCategory.REGISTER:
+            for suboff in range(vvar.reg_offset, vvar.reg_offset + vvar.size):
+                self.state.registers[suboff] = vvar
+        return Assignment(self.ail_manager.next_atom(), vvar, combined, **orig_tags.tags)
+
+    def _unreachable(self, *args, **kwargs):
+        assert False
+
+    _handle_binop_Add = _unreachable
+    _handle_binop_AddF = _unreachable
+    _handle_binop_AddV = _unreachable
+    _handle_binop_And = _unreachable
+    _handle_binop_Carry = _unreachable
+    _handle_binop_CmpEQ = _unreachable
+    _handle_binop_CmpF = _unreachable
+    _handle_binop_CmpGE = _unreachable
+    _handle_binop_CmpGT = _unreachable
+    _handle_binop_CmpLE = _unreachable
+    _handle_binop_CmpLT = _unreachable
+    _handle_binop_CmpNE = _unreachable
+    _handle_binop_CmpORD = _unreachable
+    _handle_binop_Concat = _unreachable
+    _handle_binop_Div = _unreachable
+    _handle_binop_DivF = _unreachable
+    _handle_binop_DivV = _unreachable
+    _handle_binop_LogicalAnd = _unreachable
+    _handle_binop_LogicalOr = _unreachable
+    _handle_binop_Mod = _unreachable
+    _handle_binop_Mul = _unreachable
+    _handle_binop_Mull = _unreachable
+    _handle_binop_MulF = _unreachable
+    _handle_binop_MulV = _unreachable
+    _handle_binop_MulHiV = _unreachable
+    _handle_binop_Or = _unreachable
+    _handle_binop_Rol = _unreachable
+    _handle_binop_Ror = _unreachable
+    _handle_binop_SBorrow = _unreachable
+    _handle_binop_SCarry = _unreachable
+    _handle_binop_Sar = _unreachable
+    _handle_binop_Shl = _unreachable
+    _handle_binop_Shr = _unreachable
+    _handle_binop_Sub = _unreachable
+    _handle_binop_SubF = _unreachable
+    _handle_binop_SubV = _unreachable
+    _handle_binop_Xor = _unreachable
+    _handle_binop_InterleaveLOV = _unreachable
+    _handle_binop_InterleaveHIV = _unreachable
+    _handle_binop_CasCmpEQ = _unreachable
+    _handle_binop_CasCmpNE = _unreachable
+    _handle_binop_ExpCmpNE = _unreachable
+    _handle_binop_SarNV = _unreachable
+    _handle_binop_ShrNV = _unreachable
+    _handle_binop_ShlNV = _unreachable
+    _handle_binop_CmpEQV = _unreachable
+    _handle_binop_CmpNEV = _unreachable
+    _handle_binop_CmpGEV = _unreachable
+    _handle_binop_CmpGTV = _unreachable
+    _handle_binop_CmpLEV = _unreachable
+    _handle_binop_CmpLTV = _unreachable
+    _handle_binop_MinV = _unreachable
+    _handle_binop_MaxV = _unreachable
+    _handle_binop_HAddV = _unreachable
+    _handle_binop_QAddV = _unreachable
+    _handle_binop_QSubV = _unreachable
+    _handle_binop_QNarrowBinV = _unreachable
+    _handle_binop_PermV = _unreachable
+    _handle_binop_Set = _unreachable
+    _handle_unop_BitwiseNeg = _unreachable
+    _handle_unop_Dereference = _unreachable
+    _handle_unop_Neg = _unreachable
+    _handle_unop_Not = _unreachable
+    _handle_unop_Reference = _unreachable
+    _handle_unop_Clz = _unreachable
+    _handle_unop_Ctz = _unreachable
+    _handle_unop_GetMSBs = _unreachable
+    _handle_unop_unpack = _unreachable
+    _handle_unop_Sqrt = _unreachable
+    _handle_unop_RSqrtEst = _unreachable

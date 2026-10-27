@@ -1,0 +1,1319 @@
+from __future__ import annotations
+
+import logging
+from collections import OrderedDict, defaultdict, deque
+from typing import TYPE_CHECKING
+
+import networkx
+
+from angr.ailment import AILBlockViewer, Block
+from angr.ailment.expression import BinaryOp, Const, Expression, Load, VirtualVariable
+from angr.ailment.statement import Assignment, ConditionalJump, Jump, Label
+from angr.analyses.decompiler.region_simplifiers.switch_cluster_simplifier import SwitchClusterFinder
+from angr.analyses.decompiler.structurer_nodes import (
+    IncompleteSwitchCaseHeadStatement,
+    MultiNode,
+    SequenceNode,
+)
+from angr.analyses.decompiler.utils import first_nonlabel_nonphi_statement, remove_last_statement
+from angr.analyses.decompiler.variable_map import variable_map_of
+from angr.utils.graph import GraphUtils
+from angr.utils.ssa import get_vvar_uselocs
+
+from .optimization_pass import MultipleBlocksException, StructuringOptimizationPass
+
+if TYPE_CHECKING:
+    from angr.ailment.expression import Convert, UnaryOp
+
+_l = logging.getLogger(name=__name__)
+
+
+class Case:
+    """
+    Describes a case in a switch-case construct.
+    """
+
+    __slots__ = (
+        "expr",
+        "next_addr",
+        "node_type",
+        "original_node",
+        "target",
+        "target_idx",
+        "value",
+        "variable_hash",
+    )
+
+    def __init__(
+        self,
+        original_node,
+        node_type: str | None,
+        variable_hash,
+        expr,
+        value: int | str,
+        target: int,
+        target_idx: int,
+        next_addr,
+    ):
+        self.original_node = original_node
+        self.node_type = node_type
+        self.variable_hash = variable_hash
+        self.expr = expr
+        self.value = value
+        self.target = target
+        self.target_idx = target_idx
+        self.next_addr = next_addr
+
+    def __repr__(self):
+        if self.value == "default":
+            return f"Case default@{self.target:#x}{'' if self.target_idx == 0 else '.' + str(self.target_idx)}"
+        return (
+            f"Case {self.original_node!r}@{self.target:#x}"
+            f"{'' if self.target_idx == 0 else '.' + str(self.target_idx)}: {self.expr} == {self.value}"
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, Case):
+            return False
+        return (
+            self.original_node == other.original_node
+            and self.node_type == other.node_type
+            and self.variable_hash == other.variable_hash
+            and self.value == other.value
+            and self.target == other.target
+            and self.target_idx == other.target_idx
+            and self.next_addr == other.next_addr
+        )
+
+    def __hash__(self):
+        return hash(
+            (
+                Case,
+                self.original_node,
+                self.node_type,
+                self.variable_hash,
+                self.value,
+                self.target,
+                self.target_idx,
+                self.next_addr,
+            )
+        )
+
+
+class StableVarExprHasher(AILBlockViewer):
+    """
+    Obtain a stable hash of an AIL expression with respect to all variables and all operations applied on variables.
+    """
+
+    def __init__(self, expr: Expression, variable_map):
+        super().__init__()
+        self.expr = expr
+        self._variable_map = variable_map
+        self._hash_lst = []
+
+        self.walk_expression(expr)
+        self.hash = hash(tuple(self._hash_lst))
+
+    def _handle_expr(self, expr_idx: int, expr: Expression, stmt_idx: int, stmt, block: Block | None):
+        expr_var = self._variable_map.variable(expr)
+        if expr_var is not None:
+            self._hash_lst.append(expr_var)
+        else:
+            super()._handle_expr(expr_idx, expr, stmt_idx, stmt, block)
+
+    def _handle_Load(self, expr_idx: int, expr: Load, stmt_idx: int, stmt, block: Block | None):
+        self._hash_lst.append("Load")
+        super()._handle_Load(expr_idx, expr, stmt_idx, stmt, block)
+
+    def _handle_BinaryOp(self, expr_idx: int, expr: BinaryOp, stmt_idx: int, stmt, block: Block | None):
+        self._hash_lst.append(expr.op)
+        super()._handle_BinaryOp(expr_idx, expr, stmt_idx, stmt, block)
+
+    def _handle_UnaryOp(self, expr_idx: int, expr: UnaryOp, stmt_idx: int, stmt, block: Block | None):
+        self._hash_lst.append(expr.op)
+        super()._handle_UnaryOp(expr_idx, expr, stmt_idx, stmt, block)
+
+    def _handle_Const(self, expr_idx: int, expr: Const, stmt_idx: int, stmt, block: Block | None):
+        self._hash_lst.append((expr.value, expr.bits))
+
+    def _handle_Convert(self, expr_idx: int, expr: Convert, stmt_idx: int, stmt, block: Block | None):
+        self._hash_lst.append(expr.to_bits)
+        super()._handle_Convert(expr_idx, expr, stmt_idx, stmt, block)
+
+
+class LoweredSwitchSimplifier(StructuringOptimizationPass):
+    """
+    This optimization recognizes and reverts switch cases that have been lowered and possibly split into multiple
+    if-else statements. This optimization, discussed in the USENIX 2024 paper SAILR, aims to undo the compiler
+    optimization known as "Switch Lowering", present in both GCC and Clang. An in-depth discussion of this
+    optimization can be found in the paper or in our documentation of the optimization:
+    https://github.com/mahaloz/sailr-eval/issues/14#issue-2232616411
+
+    Note, this optimization does not occur in MSVC, which uses a different optimization strategy for switch cases.
+    As a hack for now, we only run this deoptimization on Linux binaries.
+    """
+
+    # TODO: this needs to be updated to support Windows, but detect and disable on MSVC
+    PLATFORMS = ["linux"]
+    NAME = "Convert lowered switch-cases (if-else) to switch-cases"
+    DESCRIPTION = (
+        "Convert lowered switch-cases (if-else) to switch-cases. Only works when the Phoenix structuring "
+        "algorithm is in use."
+    )
+
+    def __init__(self, *args, min_distinct_cases=2, **kwargs):
+        super().__init__(
+            *args,
+            require_structurable_graph=False,
+            require_gotos=False,
+            prevent_new_gotos=False,
+            simplify_ail=False,
+            must_improve_rel_quality=False,
+            **kwargs,
+        )
+
+        # this is the max number of cases that can be in a switch that can be converted to a
+        # if-tree (if the number of cases is greater than this, the switch will not be converted)
+        # https://github.com/gcc-mirror/gcc/blob/f9a60d575f02822852aa22513c636be38f9c63ea/gcc/targhooks.cc#L1899
+        # TODO: add architecture specific values
+        default_case_values_threshold = 6
+        # NOTE: this means that there must be less than default_case_values for us to convert an if-tree to a switch
+        self._max_case_values = default_case_values_threshold
+
+        self._min_distinct_cases = min_distinct_cases
+
+        # used to determine if a switch-case construct is present in the code, useful for invalidating
+        # other heuristics that minimize false positives
+        self._switches_present_in_code = 0
+
+        self._block_copies = {}
+        self._dominator_children_cache: dict[Block, list[Block]] | None = None
+
+        self.analyze()
+
+    @staticmethod
+    def _count_max_continuous_cases(cases: list[Case]) -> int:
+        if not cases:  # Return 0 if the list is empty
+            return 0
+
+        max_len = 0
+        current_len = 1  # Start with 1 since a single number is a sequence of length 1
+        sorted_cases = sorted(cases, key=lambda c: c.value)
+        for i in range(1, len(sorted_cases)):
+            if sorted_cases[i].value == sorted_cases[i - 1].value + 1:
+                current_len += 1
+            else:
+                max_len = max(max_len, current_len)
+                current_len = 1
+
+        # Final check to include the last sequence
+        return max(max_len, current_len)
+
+    @staticmethod
+    def _count_distinct_cases(cases: list[Case]) -> int:
+        return len({case.target for case in cases})
+
+    def _analyze_simplified_region(self, region, initial=False):
+        super()._analyze_simplified_region(region, initial=initial)
+        finder = SwitchClusterFinder(region, variable_map_of(self.manager))
+        self._switches_present_in_code = len(finder.var2switches.values())
+
+    def _check(self):
+        # TODO: More filtering
+        return True, None
+
+    def _analyze(self, cache=None):
+        self._block_copies.clear()
+        self._dominator_children_cache = None
+        variablehash_to_cases = self._find_cascading_switch_variable_comparisons()
+
+        if not variablehash_to_cases or all(not caselists for caselists in variablehash_to_cases.values()):
+            return False
+
+        graph_copy = networkx.DiGraph(self._graph)
+        self.out_graph = graph_copy
+        node_to_heads = defaultdict(set)
+        modified = False
+
+        for caselists in variablehash_to_cases.values():
+            for cases, redundant_nodes, original_head in caselists:
+                real_cases = [case for case in cases if case.value != "default"]
+                max_continuous_cases = self._count_max_continuous_cases(real_cases)
+
+                # There are a few rules used in most compilers about when to lower a switch that would otherwise
+                # be a jump table into either a series of if-trees or into series of bit tests.
+                #
+                # RULE 1: You only ever convert a Switch into if-stmts if there are less continuous cases
+                # then specified by the default_case_values_threshold, therefore we should never try to rever it
+                # if there is more or equal than that.
+                # https://github.com/gcc-mirror/gcc/blob/f9a60d575f02822852aa22513c636be38f9c63ea/gcc/tree-switch-conversion.cc#L1406
+                if max_continuous_cases >= self._max_case_values:
+                    _l.debug("Skipping switch-case conversion due to too many cases for %s", real_cases[0])
+                    continue
+
+                # RULE 2: You only ever convert a Switch into if-stmts if at least one of the cases is not continuous.
+                # https://github.com/gcc-mirror/gcc/blob/f9a60d575f02822852aa22513c636be38f9c63ea/gcc/tree-switch-conversion.cc#L1960
+                #
+                # However, we need to also consider the case where the cases we are looking at are currently a smaller
+                # cluster split off a non-continuous cluster. In this case, we should still convert it to a switch-case
+                # iff a switch-case construct is present in the code.
+                is_all_continuous = max_continuous_cases == len(real_cases)
+                if is_all_continuous and self._switches_present_in_code == 0:
+                    _l.debug("Skipping switch-case conversion due to all cases being continuous for %s", real_cases[0])
+                    continue
+
+                # RULE 3: It is not a real cluster if there are not enough distinct cases.
+                # A distinct case is a case that has a different body of code.
+                distinct_cases = self._count_distinct_cases(real_cases)
+                if distinct_cases < self._min_distinct_cases and self._switches_present_in_code == 0:
+                    _l.debug("Skipping switch-case conversion due to too few distinct cases for %s", real_cases[0])
+                    continue
+
+                # RULE 4: the default case should not reach other case nodes in the subregion
+                default_addr_and_idx = next(
+                    ((case.target, case.target_idx) for case in cases if case.value == "default"), None
+                )
+                if default_addr_and_idx is None:
+                    continue
+                default_addr, default_idx = default_addr_and_idx
+                default_node = self._get_block(default_addr, idx=default_idx)
+                default_reachable_from_case = False
+                for case in cases:
+                    if case.value == "default":
+                        continue
+                    if self._node_reachable_from_node_in_region(case.original_node, default_node):
+                        default_reachable_from_case = True
+                        break
+                if default_reachable_from_case:
+                    continue
+
+                # the head is the root of the cascade and keeps its in-edges: the first case node when the
+                # cascade starts with an eq comparison, or the gt node whose subtrees hold the cases. every
+                # other comparison node is replaced by edges out of the head.
+                # one node can cover several cases now, so drop repeats
+                original_nodes = [
+                    nn for nn in dict.fromkeys(case.original_node for case in real_cases) if nn is not original_head
+                ]
+                redundant_nodes = [nn for nn in redundant_nodes if nn is not original_head]
+                existing_nodes_by_addr_and_idx = {(nn.addr, nn.idx): nn for nn in graph_copy}
+                if any(
+                    case.original_node not in graph_copy
+                    or (case.target, case.target_idx) not in existing_nodes_by_addr_and_idx
+                    for case in cases
+                ):
+                    # an earlier cluster's rewrite already consumed some of these nodes
+                    self.out_graph = None
+                    return False
+
+                case_addrs: list[tuple[Block, int | str, int, int | None, int]] = []
+                delayed_edges = []
+                # targets that are only reachable through a copied case node; the head must not get direct edges to
+                # these targets, or the direct edges would bypass the assignments held by the copied case nodes
+                copied_case_targets: set[tuple[Block, int, int | None]] = set()
+                # a contiguous group of case labels is one comparison node jumping to one body for every value in
+                # the group. the node must be emitted once and reused for the remaining values: copying it per
+                # value would put several blocks carrying its address into the graph, and the case bodies would
+                # then be reached through whichever of them an edge happened to be attached to.
+                group_entry: dict[tuple[Block, int, int | None], tuple[int, int]] = {}
+                # the default of a copied node whose target other comparison nodes reach directly: its assignments
+                # are dead there (see _find_cascading_switch_variable_comparisons), so the default is the target
+                direct_default = self._shared_default_of_copied_node(
+                    cases, {case.original_node for case in cases} | set(redundant_nodes), original_head
+                )
+                for idx, case in enumerate(cases):
+                    group_key = (case.original_node, case.target, case.target_idx)
+                    if case.value != "default" and group_key in group_entry:
+                        emitted_target, emitted_target_idx = group_entry[group_key]
+                        case_addrs.append(
+                            (case.original_node, case.value, emitted_target, emitted_target_idx, case.next_addr)
+                        )
+                    elif (
+                        case is direct_default
+                        or case.original_node is original_head
+                        or all(isinstance(stmt, (Label, ConditionalJump)) for stmt in case.original_node.statements)
+                    ):
+                        case_addrs.append(
+                            (case.original_node, case.value, case.target, case.target_idx, case.next_addr)
+                        )
+                        group_entry[group_key] = (case.target, case.target_idx)
+                    else:
+                        statements: list = [
+                            stmt for stmt in case.original_node.statements if isinstance(stmt, (Label, Assignment))
+                        ]
+                        statements.append(
+                            Jump(
+                                self.manager.next_atom(),
+                                Const(self.manager.next_atom(), case.target, self.project.arch.bits),
+                                ins_addr=case.original_node.addr,
+                            )
+                        )
+                        if case.original_node not in self._block_copies:
+                            self._block_copies[case.original_node] = [case.original_node.copy(statements=statements)]
+                        else:
+                            self._block_copies[case.original_node].append(
+                                case.original_node.copy(statements=statements).deep_copy(self.manager)
+                            )
+                            self._block_copies[case.original_node][-1].idx = (
+                                len(self._block_copies[case.original_node]) + 1000
+                            )
+                        case_node_copy = self._block_copies[case.original_node][-1]
+
+                        case_addrs.append(
+                            (case_node_copy, case.value, case_node_copy.addr, case_node_copy.idx, case.next_addr)
+                        )
+                        group_entry[group_key] = (case_node_copy.addr, case_node_copy.idx)
+
+                        # add this copied node into the graph
+                        delayed_edges.append((None, case_node_copy))
+                        target_node = existing_nodes_by_addr_and_idx[case.target, case.target_idx]
+                        delayed_edges.append((case_node_copy, target_node))
+                        copied_case_targets.add((case.original_node, case.target, case.target_idx))
+
+                expr = cases[0].expr
+
+                # create a fake switch-case head node
+                switch_stmt = IncompleteSwitchCaseHeadStatement(
+                    original_head.statements[-1].idx,
+                    expr,
+                    case_addrs,
+                    ins_addr=original_head.statements[-1].tags["ins_addr"],
+                )
+                new_head = original_head.copy()
+                # replace the last instruction of the head node with switch_node
+                new_head.statements[-1] = switch_stmt
+                # update the block
+                self._update_block(original_head, new_head)
+                modified = True
+
+                # sanity check that no switch head points to either itself
+                # or to any if-head that was merged into the new switch head; this
+                # would result in a successor node no longer being present in the graph
+                if any(onode not in graph_copy for onode in original_nodes):
+                    self.out_graph = None
+                    return False
+
+                # add edges between the head and case nodes
+                for onode in original_nodes:
+                    successors = list(graph_copy.successors(onode))
+                    for succ in successors:
+                        if succ not in original_nodes and (onode, succ.addr, succ.idx) not in copied_case_targets:
+                            graph_copy.add_edge(new_head, succ)
+                            if succ not in redundant_nodes:
+                                node_to_heads[succ].add(new_head)
+                    graph_copy.remove_node(onode)
+                for onode in redundant_nodes:
+                    if onode in original_nodes:
+                        # sometimes they overlap
+                        # e.g., 0x402cc7 in mv_-O2
+                        continue
+                    # ensure all nodes that are only reachable from onode are also removed, following the
+                    # chain of them: redundant nodes point at one another, so removing one orphans the next
+                    worklist = deque([onode])
+                    while worklist:
+                        node = worklist.popleft()
+                        if node not in graph_copy:
+                            continue
+                        successors = list(graph_copy.successors(node))
+                        graph_copy.remove_node(node)
+                        for succ in successors:
+                            if succ not in graph_copy:
+                                continue
+                            in_edges = [(src, dst) for src, dst in graph_copy.in_edges(succ) if src is not succ]
+                            if not in_edges:
+                                worklist.append(succ)
+                # apply delayed edges
+                for src, dst in delayed_edges:
+                    if src is None:
+                        graph_copy.add_edge(new_head, dst)
+                    else:
+                        graph_copy.add_edge(src, dst)
+
+        # find shared case nodes and make copies of them
+        # note that this only solves cases where *one* node is shared between switch-cases. a more general solution
+        # requires jump threading reverter.
+        nodes_by_addr_and_idx = {(nn.addr, nn.idx): nn for nn in graph_copy}
+        for shared_node, heads in node_to_heads.items():
+            if len(heads) > 1:
+                # case_addrs refer to the node by address and index; a later cascade may have replaced the block
+                # object itself (e.g., when the shared node is that cascade's head)
+                succ_node = nodes_by_addr_and_idx.get((shared_node.addr, shared_node.idx))
+                if succ_node is None:
+                    # removed above as part of a redundant-node chain
+                    continue
+                # each head gets a copy of the node!
+                node_successors = list(graph_copy.successors(succ_node))
+                next_id = succ_node.idx + 1
+                graph_copy.remove_node(succ_node)
+                for head in heads:
+                    node_copy = succ_node.deep_copy(self.manager)
+                    node_copy.idx = next_id
+                    next_id += 1
+
+                    # update the block ID in case_addrs
+                    last_stmt: IncompleteSwitchCaseHeadStatement = head.statements[-1]
+                    for idx, items in list(enumerate(last_stmt.case_addrs)):
+                        cmp_node, case_value, target_addr, target_idx, next_addr = items
+                        if target_addr == succ_node.addr and target_idx == succ_node.idx:
+                            # update the block ID
+                            last_stmt.case_addrs[idx] = cmp_node, case_value, target_addr, node_copy.idx, next_addr
+
+                    # update the graph
+                    graph_copy.add_edge(head, node_copy)
+                    for succ in node_successors:
+                        if succ is succ_node:
+                            graph_copy.add_edge(node_copy, node_copy)
+                        else:
+                            graph_copy.add_edge(node_copy, succ)
+
+        if not modified:
+            # the graph is not modified
+            self.out_graph = None
+            return False
+        return True
+
+    def _find_cascading_switch_variable_comparisons(self):
+        sorted_nodes = GraphUtils.quasi_topological_sort_nodes(self._graph)
+        variable_comparisons = OrderedDict()
+        for node in sorted_nodes:
+            r = self._find_switch_variable_comparison_type_a(node, variable_map_of(self.manager))
+            if r is not None:
+                variable_comparisons[node] = ("a", *r)
+                continue
+            r = self._find_switch_variable_comparison_type_b(node, variable_map_of(self.manager))
+            if r is not None:
+                variable_comparisons[node] = ("b", *r)
+                continue
+            r = self._find_switch_variable_comparison_type_c(node, variable_map_of(self.manager))
+            if r is not None:
+                variable_comparisons[node] = ("c", *r)
+                continue
+            r = self._find_switch_variable_comparison_type_d(node, variable_map_of(self.manager))
+            if r is not None:
+                _varhash, _op, _expr, lo, hi, *_targets = r
+                # a contiguous run this long is left as a jump table instead of being lowered to an if-tree
+                # (see RULE 1), so this block is not the comparison of a lowered switch-case. leaving it
+                # unrecognized is what makes the cascade walk stop at it and record it as the default case,
+                # which is the role it actually plays.
+                if hi - lo + 1 < self._max_case_values:
+                    variable_comparisons[node] = ("d", *r)
+                continue
+
+        varhash_to_caselists: defaultdict[int, list[tuple[list[Case], list[Block], Block]]] = defaultdict(list)
+        used_nodes = set()
+
+        for head in variable_comparisons:
+            if head in used_nodes:
+                continue
+
+            cases = []
+            extra_cmp_nodes = []
+            default_case_candidates = {}
+            last_comp = None
+            # min_ and max_ are the inclusive bounds of the switch variable when control reaches a comparison node;
+            # excluded holds the values that failed equality tests on the way
+            stack = [(head, 0, 0xFFFF_FFFF_FFFF_FFFF, frozenset())]
+            head_varhash = variable_comparisons[head][1]
+
+            # visit each comparison node at most once for each head. Otherwise, back edges to earlier comparison nodes
+            # (e.g., in character-scanning loops) would cause unbounded re-traversal (see PR #4953)
+            visited = {head}
+            while stack:
+                comp, min_, max_, excluded = stack.pop(0)
+                (
+                    comp_type,
+                    variable_hash,
+                    op,
+                    expr,
+                    value,
+                    value_high,
+                    target,
+                    target_idx,
+                    next_addr,
+                    next_addr_idx,
+                ) = variable_comparisons[comp]
+
+                if op == "eq":
+                    # eq always indicates a new case
+
+                    if head_varhash == variable_hash:
+                        if target == comp.addr and target_idx == comp.idx:
+                            # invalid
+                            break
+                        # common case:
+                        #   if ((a = func(...)) == -1) break;
+                        #   switch (a)
+                        # (also when the error check follows a single "== 0" test); further down a cascade, -1 is
+                        # a case like any other
+                        if len(cases) < 2 and value in {0xFFFF_FFFF, 0xFFFF_FFFF_FFFF_FFFF}:
+                            break
+
+                        # non-head node has at most one predecessor
+                        if comp is not head and self._graph.in_degree[comp] > 1:
+                            break
+
+                        # the target block may have been duplicated (e.g., by EagerReturns) without the jump's
+                        # target index following; match it by address then
+                        succ_idx_by_addr = {succ.addr: succ.idx for succ in self._graph.successors(comp)}
+                        if (
+                            target in succ_idx_by_addr
+                            and succ_idx_by_addr[target] != target_idx
+                            and sum(1 for succ in self._graph.successors(comp) if succ.addr == target) == 1
+                        ):
+                            _l.warning(
+                                "Comparison node %#x.%s jumps to %#x.%s but its only successor at that address is "
+                                "%#x.%s; matching the case target by address.",
+                                comp.addr,
+                                comp.idx,
+                                target,
+                                target_idx,
+                                target,
+                                succ_idx_by_addr[target],
+                            )
+                            target_idx = succ_idx_by_addr[target]
+
+                        cases.append(Case(comp, comp_type, variable_hash, expr, value, target, target_idx, next_addr))
+                        used_nodes.add(comp)
+                    else:
+                        # new variable!
+                        if last_comp is not None and comp.addr not in default_case_candidates:
+                            default_case_candidates[comp.addr] = Case(
+                                last_comp, None, head_varhash, None, "default", comp.addr, comp.idx, None
+                            )
+                            break
+                        continue
+
+                    successors = [
+                        succ for succ in self._graph.successors(comp) if succ is not comp and succ not in used_nodes
+                    ]
+                    succ_addrs = {(succ.addr, succ.idx) for succ in successors}
+                    if (target, target_idx) in succ_addrs:
+                        next_comp_addr, next_comp_idx = next(
+                            iter(
+                                (succ_addr, succ_idx)
+                                for succ_addr, succ_idx in succ_addrs
+                                if (succ_addr, succ_idx) != (target, target_idx)
+                            ),
+                            (None, 0),
+                        )
+                        if next_comp_addr is None:
+                            break
+                        try:
+                            next_comp = self._get_block(next_comp_addr, idx=next_comp_idx)
+                        except MultipleBlocksException:
+                            # multiple blocks :/ it's possible that other optimization passes have duplicated the
+                            # default node. check it.
+                            next_comp_many = list(self._get_blocks(next_comp_addr))
+                            next_comp_candidates = [succ for succ in successors if succ in next_comp_many]
+                            if len(next_comp_candidates) == 1:
+                                next_comp = next_comp_candidates[0]
+                            else:
+                                default_node_candidates = [
+                                    succ for succ in next_comp_many if succ not in variable_comparisons
+                                ]
+                                if len(default_node_candidates) == 1:
+                                    cases.append(
+                                        Case(
+                                            comp,
+                                            None,
+                                            variable_hash,
+                                            expr,
+                                            "default",
+                                            next_comp_addr,
+                                            next_comp_idx,
+                                            None,
+                                        )
+                                    )
+                                    used_nodes.add(comp)
+                                # otherwise we don't support it
+                                break
+                        assert next_comp is not None
+                        if next_comp in variable_comparisons and next_comp not in visited:
+                            visited.add(next_comp)
+                            last_comp = comp
+                            stack.append((next_comp, min_, max_, excluded | {value}))
+                            used_nodes.add(comp)
+                        else:
+                            if next_comp_addr not in default_case_candidates:
+                                default_case_candidates[next_comp_addr] = Case(
+                                    comp, None, variable_hash, expr, "default", next_comp_addr, next_comp_idx, None
+                                )
+                                used_nodes.add(comp)
+
+                elif op == "gt":
+                    # gt always indicates new subtrees
+                    gt_addr, gt_idx, le_addr, le_idx = target, target_idx, next_addr, next_addr_idx
+                    # TODO: We don't yet support gt nodes acting as the head of a switch
+                    if head_varhash == variable_hash:
+                        successors = [succ for succ in self._graph.successors(comp) if succ is not comp]
+                        succ_addrs = {(succ.addr, succ.idx) for succ in successors}
+                        if succ_addrs != {(gt_addr, gt_idx), (le_addr, le_idx)}:
+                            break
+                        gt_comp = next(iter(succ for succ in successors if succ.addr == gt_addr and succ.idx == gt_idx))
+                        le_comp = next(iter(succ for succ in successors if succ.addr == le_addr and succ.idx == le_idx))
+
+                        # all successors of this node must satisfy the following criteria
+                        # - another comp node in the lowered switch-case tree
+                        # - the default case node of the switch-case
+
+                        gt_added, le_added = False, False
+                        gt_min, gt_max = value + 1, max_
+                        le_min, le_max = min_, value
+                        if gt_comp in variable_comparisons and gt_comp not in visited:
+                            visited.add(gt_comp)
+                            stack.append((gt_comp, gt_min, gt_max, excluded))
+                            gt_added = True
+                        if le_comp in variable_comparisons and le_comp not in visited:
+                            visited.add(le_comp)
+                            stack.append((le_comp, le_min, le_max, excluded))
+                            le_added = True
+                        # a successor that is not a comparison node is a leaf of the cascade: a case when the bounds
+                        # pin it to a single value, the default case otherwise. every leaf must be recorded, or an
+                        # unrecognized comparison (e.g., the range check of a jump table that must stay one) is
+                        # dropped together with everything only reachable through it as a redundant node
+                        # a branch that leaves no value is dead (-O0 emits them for sorted cases): neither a case nor
+                        # the default
+                        for added, lo, hi, addr, idx_ in (
+                            (le_added, le_min, le_max, le_addr, le_idx),
+                            (gt_added, gt_min, gt_max, gt_addr, gt_idx),
+                        ):
+                            if added:
+                                continue
+                            count, single = self._count_remaining_values(lo, hi, excluded)
+                            if single is not None:
+                                cases.append(Case(comp, comp_type, variable_hash, expr, single, addr, idx_, None))
+                                used_nodes.add(comp)
+                            elif count > 1 and addr not in default_case_candidates:
+                                default_case_candidates[addr] = Case(
+                                    comp, None, variable_hash, expr, "default", addr, idx_, None
+                                )
+                        if not (gt_added or le_added):
+                            break
+                        extra_cmp_nodes.append(comp)
+                        used_nodes.add(comp)
+                    else:
+                        # checking on a new variable... it probably was not a switch-case
+                        continue
+
+                elif op == "range":
+                    # all values in the range jump to the same place, so emit one case each
+                    if head_varhash != variable_hash:
+                        # checking on a new variable... it probably was not a switch-case
+                        continue
+
+                    # like "gt", a range check is not supported as the head of a switch: on its own it is just as
+                    # much a two-way test as a case group, and the ones that head a chain are dominated by loop
+                    # conditions of the isspace(c) kind, whose "case body" is the next iteration of the loop
+                    if comp is head:
+                        break
+
+                    in_addr, in_idx, out_addr, out_idx = target, target_idx, next_addr, next_addr_idx
+                    successors = [succ for succ in self._graph.successors(comp) if succ is not comp]
+                    succ_addrs = {(succ.addr, succ.idx) for succ in successors}
+                    if succ_addrs != {(in_addr, in_idx), (out_addr, out_idx)}:
+                        break
+
+                    # the head is already excluded above, so this node has at most one predecessor
+                    if self._graph.in_degree[comp] > 1:
+                        break
+
+                    in_comp = next(iter(succ for succ in successors if (succ.addr, succ.idx) == (in_addr, in_idx)))
+                    if in_comp in variable_comparisons and variable_comparisons[in_comp][1] == head_varhash:
+                        # the target is another comparison on the switch variable, not the body of a case
+                        break
+
+                    for case_value in range(value, value_high + 1):
+                        cases.append(Case(comp, comp_type, variable_hash, expr, case_value, in_addr, in_idx, None))
+                    used_nodes.add(comp)
+
+                    out_comp = next(iter(succ for succ in successors if (succ.addr, succ.idx) == (out_addr, out_idx)))
+                    if out_comp in variable_comparisons and out_comp not in visited:
+                        visited.add(out_comp)
+                        last_comp = comp
+                        stack.append((out_comp, min_, max_, excluded))
+                    elif out_addr not in default_case_candidates:
+                        default_case_candidates[out_addr] = Case(
+                            comp, None, variable_hash, expr, "default", out_addr, out_idx, None
+                        )
+
+            # the walk may stop at a node it cannot consume (e.g., a gt node whose sides are both unrecognized).
+            # such a node is still a successor of a consumed comparison node, and the rewrite would give the switch
+            # head an edge to it without a case. it is the "none of the above" path, so it is a default candidate
+            consumed = {case.original_node for case in cases} | set(extra_cmp_nodes)
+            case_targets = {(case.target, case.target_idx) for case in cases}
+            for comp in consumed:
+                for succ in self._graph.successors(comp):
+                    if (
+                        succ is comp
+                        or succ in consumed
+                        or (succ.addr, succ.idx) in case_targets
+                        or succ.addr in default_case_candidates
+                    ):
+                        continue
+                    default_case_candidates[succ.addr] = Case(
+                        comp, None, head_varhash, None, "default", succ.addr, succ.idx, None
+                    )
+
+            if cases and len(default_case_candidates) <= 1:
+                if default_case_candidates:
+                    cases.append(next(iter(default_case_candidates.values())))
+                v = cases[-1].variable_hash
+                for idx, (existing_cases, existing_redundant_nodes, _) in list(enumerate(varhash_to_caselists[v])):
+                    if self.cases_issubset(existing_cases, cases):
+                        redundant_nodes = list(set(existing_redundant_nodes + extra_cmp_nodes))
+                        varhash_to_caselists[v][idx] = cases, redundant_nodes, head
+                        break
+                    if self.cases_issubset(cases, existing_cases):
+                        break
+                else:
+                    varhash_to_caselists[v].append((cases, extra_cmp_nodes, head))
+
+        for v, caselists in list(varhash_to_caselists.items()):
+            kept: list[tuple[list[Case], list[Block], Block] | None] = list(caselists)
+            for idx, (cases, redundant_nodes, head) in list(enumerate(caselists)):
+                # filter: each case value should only appear once
+                if len({case.value for case in cases}) != len(cases):
+                    kept[idx] = None
+                    continue
+
+                # filter: there should be at least two non-default cases
+                if len([case for case in cases if case.value != "default"]) < 2:
+                    kept[idx] = None
+                    continue
+
+                # filter: there should be at least three cases
+                if len(cases) < 3:
+                    kept[idx] = None
+                    continue
+
+                # filter: type-a nodes other than the head can only have assignments
+                if any(
+                    case.value != "default"
+                    and case.node_type == "a"
+                    and case.original_node is not head
+                    and any(
+                        not isinstance(stmt, (ConditionalJump, Label, Assignment))
+                        for stmt in case.original_node.statements
+                    )
+                    for case in cases
+                ):
+                    kept[idx] = None
+                    continue
+
+                # filter: each case is only reachable from a case node or a range-splitting comparison node
+                all_case_nodes = {case.original_node for case in cases} | set(redundant_nodes)
+                skipped = False
+                for case in cases:
+                    target_nodes = [
+                        succ for succ in self._graph.successors(case.original_node) if succ.addr == case.target
+                    ]
+                    if len(target_nodes) != 1:
+                        kept[idx] = None
+                        skipped = True
+                        break
+                    target_node = target_nodes[0]
+                    nonself_preds = {pred for pred in self._graph.predecessors(target_node) if pred.addr == case.target}
+                    if not nonself_preds.issubset(all_case_nodes):
+                        kept[idx] = None
+                        skipped = True
+                        break
+
+                if skipped:
+                    continue
+
+                # filter: every edge out of the cascade's comparison nodes must lead to a case target, the default
+                # target, or another comparison node of the cascade. a leaf the walk did not account for (e.g., the
+                # "== -1" comparison that stops the walk, or the head of another cascade) would otherwise become an
+                # undeclared successor of the switch head, or be dropped together with the redundant nodes
+                cascade_nodes = all_case_nodes | set(redundant_nodes)
+                allowed_targets = {(case.target, case.target_idx) for case in cases}
+                if any(
+                    succ not in cascade_nodes and (succ.addr, succ.idx) not in allowed_targets
+                    for nn in cascade_nodes
+                    for succ in self._graph.successors(nn)
+                ):
+                    kept[idx] = None
+                    continue
+
+                # filter: a comparison node with assignments becomes a case node of its own; it must lead into the
+                # switch, not to a shared node outside it
+                if not self._copied_case_nodes_stay_inside(cases, cascade_nodes, head):
+                    kept[idx] = None
+                    continue
+
+                # filter: when the default target is also reached directly by other comparison nodes, the copied
+                # node's assignments must be dead there, or the switch would have two different default bodies
+                shared_default = self._shared_default_of_copied_node(cases, cascade_nodes, head)
+                if shared_default is not None and not self._assignments_dead_at(
+                    shared_default.original_node, shared_default.target, shared_default.target_idx
+                ):
+                    kept[idx] = None
+                    continue
+
+            varhash_to_caselists[v] = [item for item in kept if item is not None]
+
+        return varhash_to_caselists
+
+    @staticmethod
+    def _node_is_copied(node: Block, head: Block) -> bool:
+        return node is not head and any(not isinstance(stmt, (Label, ConditionalJump)) for stmt in node.statements)
+
+    def _shared_default_of_copied_node(self, cases: list[Case], cascade_nodes: set[Block], head: Block) -> Case | None:
+        """
+        The default case of a comparison node that carries assignments, when other comparison nodes of the cascade
+        jump to the same default target directly (a compiler hoisted a case body's assignment above the last
+        comparison). The switch head then needs a direct edge to the default target as well.
+        """
+        default = next((case for case in cases if case.value == "default"), None)
+        if default is None or not self._node_is_copied(default.original_node, head):
+            return None
+        for nn in cascade_nodes:
+            if nn is default.original_node or self._node_is_copied(nn, head):
+                continue
+            if any(
+                (succ.addr, succ.idx) == (default.target, default.target_idx) for succ in self._graph.successors(nn)
+            ):
+                return default
+        return None
+
+    def _assignments_dead_at(self, node: Block, target_addr: int, target_idx: int) -> bool:
+        """
+        Whether no virtual variable assigned in node is used in the target block or anything reachable from it.
+        """
+        defined: set[int] = set()
+        for stmt in node.statements:
+            if isinstance(stmt, Assignment):
+                if not isinstance(stmt.dst, VirtualVariable):
+                    return False
+                defined.add(stmt.dst.varid)
+        target = next((nn for nn in self._graph if (nn.addr, nn.idx) == (target_addr, target_idx)), None)
+        if target is None:
+            return False
+        reachable = networkx.descendants(self._graph, target)
+        reachable.add(target)
+        return not (defined & get_vvar_uselocs(reachable).keys())
+
+    def _dominator_children(self) -> dict[Block, list[Block]]:
+        if self._dominator_children_cache is None:
+            entry = next(
+                (nn for nn in self._graph if (nn.addr, nn.idx) == self.entry_node_addr),
+                next(nn for nn in self._graph if self._graph.in_degree(nn) == 0),
+            )
+            children: dict[Block, list[Block]] = defaultdict(list)
+            for node, idom in networkx.immediate_dominators(self._graph, entry).items():
+                if node is not idom:
+                    children[idom].append(node)
+            self._dominator_children_cache = children
+        return self._dominator_children_cache
+
+    def _copied_case_nodes_stay_inside(self, cases: list[Case], cascade_nodes: set[Block], head: Block) -> bool:
+        """
+        A comparison node that carries assignments is re-materialized as a case node of its own, so its target must
+        lie inside the switch (the nodes only the cascade reaches). A copy jumping to a shared node outside would be a
+        case body ending in a goto, which no switch schema can hold; the chain is an if-chain with hoisted assignments.
+        """
+        by_addr_and_idx = {(nn.addr, nn.idx): nn for nn in self._graph}
+        region: set[Block] = set(cascade_nodes)
+        worklist = list(cascade_nodes)
+        children = self._dominator_children()
+        while worklist:
+            node = worklist.pop()
+            for child in children.get(node, ()):
+                if child not in region:
+                    region.add(child)
+                    worklist.append(child)
+        for case in cases:
+            if case.original_node is head or all(
+                isinstance(stmt, (Label, ConditionalJump)) for stmt in case.original_node.statements
+            ):
+                continue
+            target = by_addr_and_idx.get((case.target, case.target_idx))
+            if target is not None and target not in region:
+                return False
+        return True
+
+    @staticmethod
+    def _count_remaining_values(lo: int, hi: int, excluded: frozenset[int]) -> tuple[int, int | None]:
+        """
+        Count the values in [lo, hi] that are not excluded, and return the value itself if there is exactly one.
+        """
+        if lo > hi:
+            return 0, None
+        count = hi - lo + 1 - sum(1 for v in excluded if lo <= v <= hi)
+        if count != 1:
+            return count, None
+        return 1, next(v for v in range(lo, hi + 1) if v not in excluded)
+
+    def _node_reachable_from_node_in_region(self, to_node, from_node) -> bool:
+        # find the region that contains the to_node
+        to_node_region = None
+        from_node_region = None
+        for region in self._ri.regions_by_block_addrs:
+            if (to_node.addr, to_node.idx) in region:
+                to_node_region = region
+            if (from_node.addr, from_node.idx) in region:
+                from_node_region = region
+
+        if to_node_region is None or from_node_region is None:
+            return False
+        if to_node_region != from_node_region:
+            return False
+
+        # resolve nodes by (addr, idx) in the input graph: a block this round already rewrote (a case head turned
+        # switch head) is a new object that _get_block returns but the input graph and the regions do not hold
+        by_addr_and_idx = {(node.addr, node.idx): node for node in self._graph}
+        from_node = by_addr_and_idx.get((from_node.addr, from_node.idx))
+        to_node = by_addr_and_idx.get((to_node.addr, to_node.idx))
+        if from_node is None or to_node is None:
+            return False
+        all_nodes = [by_addr_and_idx[key] for key in to_node_region if key in by_addr_and_idx]
+        subgraph = self._graph.subgraph(all_nodes)
+
+        return networkx.has_path(subgraph, from_node, to_node)
+
+    @staticmethod
+    def _find_switch_variable_comparison_type_a(
+        node,
+        variable_map,
+    ) -> tuple[int, str, Expression, int, int | None, int, int | None, int, int | None] | None:
+        # the type a is the last statement is a var == constant comparison, but
+        # there is more than one non-label statement in the block
+
+        if isinstance(node, Block) and node.statements:
+            stmt = node.statements[-1]
+            if (
+                stmt is not None
+                and stmt is not first_nonlabel_nonphi_statement(node)
+                and (
+                    isinstance(stmt, ConditionalJump)
+                    and isinstance(stmt.true_target, Const)
+                    and isinstance(stmt.false_target, Const)
+                )
+            ):
+                cond = stmt.condition
+                if (
+                    isinstance(cond, BinaryOp)
+                    and not cond.floating_point
+                    and isinstance(cond.operands[0], VirtualVariable)
+                    and isinstance(cond.operands[1], Const)
+                    and cond.operands[1].is_int
+                ):
+                    variable_hash = StableVarExprHasher(cond.operands[0], variable_map).hash
+                    value = cond.operands[1].value
+                    if cond.op == "CmpEQ":
+                        target = stmt.true_target.value
+                        target_idx = stmt.true_target_idx
+                        next_node_addr = stmt.false_target.value
+                        next_node_idx = stmt.false_target_idx
+                    elif cond.op == "CmpNE":
+                        target = stmt.false_target.value
+                        target_idx = stmt.false_target_idx
+                        next_node_addr = stmt.true_target.value
+                        next_node_idx = stmt.true_target_idx
+                    else:
+                        return None
+                    return (
+                        variable_hash,
+                        "eq",
+                        cond.operands[0],
+                        value,
+                        None,
+                        target,
+                        target_idx,
+                        next_node_addr,
+                        next_node_idx,
+                    )
+
+        return None
+
+    @staticmethod
+    def _find_switch_variable_comparison_type_b(
+        node,
+        variable_map,
+    ) -> tuple[int, str, Expression, int, int | None, int, int | None, int, int | None] | None:
+        # the type b is the last statement is a var == constant comparison, and
+        # there is only one non-label statement
+
+        if isinstance(node, Block):
+            stmt = first_nonlabel_nonphi_statement(node)
+            if (
+                stmt is not None
+                and stmt is node.statements[-1]
+                and (
+                    isinstance(stmt, ConditionalJump)
+                    and isinstance(stmt.true_target, Const)
+                    and isinstance(stmt.false_target, Const)
+                )
+            ):
+                cond = stmt.condition
+                if (
+                    isinstance(cond, BinaryOp)
+                    and not cond.floating_point
+                    and isinstance(cond.operands[0], VirtualVariable)
+                    and isinstance(cond.operands[1], Const)
+                    and cond.operands[1].is_int
+                ):
+                    variable_hash = StableVarExprHasher(cond.operands[0], variable_map).hash
+                    value = cond.operands[1].value
+                    if cond.op == "CmpEQ":
+                        target = stmt.true_target.value
+                        target_idx = stmt.true_target_idx
+                        next_node_addr = stmt.false_target.value
+                        next_node_idx = stmt.false_target_idx
+                    elif cond.op == "CmpNE":
+                        target = stmt.false_target.value
+                        target_idx = stmt.false_target_idx
+                        next_node_addr = stmt.true_target.value
+                        next_node_idx = stmt.true_target_idx
+                    else:
+                        return None
+                    return (
+                        variable_hash,
+                        "eq",
+                        cond.operands[0],
+                        value,
+                        None,
+                        target,
+                        target_idx,
+                        next_node_addr,
+                        next_node_idx,
+                    )
+
+        return None
+
+    @staticmethod
+    def _find_switch_variable_comparison_type_c(
+        node,
+        variable_map,
+    ) -> tuple[int, str, Expression, int, int | None, int, int | None, int, int | None] | None:
+        # the type c is where the last statement is a var < or > constant comparison, and
+        # there is only one non-label statement
+
+        if isinstance(node, Block):
+            stmt = first_nonlabel_nonphi_statement(node)
+            if (
+                stmt is not None
+                and stmt is node.statements[-1]
+                and (
+                    isinstance(stmt, ConditionalJump)
+                    and isinstance(stmt.true_target, Const)
+                    and isinstance(stmt.false_target, Const)
+                )
+            ):
+                cond = stmt.condition
+                if (
+                    isinstance(cond, BinaryOp)
+                    and not cond.floating_point
+                    and isinstance(cond.operands[0], VirtualVariable)
+                    and isinstance(cond.operands[1], Const)
+                    and cond.operands[1].is_int
+                ):
+                    variable_hash = StableVarExprHasher(cond.operands[0], variable_map).hash
+                    value = cond.operands[1].value
+                    op = cond.op
+                    if stmt.true_target.value == stmt.false_target.value:
+                        return None
+                    if op == "CmpGT":
+                        op_str = "gt"
+                        gt_node_addr = stmt.true_target.value
+                        gt_node_idx = stmt.true_target_idx
+                        le_node_addr = stmt.false_target.value
+                        le_node_idx = stmt.false_target_idx
+                    elif op == "CmpGE":
+                        op_str = "gt"
+                        value += 1
+                        gt_node_addr = stmt.true_target.value
+                        gt_node_idx = stmt.true_target_idx
+                        le_node_addr = stmt.false_target.value
+                        le_node_idx = stmt.false_target_idx
+                    elif op == "CmpLT":
+                        op_str = "gt"
+                        value -= 1
+                        gt_node_addr = stmt.false_target.value
+                        gt_node_idx = stmt.false_target_idx
+                        le_node_addr = stmt.true_target.value
+                        le_node_idx = stmt.true_target_idx
+                    elif op == "CmpLE":
+                        op_str = "gt"
+                        gt_node_addr = stmt.false_target.value
+                        gt_node_idx = stmt.false_target_idx
+                        le_node_addr = stmt.true_target.value
+                        le_node_idx = stmt.true_target_idx
+                    else:
+                        return None
+                    return (
+                        variable_hash,
+                        op_str,
+                        cond.operands[0],
+                        value,
+                        None,
+                        gt_node_addr,
+                        gt_node_idx,
+                        le_node_addr,
+                        le_node_idx,
+                    )
+
+        return None
+
+    @staticmethod
+    def _find_switch_variable_comparison_type_d(
+        node,
+        variable_map,
+    ) -> tuple[int, str, Expression, int, int | None, int, int | None, int, int | None] | None:
+        # type d matches an unsigned range check, (unsigned)(var - lo) <= hi - lo, which compilers emit for case
+        # labels with consecutive values. it means lo <= var <= hi. the signed form is just an upper bound (type c).
+
+        if isinstance(node, Block):
+            stmt = first_nonlabel_nonphi_statement(node)
+            if (
+                stmt is not None
+                and stmt is node.statements[-1]
+                and (
+                    isinstance(stmt, ConditionalJump)
+                    and isinstance(stmt.true_target, Const)
+                    and isinstance(stmt.false_target, Const)
+                )
+            ):
+                cond = stmt.condition
+                if (
+                    isinstance(cond, BinaryOp)
+                    and not cond.signed
+                    and not cond.floating_point
+                    and isinstance(cond.operands[0], BinaryOp)
+                    and isinstance(cond.operands[1], Const)
+                    and cond.operands[1].is_int
+                ):
+                    range_expr = cond.operands[0]
+                    if (
+                        range_expr.op in {"Sub", "Add"}
+                        and isinstance(range_expr.operands[0], VirtualVariable)
+                        and isinstance(range_expr.operands[1], Const)
+                        and range_expr.operands[1].is_int
+                    ):
+                        if stmt.true_target.value == stmt.false_target.value:
+                            return None
+                        lo = range_expr.operands[1].value
+                        if range_expr.op == "Add":
+                            # (var + k) is (var - (-k)): negative case labels are checked this way
+                            lo = (-lo) & ((1 << range_expr.operands[0].bits) - 1)
+                        width = cond.operands[1].value
+                        op = cond.op
+                        if op in {"CmpLE", "CmpLT"}:
+                            in_node_addr = stmt.true_target.value
+                            in_node_idx = stmt.true_target_idx
+                            out_node_addr = stmt.false_target.value
+                            out_node_idx = stmt.false_target_idx
+                        elif op in {"CmpGT", "CmpGE"}:
+                            in_node_addr = stmt.false_target.value
+                            in_node_idx = stmt.false_target_idx
+                            out_node_addr = stmt.true_target.value
+                            out_node_idx = stmt.true_target_idx
+                        else:
+                            return None
+                        if op in {"CmpLT", "CmpGE"}:
+                            # < instead of <=, so the last value is not included
+                            width -= 1
+                        if width < 0:
+                            return None
+                        hi = lo + width
+                        if hi >= 1 << range_expr.operands[0].bits:
+                            # range runs past the variable's width
+                            return None
+                        return (
+                            StableVarExprHasher(range_expr.operands[0], variable_map).hash,
+                            "range",
+                            range_expr.operands[0],
+                            lo,
+                            hi,
+                            in_node_addr,
+                            in_node_idx,
+                            out_node_addr,
+                            out_node_idx,
+                        )
+
+        return None
+
+    @staticmethod
+    def restore_graph(
+        node, last_stmt: IncompleteSwitchCaseHeadStatement, graph: networkx.DiGraph, full_graph: networkx.DiGraph
+    ):
+        last_node = node
+        ca_default = [
+            (onode, value, target, target_idx, a)
+            for onode, value, target, target_idx, a in last_stmt.case_addrs
+            if value == "default"
+        ]
+        ca_others = [
+            (onode, value, target, target_idx, a)
+            for onode, value, target, target_idx, a in last_stmt.case_addrs
+            if value != "default"
+        ]
+
+        # non-default nodes
+        ca_others = {ca[0].addr: ca for ca in ca_others}
+        # extract the AIL block from last_node
+        last_block = last_node
+        if isinstance(last_block, SequenceNode):
+            last_block = last_block.nodes[-1]
+        if isinstance(last_block, MultiNode):
+            last_block = last_block.nodes[-1]
+        assert isinstance(last_block, Block)
+        next_node_addr = last_block.addr
+
+        while next_node_addr is not None and next_node_addr in ca_others:
+            onode, _value, target, target_idx, next_node_addr = ca_others[next_node_addr]
+            onode: Block
+
+            if first_nonlabel_nonphi_statement(onode) is not onode.statements[-1]:
+                onode = onode.copy(statements=[onode.statements[-1]])
+
+            graph.add_edge(last_node, onode)
+            full_graph.add_edge(last_node, onode)
+
+            target_node = next(
+                iter(
+                    nn
+                    for nn in full_graph
+                    if nn.addr == target and (not isinstance(nn, (Block, MultiNode)) or nn.idx == target_idx)
+                )
+            )
+            graph.add_edge(onode, target_node)
+            full_graph.add_edge(onode, target_node)
+
+            if graph.has_edge(node, target_node):
+                graph.remove_edge(node, target_node)
+            if full_graph.has_edge(node, target_node):
+                full_graph.remove_edge(node, target_node)
+
+            # update last_node
+            last_node = onode
+
+        # default nodes
+        if ca_default:
+            onode, _value, target, target_idx, _ = ca_default[0]
+            default_target = next(
+                iter(
+                    nn
+                    for nn in full_graph
+                    if nn.addr == target and (not isinstance(nn, (Block, MultiNode)) or nn.idx == target_idx)
+                )
+            )
+            graph.add_edge(last_node, default_target)
+            full_graph.add_edge(last_node, default_target)
+
+            if graph.has_edge(node, default_target):
+                graph.remove_edge(node, default_target)
+            if full_graph.has_edge(node, default_target):
+                full_graph.remove_edge(node, default_target)
+
+        # all good - remove the last statement in node
+        remove_last_statement(node)
+
+    @staticmethod
+    def cases_issubset(cases_0: list[Case], cases_1: list[Case]) -> bool:
+        """
+        Test if cases_0 is a subset of cases_1.
+        """
+
+        if len(cases_0) > len(cases_1):
+            return False
+        return all(case in cases_1 for case in cases_0)

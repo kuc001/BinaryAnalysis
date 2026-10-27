@@ -1,0 +1,1754 @@
+# pylint:disable=arguments-differ,invalid-unary-operand-type
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, TypeGuard, cast
+
+from angr import ailment, claripy
+from angr.ailment.constant import UNDETERMINED_SIZE
+from angr.ailment.expression import Array, FunctionLikeMacro, Let, RustEnum, StringLiteral, Struct
+from angr.ailment.utils import is_lsb_overwrite
+from angr.analyses.typehoon import typeconsts, typevars
+from angr.analyses.typehoon.translator import TypeTranslator
+from angr.engines.light.engine import SimEngineNostmtAIL
+from angr.errors import SimMemoryMissingError
+from angr.procedures.stubs.format_parser import FormatParser, FormatSpecifier, ScanfFormatParser
+from angr.sim_type import SimTypeFunction, SimTypePointer
+from angr.sim_variable import SimStackVariable, SimVariable
+from angr.storage.memory_mixins.paged_memory.pages.multi_values import MultiValues
+from angr.utils.constants import MAX_ACCESS_SIZE
+from angr.utils.types import dereference_simtype_by_lib
+
+from .engine_base import RichR, SimEngineVRBase
+
+if TYPE_CHECKING:
+    from .variable_recovery_fast import VariableRecoveryFastState  # noqa: F401
+
+
+l = logging.getLogger(name=__name__)
+
+# libm-style FP ops the VEX converter emits for x87 math instructions (convert_vex.rs convert_math_*)
+_FP_MATH_UNOPS = frozenset({"Sqrt", "Sin", "Cos", "Tan", "Exp2", "Log2"})
+_FP_MATH_BINOPS = frozenset({"Atan2", "PRem", "PRem1"})
+
+# architectures whose 128-bit scalar FP operations (VEX F128 ops) are common; elsewhere a 128-bit FP op is far more
+# likely a vector op, and the AIL of a unary vector op does not say so
+_QUAD_FP_ARCHES = frozenset({"S390X"})
+
+
+class SimEngineVRAIL(
+    SimEngineNostmtAIL["VariableRecoveryFastState", RichR[claripy.ast.BV | claripy.ast.FP], None, None],
+    SimEngineVRBase["VariableRecoveryFastState", ailment.Block],
+):
+    """
+    The engine for variable recovery on AIL.
+    """
+
+    def __init__(
+        self,
+        *args,
+        type_lifter: TypeTranslator,
+        call_info=None,
+        vvar_to_vvar: dict[int, int] | None,
+        vvar_type_hints: dict[int, typeconsts.TypeConstant] | None = None,
+        func_ret_var: SimVariable | None = None,
+        tv_manager: typevars.TypeVariableManager | None = None,
+        variable_map=None,
+        flavor: str | None = None,
+        stack_region_vars=None,
+        multi_value_returns: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            *args,
+            vvar_type_hints=vvar_type_hints,
+            tv_manager=tv_manager,
+            stack_region_vars=stack_region_vars,
+            **kwargs,
+        )
+
+        self._reference_spoffset: bool = False
+        self.call_info = call_info or {}
+        self.vvar_to_vvar = vvar_to_vvar
+        self.type_lifter = type_lifter
+        self.func_ret_var = func_ret_var
+        # the words of a return are separate values (Go), not one value split across registers
+        self.multi_value_returns = multi_value_returns
+        self._extra_ret_typevars: dict[int, typevars.TypeVariable] = {}
+        self._variable_map = variable_map
+        # the decompilation flavor whose prototypes callees are looked up under
+        self._flavor = flavor
+
+    def _mapped_vvarid(self, vvar_id: int) -> int | None:
+        if self.vvar_to_vvar is not None and vvar_id in self.vvar_to_vvar:
+            return self.vvar_to_vvar[vvar_id]
+        return None
+
+    def _is_artificial_register(self, dst: ailment.Expr.Expression) -> bool:
+        if isinstance(dst, ailment.Expr.Register):
+            return self.project.arch.is_artificial_register(dst.reg_offset, dst.size)
+        if isinstance(dst, ailment.Expr.VirtualVariable) and dst.was_reg:
+            return self.project.arch.is_artificial_register(dst.reg_offset, dst.size)
+        return False
+
+    def _process_block_end(self, block, stmt_data, whitelist):
+        pass
+
+    # Statement handlers
+
+    def _handle_stmt_Assignment(self, stmt):
+        if self._is_artificial_register(stmt.dst):
+            # flag thunks and other artificial registers carry bits, not program values: their writes (e.g. the
+            # zero-extension of cmp operands into cc_dep1) say nothing about the types of the values written
+            top = RichR(self.state.top(stmt.dst.bits))
+            if isinstance(stmt.dst, ailment.Expr.VirtualVariable):
+                self._assign_to_vvar(stmt.dst, top, dst=stmt.dst, vvar_id=self._mapped_vvarid(stmt.dst.varid))
+            else:
+                self._assign_to_register(stmt.dst.reg_offset, top, stmt.dst.bits // 8, create_variable=False)
+            return
+
+        if isinstance(stmt.dst, ailment.Expr.Register):
+            offset = stmt.dst.reg_offset
+            data = self._expr(stmt.src)
+            size = stmt.src.bits // 8
+
+            if "write_size" in stmt.dst.tags and stmt.dst.tags["write_size"] > size:
+                # zero-fill this register
+                self._assign_to_register(
+                    offset,
+                    RichR(self.state.top(stmt.dst.tags["write_size"] * 8)),
+                    stmt.dst.tags["write_size"],
+                    create_variable=False,
+                )
+
+            self._assign_to_register(offset, data, size, src=stmt.src, dst=stmt.dst)
+
+        elif isinstance(stmt.dst, ailment.Expr.Tmp):
+            # simply write to self.tmps
+            data = self._expr(stmt.src)
+            if data is None:
+                return
+
+            self.tmps[stmt.dst.tmp_idx] = data
+
+        elif isinstance(stmt.dst, ailment.Expr.VirtualVariable):
+            data = self._expr(stmt.src)
+            variable = self._assign_to_vvar(
+                stmt.dst, data, src=stmt.src, dst=stmt.dst, vvar_id=self._mapped_vvarid(stmt.dst.varid)
+            )
+
+            if variable is not None and isinstance(stmt.src, ailment.Expr.Phi):
+                # this is a phi node - we update variable manager's phi variable tracking
+                for _, vvar in stmt.src.src_and_vvars:
+                    if vvar is not None:
+                        r = self._read_from_vvar(vvar, expr=stmt.src, vvar_id=self._mapped_vvarid(vvar.varid))
+                        if r.variable is not None:
+                            pv = self.state.variable_manager[self.func_addr]._phi_variables
+                            if variable not in pv:
+                                pv[variable] = set()
+                            pv[variable].add(r.variable)
+
+            if stmt.dst.was_stack and isinstance(stmt.dst.stack_offset, int):
+                # store it to the stack region in case it's directly referenced later
+                self._store(
+                    RichR(self.state.stack_address(stmt.dst.stack_offset)),
+                    data,
+                    stmt.dst.bits // self.arch.byte_width,
+                    atom=stmt.dst,
+                )
+
+        else:
+            l.warning(
+                "Unsupported dst type %s.",
+                getattr(stmt.dst, "kind", None) or type(stmt.dst).__name__,
+            )
+
+    def _handle_stmt_WeakAssignment(self, stmt) -> None:
+        src = self._expr(stmt.src)
+        dst = self._expr(stmt.dst)
+        if isinstance(src, RichR) and isinstance(dst, RichR) and src.typevar is not None and dst.typevar is not None:
+            tc = typevars.Subtype(src.typevar, dst.typevar)
+            self.state.add_type_constraint(tc)
+
+    def _handle_stmt_CAS(self, stmt) -> None:
+        self._expr(stmt.addr)
+        self._expr(stmt.data_lo)
+        if stmt.data_hi is not None:
+            self._expr(stmt.data_hi)
+        self._expr(stmt.expd_lo)
+        if stmt.expd_hi is not None:
+            self._expr(stmt.expd_hi)
+
+        for old in (stmt.old_lo, stmt.old_hi):
+            if isinstance(old, ailment.Expr.VirtualVariable):
+                self._assign_to_vvar(
+                    old,
+                    RichR(self.state.top(old.bits)),
+                    dst=old,
+                    vvar_id=self._mapped_vvarid(old.varid),
+                )
+
+    def _handle_stmt_Store(self, stmt: ailment.Stmt.Store):
+        addr_r = self._expr_bv(stmt.addr)
+        data = self._expr(stmt.data)
+        size = stmt.size
+        # a store tagged as floating point (e.g., a long double copy) types the stored value
+        if stmt.tags.get("data_type") == "Ity_F128" and data.typevar is not None:
+            ft = self._fp_type(size * 8)
+            if ft is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, data.typevar))
+        self._store(addr_r, data, size, atom=stmt)
+
+    def _handle_stmt_Jump(self, stmt: ailment.Stmt.Jump):
+        if not isinstance(stmt.target, ailment.Expr.Const):
+            self._expr(stmt.target)
+
+    def _handle_stmt_ConditionalJump(self, stmt):
+        self._expr(stmt.condition)
+
+    def _handle_expr_Tmp(self, expr):
+        try:
+            return self.tmps[expr.tmp_idx]
+        except KeyError:
+            return self._top(expr.bits)
+
+    def _handle_expr_MultiStatementExpression(self, expr):
+        for stmt in expr.stmts:
+            self._stmt(stmt)
+        return self._expr(expr.expr)
+
+    def _handle_expr_Call(self, expr):
+        target = expr.target
+        args = []
+        if expr.args:
+            for arg in expr.args:
+                self._reference_spoffset = True
+                richr = self._expr(arg)
+                self._reference_spoffset = False
+                args.append(richr)
+
+        ret_expr_bits = expr.bits
+
+        if isinstance(target, ailment.Expr.Expression) and not isinstance(
+            target, (ailment.Expr.Const, ailment.Expr.DirtyExpression)
+        ):
+            # this is a dynamically calculated call target
+            target_expr = self._expr(target)
+            funcaddr_typevar = target_expr.typevar
+            if isinstance(funcaddr_typevar, typevars.TypeVariable):
+                load_typevar = self._create_access_typevar(funcaddr_typevar, False, self.arch.bytes, 0)
+                self.state.add_type_constraint(typevars.Subtype(funcaddr_typevar, load_typevar))
+        elif isinstance(target, str):
+            # special handling for some intrinsics
+            match target:
+                case (
+                    "InterlockedExchange8"
+                    | "InterlockedExchange16"
+                    | "InterlockedExchange"
+                    | "InterlockedExchange64"
+                    | "InterlockedCompareExchange16"
+                    | "InterlockedCompareExchange"
+                    | "InterlockedCompareExchange64"
+                    | "InterlockedCompareExchange128"
+                    | "InterlockedExchangeAdd"
+                    | "InterlockedExchangeAdd64"
+                ):
+                    arg_tv = (
+                        args[0].typevar
+                        if args[0].typevar is not None
+                        else args[1].typevar
+                        if args[1].typevar is not None
+                        else None
+                    )
+                    if arg_tv is not None:
+                        ret_ty = self._create_access_typevar(
+                            arg_tv, False, args[0].data.size() // self.arch.byte_width, 0
+                        )
+                        return RichR(self.state.top(ret_expr_bits), typevar=ret_ty)
+                case (
+                    "InterlockedIncrement"
+                    | "InterlockedIncrement16"
+                    | "InterlockedIncrement64"
+                    | "InterlockedDecrement"
+                    | "InterlockedDecrement16"
+                    | "InterlockedDecrement64"
+                ):
+                    arg_tv = args[0].typevar if args[0].typevar is not None else None
+                    if arg_tv is not None:
+                        ret_ty = self._create_access_typevar(
+                            arg_tv, False, args[0].data.size() // self.arch.byte_width, 0
+                        )
+                        return RichR(self.state.top(ret_expr_bits), typevar=ret_ty)
+
+        # discover the prototype
+        prototype: SimTypeFunction | None = None
+        prototype_libname: str | None = None
+        func = None
+        expr_prototype = self._variable_map.prototype(expr) if self._variable_map is not None else None
+        if expr_prototype is not None:
+            prototype = expr_prototype
+        if isinstance(expr.target, ailment.Expr.Const):
+            func_addr = expr.target.value
+            if isinstance(func_addr, self.kb.functions.address_types) and func_addr in self.kb.functions:
+                func = self.kb.functions[func_addr]
+                if prototype is None:
+                    prototype = func.get_prototype(self._flavor)
+                prototype_libname = func.prototype_libname
+
+        ret_ty = None
+        if prototype is not None:
+            # add type constraints
+            if (
+                isinstance(expr.target, (ailment.Expr.Const, str))
+                or expr.tags.get("is_prototype_guessed", True) is False
+            ) and expr.args is not None:
+                self._call_add_arg_based_type_constraints(prototype, prototype_libname, args, list(expr.args))
+            # handle return type
+            # Trust guessed prototypes for FP return types -- CC detects FP
+            # returns structurally (PutI/xmm analysis), not by guessing.
+            return_ty = self.type_lifter.lift(prototype.returnty) if prototype.returnty is not None else None  # type: ignore
+            if return_ty is not None and (
+                not expr.tags.get("is_prototype_guessed", True) or isinstance(return_ty, typeconsts.Float)
+            ):
+                ret_ty = self.tv_manager.new_tv()
+                if not isinstance(ret_ty, typeconsts.BottomType):
+                    type_constraint = typevars.Subtype(ret_ty, return_ty)
+                    self.state.add_type_constraint(type_constraint)
+                    if isinstance(return_ty, typeconsts.Float):
+                        return RichR(
+                            self.state.top(ret_expr_bits),
+                            typevar=ret_ty,
+                            type_constraints={type_constraint},
+                        )
+
+        # add format-string-based type constraints for variadic arguments
+        if func is not None:
+            self._apply_format_string_type_constraints(func.name, prototype, args, expr.args)
+
+        if ret_ty is None:
+            ret_ty = self.tv_manager.new_tv()
+
+        return RichR(self.state.top(ret_expr_bits), typevar=ret_ty)
+
+    def _handle_stmt_SideEffectStatement(self, stmt):
+        if not isinstance(stmt.expr, ailment.Expr.Call):
+            return
+        target = stmt.expr.target
+        args: list[RichR] = []
+        if stmt.expr.args:
+            for arg in stmt.expr.args:
+                self._reference_spoffset = True
+                richr = self._expr(arg)
+                self._reference_spoffset = False
+                args.append(richr)
+
+        ret_expr_bits = self.state.arch.bits
+        create_variable = True
+
+        # this is a call statement. we need to update the return value register later
+        ret_expr = stmt.ret_expr
+        if ret_expr is not None:
+            if ret_expr.category == ailment.Expr.VirtualVariableCategory.REGISTER:
+                ret_expr_bits = ret_expr.bits
+        else:
+            # the return expression is not used, so we treat this call as not returning anything
+            create_variable = False
+
+        if isinstance(target, ailment.Expr.Expression) and not isinstance(
+            target, (ailment.Expr.Const, ailment.Expr.DirtyExpression)
+        ):
+            # this is a dynamically calculated call target
+            target_expr = self._expr(target)
+            funcaddr_typevar = target_expr.typevar
+            if isinstance(funcaddr_typevar, typevars.TypeVariable):
+                load_typevar = self._create_access_typevar(funcaddr_typevar, False, self.arch.bytes, 0)
+                self.state.add_type_constraint(typevars.Subtype(funcaddr_typevar, load_typevar))
+
+        # discover the prototype
+        prototype: SimTypeFunction | None = None
+        prototype_libname: str | None = None
+        func = None
+        stmt_expr_prototype = self._variable_map.prototype(stmt.expr) if self._variable_map is not None else None
+        if stmt_expr_prototype is not None:
+            prototype = stmt_expr_prototype
+        if isinstance(stmt.expr.target, ailment.Expr.Const):
+            func_addr = stmt.expr.target.value
+            if isinstance(func_addr, self.kb.functions.address_types) and func_addr in self.kb.functions:
+                func = self.kb.functions[func_addr]
+                if prototype is None:
+                    prototype = func.get_prototype(self._flavor)
+                prototype_libname = func.prototype_libname
+
+        ret_ty = None
+        if prototype is not None:
+            if (
+                isinstance(stmt.expr.target, (ailment.Expr.Const, str))
+                or stmt.tags.get("is_prototype_guessed", True) is False
+            ):
+                self._call_add_arg_based_type_constraints(prototype, prototype_libname, args, stmt.expr.args)
+            # handle return type
+            return_ty = self.type_lifter.lift(prototype.returnty)  # type: ignore
+            ret_ty = self.tv_manager.new_tv()
+            if not isinstance(ret_ty, typeconsts.BottomType):
+                type_constraint = typevars.Subtype(return_ty, ret_ty)
+                self.state.add_type_constraint(type_constraint)
+
+        # add format-string-based type constraints for variadic arguments
+        if func is not None:
+            self._apply_format_string_type_constraints(func.name, prototype, args, stmt.expr.args)
+
+        if ret_ty is None:
+            ret_ty = self.tv_manager.new_tv()
+
+        # TODO: Expose it as an option
+        return_value_use_full_width_reg = True
+
+        # update the return value register
+        if isinstance(ret_expr, ailment.Expr.VirtualVariable):
+            expr_bits = ret_expr_bits
+            self._assign_to_vvar(
+                ret_expr,
+                RichR(self.state.top(expr_bits), typevar=ret_ty),
+                dst=ret_expr,
+                create_variable=create_variable,
+                vvar_id=self._mapped_vvarid(ret_expr.varid),
+            )
+        elif isinstance(ret_expr, ailment.Expr.Register):
+            l.warning("Left-over register found in call.ret_expr.")
+            expr_bits = self.state.arch.bits if return_value_use_full_width_reg else ret_expr_bits
+            self._assign_to_register(
+                ret_expr.reg_offset,
+                RichR(self.state.top(expr_bits), typevar=ret_ty),
+                expr_bits // self.arch.byte_width,
+                dst=ret_expr,
+                create_variable=create_variable,
+            )
+
+    def _call_add_arg_based_type_constraints(
+        self, prototype: SimTypeFunction, prototype_libname: str | None, args: list, arg_atoms: list
+    ) -> None:
+        # add type constraints
+        if not args:
+            return
+
+        for arg, _arg_atom, arg_type in zip(args, arg_atoms, prototype.args):
+            if arg.typevar is None:
+                continue
+            arg_type = dereference_simtype_by_lib(arg_type, prototype_libname) if prototype_libname else arg_type
+            arg_ty = self.type_lifter.lift(arg_type)
+            if arg.typevar is not None and isinstance(
+                arg_ty, (typeconsts.TypeConstant, typevars.TypeVariable, typevars.DerivedTypeVariable)
+            ):
+                stack_offset = self.state.get_stack_offset(arg.data)
+                if (
+                    stack_offset is not None
+                    and isinstance(arg_ty, typeconsts.Pointer)
+                    and isinstance(arg_ty.basetype, typeconsts.Struct)
+                ):
+                    # special case: if arg_ty is a pointer to a struct, arg might be a pointer to the first
+                    # field of the struct. although the two pointers are equivalent in value, we cannot
+                    # establish a subtype relationship between them and subsequently reason about the type
+                    # variable that arg.typevar points to.
+                    # hence, if arg_ty points to a struct whose size is larger than arg.size, we create a new
+                    # stack variable and its type variable that represents the full struct variable on the
+                    # stack.
+                    existing_variables = set()
+                    arg_ty_basesize = arg_ty.basetype.size
+                    stack_addr = self.state.stack_addr_from_offset(stack_offset)
+                    try:
+                        vs: MultiValues = self.state.stack_region.load(stack_addr, 1)
+                        for values in vs.values():
+                            for value in values:
+                                existing_variables.update(
+                                    stack_var for o, stack_var in self.state.extract_variables(value) if o == 0
+                                )
+                    except SimMemoryMissingError:
+                        pass
+
+                    if not existing_variables:
+                        # create a new stack variable
+                        stack_var = SimStackVariable(
+                            stack_offset,
+                            arg_ty_basesize,
+                            ident=self.state.variable_manager[self.func_addr].next_variable_ident("stack"),
+                        )
+                        self.state.variable_manager[self.func_addr].add_variable("stack", stack_var.offset, stack_var)
+                        stack_typevar = self.tv_manager.new_tv()
+                        self.state.typevars.add_type_variable(stack_var, stack_typevar)
+                        existing_variables.add(stack_var)
+                    for stack_var in existing_variables:
+                        if self.state.typevars.has_type_variable_for(stack_var):
+                            tv = self.state.typevars.get_type_variable(stack_var)
+                            self.state.add_type_constraint(typevars.Subtype(tv, arg_ty.basetype))
+                if (
+                    isinstance(arg_ty, typeconsts.Pointer)
+                    and isinstance(arg_ty.basetype, typeconsts.Struct)
+                    and arg_ty.basetype.is_cppclass
+                ):
+                    # a pointer to a known C++ class: the class layout is fixed. A Subtype constraint would
+                    # let the solver rebuild an anonymous struct from field accesses and lose the class
+                    # identity
+                    self.state.add_type_constraint(typevars.Equivalence(arg.typevar, arg_ty))
+                else:
+                    self.state.add_type_constraint(typevars.Subtype(arg.typevar, arg_ty))
+
+    def _get_format_string_arg_types(self, func_name: str, call_args) -> list | None:
+        """
+        For printf/scanf-family functions, parse the format string and return the types of variadic arguments.
+
+        For scanf-family functions, each format specifier type is wrapped in a SimTypePointer since scanf arguments
+        are pointers to the destination variables.
+        """
+        if call_args is None:
+            return None
+
+        is_scanf = "scanf" in func_name
+        is_printf = "printf" in func_name
+        if not is_scanf and not is_printf:
+            return None
+
+        # find the format string argument - it's the first char* constant argument
+        fmt_str = None
+        for arg_expr in call_args:
+            if isinstance(arg_expr, ailment.Expr.Const) and isinstance(arg_expr.value, int):
+                candidate = self._load_string_from_loader(arg_expr.value)
+                if candidate and b"%" in candidate:
+                    fmt_str = candidate
+                    break
+
+        if not fmt_str:
+            return None
+
+        parser_cls = ScanfFormatParser if is_scanf else FormatParser
+        parser = parser_cls(project=self.project)
+        fmt_str_list = [bytes([b]) for b in fmt_str]
+        components = parser.extract_components(fmt_str_list)
+
+        specifiers = [c for c in components if isinstance(c, FormatSpecifier)]
+        if not specifiers:
+            return None
+
+        arg_types = []
+        for spec in specifiers:
+            ty = spec.ty
+            if is_scanf and not isinstance(ty, SimTypePointer):
+                # scanf arguments are pointers to the destination type
+                ty = SimTypePointer(ty)
+            arg_types.append(ty)
+        return arg_types
+
+    def _load_string_from_loader(self, addr: int) -> bytes | None:
+        """Load a null-terminated string from the project loader's memory."""
+        s = b""
+        while True:
+            try:
+                chunk = self.project.loader.memory.load(addr, 8)
+                addr += 8
+            except KeyError:
+                return s or None
+
+            if b"\x00" in chunk:
+                s += chunk[: chunk.index(b"\x00")]
+                return s or None
+            s += chunk
+            if len(s) > 2048:
+                break
+        return s or None
+
+    def _apply_format_string_type_constraints(
+        self, func_name: str, prototype: SimTypeFunction | None, args: list, call_args
+    ) -> None:
+        """
+        Parse the format string and add type constraints for variadic arguments based on format specifiers.
+        """
+        if call_args is None:
+            return
+
+        fmt_arg_types = self._get_format_string_arg_types(func_name, call_args)
+        if not fmt_arg_types:
+            return
+
+        # determine where variadic arguments start
+        if prototype is not None and prototype.variadic:
+            n_fixed = len(prototype.args)
+        else:
+            # no prototype available - find the format string argument index and variadic args start after it
+            n_fixed = None
+            for idx, arg_expr in enumerate(call_args):
+                if isinstance(arg_expr, ailment.Expr.Const) and isinstance(arg_expr.value, int):
+                    candidate = self._load_string_from_loader(arg_expr.value)
+                    if candidate and b"%" in candidate:
+                        n_fixed = idx + 1
+                        break
+            if n_fixed is None:
+                return
+
+        variadic_args = args[n_fixed:]
+        for arg, fmt_ty in zip(variadic_args, fmt_arg_types):
+            if arg.typevar is None:
+                continue
+            lifted_ty = self.type_lifter.lift(fmt_ty)
+            if isinstance(lifted_ty, (typeconsts.TypeConstant, typevars.TypeVariable, typevars.DerivedTypeVariable)):
+                self.state.add_type_constraint(typevars.Subtype(arg.typevar, lifted_ty))
+
+    def _handle_stmt_Return(self, stmt):
+        if stmt.ret_exprs:
+            if self.func_ret_var is None:
+                ret_typevar = None
+            elif self.state.typevars.has_type_variable_for(self.func_ret_var):
+                ret_typevar = self.state.typevars.get_type_variable(self.func_ret_var)
+            else:
+                ret_typevar = self.tv_manager.new_tv()
+                self.state.typevars.add_type_variable(self.func_ret_var, ret_typevar)
+
+            for i, ret_expr in enumerate(stmt.ret_exprs):
+                # On x87, the return value is widened to F64 for the ST0
+                # register (VEX models x87 as F64x8).  Strip this widening
+                # Conv so the return variable gets the actual FP type from
+                # the inner expression (e.g. Float32 from a prior fstps
+                # truncation, or a 4-byte float stack variable).
+                inner_expr = self._unwrap_x87_return_widening(ret_expr)
+
+                src = self._expr(inner_expr)
+                word_typevar = ret_typevar
+                if self.multi_value_returns:
+                    # one type variable per result: sharing one would unify all values of a multi-value return
+                    if i > 0 and ret_typevar is not None:
+                        word_typevar = self._extra_ret_typevars.get(i)
+                        if word_typevar is None:
+                            word_typevar = self._extra_ret_typevars[i] = self.tv_manager.new_tv()
+                elif len(stmt.ret_exprs) != 1:
+                    # the pieces of a value split across registers (edx:eax) do not each carry the return type
+                    word_typevar = None
+                if isinstance(src, RichR) and src.typevar is not None and word_typevar is not None:
+                    if src.type_constraints is not None:
+                        for tc in src.type_constraints:
+                            self.state.add_type_constraint(tc)
+                    tc = typevars.Subtype(word_typevar, src.typevar)
+                    self.state.add_type_constraint(tc)
+
+    def _handle_expr_DirtyExpression(self, expr: ailment.Expr.DirtyExpression) -> RichR:
+        for op in expr.operands:
+            self._expr(op)
+        if expr.guard:
+            self._expr(expr.guard)
+        if expr.maddr:
+            self._expr(expr.maddr)
+        return RichR(self.state.top(expr.bits))
+
+    def _handle_expr_VEXCCallExpression(self, expr: ailment.Expr.VEXCCallExpression) -> RichR:
+        for op in expr.operands:
+            self._expr(op)
+        return RichR(self.state.top(expr.bits))
+
+    @staticmethod
+    def _is_x87_fp_widening(expr) -> TypeGuard[ailment.Expr.Convert]:
+        """Check if expr is a VEX x87 FP widening Conv (e.g. Conv(32F->64F))."""
+        return (
+            isinstance(expr, ailment.Expr.Convert)
+            and expr.from_type == ailment.Expr.Convert.TYPE_FP
+            and expr.to_type == ailment.Expr.Convert.TYPE_FP
+            and expr.to_bits > expr.from_bits
+        )
+
+    @classmethod
+    def _unwrap_x87_return_widening(cls, expr):
+        """Strip x87 ST0 widening Conv from a return expression.
+
+        On x87, all returned values are widened to F64 for the ST0 register.
+        This strips the widening to expose the actual FP type.
+
+        Does NOT strip when the Conv's inner operand is a parameter -- that
+        indicates a genuine type promotion (e.g. float_to_double).
+
+        Also handles ITE expressions where all branches have the same
+        widening Conv (e.g. float_max at O0: return cond ? Conv(a) : Conv(b)).
+        """
+        if cls._is_x87_fp_widening(expr):
+            inner = expr.operand
+            if isinstance(inner, ailment.Expr.VirtualVariable) and inner.was_parameter:
+                return expr  # genuine promotion, keep it
+            return inner
+        if isinstance(expr, ailment.Expr.ITE):
+            iftrue = expr.iftrue
+            iffalse = expr.iffalse
+            if cls._is_x87_fp_widening(iftrue) and cls._is_x87_fp_widening(iffalse):
+                inner_true = iftrue.operand
+                inner_false = iffalse.operand
+                # Both branches are parameter pass-throughs -- genuine promotion
+                if (
+                    isinstance(inner_true, ailment.Expr.VirtualVariable)
+                    and inner_true.was_parameter
+                    and isinstance(inner_false, ailment.Expr.VirtualVariable)
+                    and inner_false.was_parameter
+                    and iftrue.from_bits == iffalse.from_bits
+                ):
+                    # Both branches widen the same-size params -- this is x87
+                    # widening, not a genuine promotion (e.g. float_max returns
+                    # one of its float params).  Build a narrower ITE.
+                    return ailment.Expr.ITE(expr.idx, expr.cond, iftrue.operand, iffalse.operand, **expr.tags)
+        return expr
+
+    # Expression handlers
+
+    def _expr_bv(self, expr: ailment.expression.Expression, non_pointer: bool = False) -> RichR[claripy.ast.BV]:
+        result = self._operand(expr, non_pointer)
+        assert isinstance(result.data, claripy.ast.BV)
+        return cast(RichR[claripy.ast.BV], result)
+
+    def _expr_fp(self, expr: ailment.expression.Expression) -> RichR[claripy.ast.FP]:
+        result = self._expr(expr)
+        assert isinstance(result.data, claripy.ast.FP)
+        return cast(RichR[claripy.ast.FP], result)
+
+    def _operand(self, expr: ailment.expression.Expression, non_pointer: bool) -> RichR:
+        # an integer immediate under a floating-point, bitwise, shift or multiplicative operator is a float bit
+        # pattern, a mask, a shift amount or a multiplier, never an address: typing it as the global at that address
+        # would share its type variable with every other use of the same constant (e.g. `return 0` after
+        # `x < 0.0f`, or `&SRAM_BASE` for the flag 0x20000000)
+        if non_pointer and isinstance(expr, ailment.Expr.Const) and isinstance(expr.value, int):
+            return self._get_const(expr.value, expr.bits, expr=expr, non_pointer=True)
+        return self._expr(expr)
+
+    def _expr_pair(
+        self,
+        expr1: ailment.expression.Expression,
+        expr2: ailment.expression.Expression,
+        non_pointer: bool = False,
+    ) -> tuple[RichR[claripy.ast.BV], RichR[claripy.ast.BV]] | tuple[RichR[claripy.ast.FP], RichR[claripy.ast.FP]]:
+        result1 = self._operand(expr1, non_pointer)
+        result2 = self._operand(expr2, non_pointer)
+        assert type(result1.data) is type(result2.data)
+        return result1, result2  # type: ignore
+
+    def _handle_expr_Register(self, expr):
+        offset = expr.reg_offset
+        size = expr.bits // 8
+
+        return self._read_from_register(offset, size, expr=expr)
+
+    def _handle_expr_IRegister(self, expr):
+        # An IRegister whose index could not be resolved to a constant (e.g. a cross-block x87 ftop). Treat it as an
+        # opaque register read of unknown offset.
+        self._expr(expr.reg_offset)
+        return RichR(self.state.top(expr.bits))
+
+    def _fp_type(self, bits: int) -> typeconsts.Float | None:
+        if bits == 128:
+            return typeconsts.Float128() if self.project.arch.name in _QUAD_FP_ARCHES else None
+        return typeconsts.float_type(bits)
+
+    def _handle_expr_Load(self, expr):
+        addr_r = self._expr_bv(expr.addr)
+        size = expr.size
+
+        if size != UNDETERMINED_SIZE and 0 < size <= MAX_ACCESS_SIZE:
+            result = self._load(addr_r, size, expr=expr)
+            # a Load rewritten from loadF80le reads a long double; Float80 is a lower bound in the linear float lattice
+            if expr.tags.get("long_double_load") and result.typevar is not None:
+                constraint = typevars.Subtype(typeconsts.Float80(), result.typevar)
+                self.state.add_type_constraint(constraint)
+                if result.type_constraints is None:
+                    result.type_constraints = set()
+                result.type_constraints.add(constraint)
+            # a Load of a floating-point value (VEX LDle:F32/F64, tagged by the converter) constrains the loaded
+            # value -- and hence the pointed-to element -- to a float type.
+            elif expr.tags.get("data_type") in ("Ity_F32", "Ity_F64", "Ity_F128") and result.typevar is not None:
+                ft = self._fp_type(size * 8)
+                if ft is not None:
+                    constraint = typevars.Subtype(ft, result.typevar)
+                    self.state.add_type_constraint(constraint)
+                    if result.type_constraints is None:
+                        result.type_constraints = set()
+                    result.type_constraints.add(constraint)
+            return result
+        return self._top(8)
+
+    def _handle_expr_VirtualVariable(self, expr: ailment.Expr.VirtualVariable):
+        result = self._read_from_vvar(expr, expr=expr, vvar_id=self._mapped_vvarid(expr.varid))
+        # An 80-bit VirtualVariable can only originate from x87 long double
+        # (loadF80le produces 10-byte stack slots).  Add a Float80 lower
+        # bound so Typehoon infers long double for the variable.
+        if expr.bits == 80 and result.typevar is not None:
+            constraint = typevars.Subtype(typeconsts.Float80(), result.typevar)
+            self.state.add_type_constraint(constraint)
+            if result.type_constraints is None:
+                result.type_constraints = set()
+            result.type_constraints.add(constraint)
+        return result
+
+    def _handle_expr_Phi(self, expr: ailment.Expr.Phi):
+        tvs = set()
+        for _, vvar in expr.src_and_vvars:
+            if vvar is not None:
+                r = self._read_from_vvar(vvar, expr=vvar, vvar_id=self._mapped_vvarid(vvar.varid))
+                if r.typevar is not None:
+                    tvs.add(r.typevar)
+
+        tv = self.tv_manager.new_tv()
+        for tv_ in tvs:
+            self.state.add_type_constraint(typevars.Subtype(tv, tv_))
+        return RichR(self.state.top(expr.bits), typevar=tv)
+
+    def _handle_expr_StringLiteral(self, expr: StringLiteral):
+        return RichR(self.state.top(expr.bits), typevar=self.tv_manager.new_tv())
+
+    def _handle_expr_Struct(self, expr: Struct):
+        for field in expr.fields.values():
+            self._expr(field)
+        return RichR(self.state.top(expr.bits), typevar=self.tv_manager.new_tv())
+
+    def _handle_expr_RustEnum(self, expr: RustEnum):
+        for field in expr.fields:
+            self._expr(field)
+        return RichR(self.state.top(expr.bits), typevar=self.tv_manager.new_tv())
+
+    def _handle_expr_Array(self, expr: Array):
+        for ele in expr.elements:
+            self._expr(ele)
+        return RichR(self.state.top(expr.bits), typevar=self.tv_manager.new_tv())
+
+    def _handle_expr_Let(self, expr: Let):
+        self._expr(expr.src)
+        return RichR(self.state.top(expr.bits), typevar=self.tv_manager.new_tv())
+
+    def _handle_expr_FunctionLikeMacro(self, expr: FunctionLikeMacro):
+        for arg in expr.args:
+            self._expr(arg)
+        ret_ty = self.tv_manager.new_tv()
+        return RichR(self.state.top(expr.bits), typevar=ret_ty)
+
+    def _handle_expr_Const(self, expr: ailment.Expr.Const):
+        return self._get_const(expr.value, expr.bits, expr=expr)
+
+    def _handle_expr_Convert(self, expr: ailment.Expr.Convert):
+        r = self._expr(expr.operand)
+        if expr.vector_count is not None:
+            return RichR(self.state.top(expr.to_bits))
+        typevar = None
+
+        # If the source is FP, constrain the operand to be a float type
+        if expr.from_type == ailment.Expr.Convert.TYPE_FP and r.typevar is not None:
+            ft = self._fp_type(expr.from_bits)
+            if ft is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, r.typevar))
+
+        # Int <-> FP conversions imply signedness on the integer side.
+        # cvtsi2sd / fild treat the integer as signed; cvttsd2si / fistp
+        # produce a signed integer result.
+        if (
+            expr.from_type == ailment.Expr.Convert.TYPE_INT
+            and expr.to_type == ailment.Expr.Convert.TYPE_FP
+            and expr.is_signed
+            and r.typevar is not None
+            and isinstance(r.typevar, typevars.TypeVariable)
+        ):
+            self.state.add_type_constraint(typevars.Subtype(r.typevar, typeconsts.signed_int_type(expr.from_bits)))
+
+        if r.typevar is not None:
+            if isinstance(r.typevar, typevars.DerivedTypeVariable) and isinstance(
+                r.typevar.one_label(), typevars.ConvertTo
+            ):
+                # there is already a conversion - overwrite it
+                if not isinstance(r.typevar.type_var, typeconsts.TypeConstant):
+                    typevar = self.tv_manager.new_dtv_with_merged_labels(
+                        r.typevar.type_var, label=typevars.ConvertTo(expr.to_bits)
+                    )
+            else:
+                if not isinstance(r.typevar, typeconsts.TypeConstant):
+                    typevar = self.tv_manager.new_dtv_with_merged_labels(
+                        r.typevar, label=typevars.ConvertTo(expr.to_bits)
+                    )
+
+        if (
+            expr.from_type == ailment.Expr.Convert.TYPE_INT
+            and expr.to_type == ailment.Expr.Convert.TYPE_INT
+            and expr.from_bits != expr.to_bits
+            and r.typevar is not None
+            and not isinstance(r.typevar, typeconsts.TypeConstant)
+        ):
+            int_type_cls = typeconsts.signed_int_type if expr.is_signed else typeconsts.unsigned_int_type
+            tc = int_type_cls(expr.from_bits)
+            if tc is not None:
+                self.state.add_type_constraint(typevars.Subtype(r.typevar, tc))
+
+        # FP result: use a float type. For FP->FP widening, constrain with the source precision (the widening is
+        # an ISA artifact), via a fresh typevar isolated from downstream constraints.
+        if expr.to_type == ailment.Expr.Convert.TYPE_FP:
+            if expr.from_type == ailment.Expr.Convert.TYPE_FP and expr.from_bits < expr.to_bits:
+                ft = self._fp_type(expr.from_bits)
+                if ft is not None:
+                    typevar = self.tv_manager.new_tv()
+                    self.state.add_type_constraint(typevars.Subtype(ft, typevar))
+                else:
+                    typevar = self._fp_type(expr.to_bits)
+            else:
+                typevar = self._fp_type(expr.to_bits)
+
+        # FP -> Int: emit signedness constraint based on the conversion type.
+        # fistp/cvttsd2si produce signed integers; unsigned variants are rare.
+        if expr.from_type == ailment.Expr.Convert.TYPE_FP and expr.to_type == ailment.Expr.Convert.TYPE_INT:
+            int_type_func = typeconsts.signed_int_type if expr.is_signed else typeconsts.unsigned_int_type
+            typevar = int_type_func(expr.to_bits)
+
+        return RichR(self.state.top(expr.to_bits), typevar=typevar)
+
+    def _handle_expr_Extract(self, expr: ailment.expression.Extract):
+        r = self._expr(expr.base)
+        self._expr(expr.offset)
+        typevar = None
+        if r.typevar is not None:
+            if isinstance(r.typevar, typevars.DerivedTypeVariable) and isinstance(
+                r.typevar.one_label(), typevars.ConvertTo
+            ):
+                # there is already a conversion - overwrite it
+                if not isinstance(r.typevar.type_var, typeconsts.TypeConstant):
+                    typevar = self.tv_manager.new_dtv_with_merged_labels(
+                        r.typevar.type_var, label=typevars.ConvertTo(expr.bits)
+                    )
+            else:
+                if not isinstance(r.typevar, typeconsts.TypeConstant):
+                    typevar = self.tv_manager.new_dtv_with_merged_labels(r.typevar, label=typevars.ConvertTo(expr.bits))
+
+        return RichR(self.state.top(expr.bits), typevar=typevar)
+
+    # FIXME fix these one
+    def _handle_expr_Insert(self, expr: ailment.expression.Insert):
+        self._expr(expr.base)
+        self._expr(expr.offset)
+        r_value = self._expr(expr.value)
+        # Propagate the value's type through LSB-overwrite Inserts (Insert(0, 0, value)).
+        # This handles the x87 pattern where an FP result is placed into a wider variable.
+        # Use the Insert's full width for the float type so that a 64-bit FP value
+        # inserted into a 10-byte (80-bit) variable produces Float80, not Float64.
+        # Only propagate when _fp_type(expr.bits) is valid -- non-FP widths (e.g. 128-bit
+        # for struct stores outside quad-FP arches) must fall through to avoid leaking integer type constraints.
+        # an inserted immediate (`mov dword [slot], 0` into an 8-byte variable) is an integer write, not an FP result
+        if (
+            is_lsb_overwrite(expr)
+            and r_value.typevar is not None
+            and not isinstance(expr.value, ailment.expression.Const)
+        ):
+            ft = self._fp_type(expr.bits)
+            # only an FP-sized value can be an FP value widened in place; `mov ax, imm16` is an integer write
+            if ft is not None and (expr.bits == r_value.bits or self._fp_type(r_value.bits) is not None):
+                if expr.bits > r_value.bits:
+                    # a widened integer (a Go int64 written as two 32-bit halves) must not make the slot a float
+                    if not self._is_fp_value(expr.value, r_value):
+                        return self._top(expr.bits)
+                    typevar = self.tv_manager.new_tv()
+                    self.state.add_type_constraint(typevars.Subtype(ft, typevar))
+                else:
+                    typevar = r_value.typevar
+                return RichR(self.state.top(expr.bits), typevar=typevar)
+        return self._top(expr.bits)
+
+    def _is_fp_value(self, expr: ailment.Expr.Expression, r: RichR) -> bool:
+        """Whether an expression is known to produce a floating-point value, by its shape or its type so far."""
+        if isinstance(expr, ailment.Expr.Convert) and expr.to_type == ailment.Expr.Convert.TYPE_FP:
+            return True
+        if isinstance(expr, ailment.Expr.Reinterpret) and expr.to_type == "F":
+            return True
+        if isinstance(expr, (ailment.Expr.BinaryOp, ailment.Expr.UnaryOp)) and expr.floating_point:
+            return True
+        if isinstance(expr, ailment.Expr.Load) and (
+            expr.tags.get("long_double_load") or expr.tags.get("data_type") in ("Ity_F32", "Ity_F64", "Ity_F128")
+        ):
+            return True
+        if isinstance(r.typevar, typeconsts.Float):
+            return True
+        return bool(r.type_constraints) and any(
+            isinstance(tc, typevars.Subtype)
+            and tc.super_type == r.typevar
+            and isinstance(tc.sub_type, typeconsts.Float)
+            for tc in r.type_constraints
+        )
+
+    def _handle_expr_Reinterpret(self, expr: ailment.Expr.Reinterpret):
+        r = self._expr(expr.operand)
+        typevar = None
+        if r.typevar is not None:
+            if isinstance(r.typevar, typevars.DerivedTypeVariable) and isinstance(
+                r.typevar.one_label(), typevars.ReinterpretAs
+            ):
+                # there is already a reinterpretas - overwrite it
+                typevar = self.tv_manager.new_dtv_with_merged_labels(
+                    r.typevar.type_var, label=typevars.ReinterpretAs(expr.to_type, expr.to_bits)
+                )
+            elif isinstance(r.typevar, typevars.TypeVariable):
+                typevar = self.tv_manager.new_dtv_with_merged_labels(
+                    r.typevar, label=typevars.ReinterpretAs(expr.to_type, expr.to_bits)
+                )
+
+        return RichR(self.state.top(expr.to_bits), typevar=typevar)
+
+    def _handle_expr_StackBaseOffset(self, expr: ailment.Expr.StackBaseOffset):
+        refbase_typevar = self.state.stack_offset_typevars.get(expr.offset, None)
+        if refbase_typevar is None:
+            # allocate a new type variable
+            refbase_typevar = self.tv_manager.new_tv()
+            self.state.stack_offset_typevars[expr.offset] = refbase_typevar
+
+        ref_typevar = self.tv_manager.new_tv()
+        access_derived_typevar = self._create_access_typevar(ref_typevar, False, None, 0)
+        load_constraint = typevars.Subtype(refbase_typevar, access_derived_typevar)
+        self.state.add_type_constraint(load_constraint)
+
+        value_v = self.state.stack_address(expr.offset)
+        richr = RichR(value_v, typevar=ref_typevar)
+        codeloc = self._codeloc()
+        self._ensure_variable_existence(richr, codeloc, src_expr=expr)
+        if self._reference_spoffset:
+            self._reference(richr, codeloc, src=expr)
+        return richr
+
+    def _handle_unop_Reference(self, expr: ailment.Expr.UnaryOp):
+        operand = expr.operand
+        # a stack-passed parameter is a stack variable of the caller's frame (e.g., Go's all-stack ABI0)
+        is_stack_param = (
+            isinstance(operand, ailment.Expr.VirtualVariable)
+            and operand.was_parameter
+            and operand.parameter_category == ailment.Expr.VirtualVariableCategory.STACK
+        )
+        if isinstance(operand, ailment.Expr.VirtualVariable) and (operand.was_stack or is_stack_param):
+            if expr.tags.get("extra_def", False):
+                self._assign_to_vvar(expr.operand, self._top(expr.operand.bits), dst=expr.operand)
+            refbase_typevar = None
+            off = operand.parameter_stack_offset if is_stack_param else operand.stack_offset
+
+            # does this variable exist?
+            value: claripy.ast.BV | None = self.vvar_region.get(expr.operand.varid, None)
+            if value is not None:
+                for _, var in self.state.extract_variables(value):
+                    if var in self.state.typevars:
+                        refbase_typevar = self.state.typevars[var]
+                        break
+
+            if refbase_typevar is None:
+                if off in self.state.stack_offset_typevars:
+                    refbase_typevar = self.state.stack_offset_typevars[off]
+                else:
+                    # allocate a new type variable
+                    refbase_typevar = self.tv_manager.new_tv()
+                    self.state.stack_offset_typevars[off] = refbase_typevar
+
+            ref_typevar = self.tv_manager.new_tv()
+            access_derived_typevar = self._create_access_typevar(ref_typevar, False, None, 0)
+            load_constraint = typevars.Subtype(refbase_typevar, access_derived_typevar)
+            self.state.add_type_constraint(load_constraint)
+
+            value_v = self.state.stack_address(off)
+            richr = RichR(value_v, typevar=ref_typevar)
+            codeloc = self._codeloc()
+            self._ensure_variable_existence(richr, codeloc, src_expr=expr.operand)
+            if self._reference_spoffset:
+                self._reference(richr, codeloc, src=expr.operand)
+            return richr
+        return RichR(self.state.top(expr.bits))
+
+    def _handle_expr_BasePointerOffset(self, expr):
+        # TODO
+        return self._top(expr.bits)
+
+    def _handle_expr_ITE(self, expr: ailment.Expr.ITE):
+        self._expr(expr.cond)  # cond
+        r0 = self._expr(expr.iftrue)
+        r1 = self._expr(expr.iffalse)
+
+        type_constraints = set()
+        tv = self.tv_manager.new_tv()
+        if r0.typevar is not None:
+            type_constraints.add(typevars.Subtype(tv, r0.typevar))
+        if r1.typevar is not None:
+            type_constraints.add(typevars.Subtype(tv, r1.typevar))
+
+        return RichR(self.state.top(expr.bits), typevar=tv, type_constraints=type_constraints)
+
+    def _handle_binop_Add(self, expr):
+        arg0, arg1 = expr.operands
+        r0, r1 = self._expr_pair(arg0, arg1, non_pointer=expr.floating_point)
+
+        result_size = expr.bits
+        type_constraints = set()
+        if expr.floating_point:
+            compute = self.state.top(result_size)
+            typevar = self.tv_manager.new_tv()
+            ft = self._fp_type(result_size)
+            # Set the result's FP lower bound from the operation width.
+            # Do NOT create Subtype(operand_tv, result_tv) -- that causes
+            # the solver's quotient graph to merge them into one equivalence
+            # class, losing the distinction between operand types (e.g.
+            # double + long_double would make both long_double).  Instead,
+            # only propagate concrete Float bounds to the result.
+            if ft is not None:
+                type_constraints.add(typevars.Subtype(ft, typevar))
+                for operand_r in (r0, r1):
+                    self._constrain_richr_as_float(operand_r, ft)
+            # Propagate Float lower bounds from operands directly to the result typevar.
+            # The solver doesn't follow DTV->TV subtype chains, so Float80 bounds on a
+            # DTV operand (e.g. from a long_double_load) must be copied explicitly.
+            for operand_r in (r0, r1):
+                if operand_r.type_constraints:
+                    for tc in operand_r.type_constraints:
+                        if isinstance(tc, typevars.Subtype) and isinstance(tc.sub_type, typeconsts.Float):
+                            type_constraints.add(typevars.Subtype(tc.sub_type, typevar))
+            for c in type_constraints:
+                self.state.add_type_constraint(c)
+        else:
+            compute = r0.data + r1.data if r0.data.size() == r1.data.size() else self.state.top(result_size)  # type: ignore
+            # create a new type variable and add constraints accordingly
+            r0_typevar = r0.typevar if r0.typevar is not None else self.tv_manager.new_tv()
+
+            typevar = None
+            if r1.data.concrete:
+                # addition with constants. create a derived type variable
+                if isinstance(r0_typevar, typevars.TypeVariable):
+                    typevar = self.tv_manager.new_dtv_with_merged_labels(
+                        r0_typevar, label=typevars.add_label(r1.data.concrete_value, r1.data.size())
+                    )
+            elif r1.typevar is not None:
+                typevar = self.tv_manager.new_tv()
+                type_constraints.add(typevars.Add(r0_typevar, r1.typevar, typevar))
+            else:
+                typevar = None
+
+        return RichR(compute, typevar=typevar, type_constraints=type_constraints)
+
+    def _handle_binop_Sub(self, expr):
+        arg0, arg1 = expr.operands
+        r0, r1 = self._expr_pair(arg0, arg1, non_pointer=expr.floating_point)
+        compute = r0.data - r1.data if r0.data.size() == r1.data.size() else self.state.top(expr.bits)  # type: ignore
+
+        result_size = expr.bits
+        type_constraints = set()
+        if expr.floating_point:
+            compute = self.state.top(result_size)
+            typevar = self.tv_manager.new_tv()
+            ft = self._fp_type(result_size)
+            if ft is not None:
+                type_constraints.add(typevars.Subtype(ft, typevar))
+            if r0.typevar is not None and ft is not None:
+                type_constraints.add(typevars.Subtype(ft, r0.typevar))
+            if r1.typevar is not None and ft is not None:
+                type_constraints.add(typevars.Subtype(ft, r1.typevar))
+            for operand_r in (r0, r1):
+                if operand_r.type_constraints:
+                    for tc in operand_r.type_constraints:
+                        if isinstance(tc, typevars.Subtype) and isinstance(tc.sub_type, typeconsts.Float):
+                            type_constraints.add(typevars.Subtype(tc.sub_type, typevar))
+            for c in type_constraints:
+                self.state.add_type_constraint(c)
+        else:
+            # widths can disagree on an ill-formed expression from an earlier pass; do not crash on it
+            compute = (
+                r0.data - r1.data if r0.data.size() == r1.data.size() else self.state.top(result_size)  # type: ignore
+            )
+
+            typevar = None
+            if r0.typevar is not None and r1.data.concrete and isinstance(r0.typevar, typevars.TypeVariable):
+                typevar = self.tv_manager.new_dtv_with_merged_labels(
+                    r0.typevar, label=typevars.sub_label(r1.data.concrete_value, r1.data.size())
+                )
+            else:
+                typevar = self.tv_manager.new_tv()
+                if r0.typevar is not None and r1.typevar is not None:
+                    type_constraints.add(typevars.Sub(r0.typevar, r1.typevar, typevar))
+
+        return RichR(
+            compute,
+            typevar=typevar,
+            type_constraints=type_constraints,
+        )
+
+    def _handle_binop_Mul(self, expr):
+        arg0, arg1 = expr.operands
+        r0, r1 = self._expr_pair(arg0, arg1, non_pointer=True)
+
+        result_size = expr.bits
+        type_constraints = set()
+
+        if expr.floating_point:
+            r = self.state.top(expr.bits)
+            typevar = self.tv_manager.new_tv()
+            ft = self._fp_type(result_size)
+
+            if ft is not None:
+                type_constraints.add(typevars.Subtype(ft, typevar))
+            if r0.typevar is not None and ft is not None:
+                type_constraints.add(typevars.Subtype(ft, r0.typevar))
+            if r1.typevar is not None and ft is not None:
+                type_constraints.add(typevars.Subtype(ft, r1.typevar))
+            for operand_r in (r0, r1):
+                if operand_r.type_constraints:
+                    for tc in operand_r.type_constraints:
+                        if isinstance(tc, typevars.Subtype) and isinstance(tc.sub_type, typeconsts.Float):
+                            type_constraints.add(typevars.Subtype(tc.sub_type, typevar))
+            for c in type_constraints:
+                self.state.add_type_constraint(c)
+        else:
+            if (r0.data.concrete or r1.data.concrete) and r0.data.size() == r1.data.size():
+                # constants
+                result_size = arg0.bits
+                compute = r0.data * r1.data  # type: ignore
+                return RichR(compute, typevar=typeconsts.int_type(result_size), type_constraints=None)
+
+            r = self.state.top(expr.bits)
+            return RichR(r, typevar=r0.typevar)
+
+        return RichR(r, typevar=typevar, type_constraints=type_constraints)
+
+    def _handle_binop_Mull(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+
+        result_size = expr.bits
+        operand_size = arg0.bits
+
+        # emit signedness constraints based on signed/unsigned multiply
+        int_type_func = typeconsts.signed_int_type if expr.signed else typeconsts.unsigned_int_type
+        if isinstance(r0.typevar, typevars.TypeVariable):
+            tc = typevars.Subtype(r0.typevar, int_type_func(operand_size))
+            self.state.add_type_constraint(tc)
+        if isinstance(r1.typevar, typevars.TypeVariable):
+            tc = typevars.Subtype(r1.typevar, int_type_func(operand_size))
+            self.state.add_type_constraint(tc)
+
+        if r0.data.concrete and r1.data.concrete:
+            # constants
+            if r0.data.size() < result_size:
+                if expr.signed:
+                    r0.data = claripy.SignExt(result_size - r0.data.size(), r0.data)
+                else:
+                    r0.data = claripy.ZeroExt(result_size - r0.data.size(), r0.data)
+            if r1.data.size() < result_size:
+                if expr.signed:
+                    r1.data = claripy.SignExt(result_size - r1.data.size(), r1.data)
+                else:
+                    r1.data = claripy.ZeroExt(result_size - r1.data.size(), r1.data)
+            return RichR(r0.data * r1.data, typevar=int_type_func(result_size), type_constraints=None)
+
+        r = self.state.top(expr.bits)
+        return RichR(
+            r,
+            typevar=r0.typevar,  # FIXME: the size is probably changed
+        )
+
+    def _handle_binop_Div(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0, r1 = self._expr_pair(arg0, arg1, non_pointer=True)
+        from_size = expr.bits
+        to_size = r1.bits
+
+        if not expr.floating_point:
+            # emit signedness constraints
+            int_type_func = typeconsts.signed_int_type if expr.signed else typeconsts.unsigned_int_type
+            if isinstance(r0.typevar, typevars.TypeVariable):
+                tc = typevars.Subtype(r0.typevar, int_type_func(arg0.bits))
+                self.state.add_type_constraint(tc)
+            if isinstance(r1.typevar, typevars.TypeVariable):
+                tc = typevars.Subtype(r1.typevar, int_type_func(arg1.bits))
+                self.state.add_type_constraint(tc)
+
+        if expr.floating_point or to_size > from_size:
+            quotient = self.state.top(to_size)
+            typevar = self.tv_manager.new_tv()
+            ft = self._fp_type(from_size)
+            if ft is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, typevar))
+            if r0.typevar is not None and ft is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, r0.typevar))
+            if r1.typevar is not None and ft is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, r1.typevar))
+            return RichR(quotient, typevar=typevar)
+        if (r1.data == 0).is_true():
+            quotient = self.state.top(to_size)
+        elif expr.signed:
+            quotient = claripy.SDiv(r0.data, claripy.SignExt(from_size - to_size, r1.data))
+        else:
+            quotient = r0.data // claripy.ZeroExt(from_size - to_size, r1.data)
+
+        return RichR(
+            quotient,
+            # | typevar=r0.typevar,  # FIXME: Handle typevars for Div
+        )
+
+    def _handle_binop_Mod(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+        result_size = expr.bits
+
+        if not expr.floating_point:
+            # emit signedness constraints
+            int_type_func = typeconsts.signed_int_type if expr.signed else typeconsts.unsigned_int_type
+            if isinstance(r0.typevar, typevars.TypeVariable):
+                tc = typevars.Subtype(r0.typevar, int_type_func(arg0.bits))
+                self.state.add_type_constraint(tc)
+            if isinstance(r1.typevar, typevars.TypeVariable):
+                tc = typevars.Subtype(r1.typevar, int_type_func(arg1.bits))
+                self.state.add_type_constraint(tc)
+
+        if expr.floating_point:
+            remainder = self.state.top(result_size)
+        else:
+            if (r1.data == 0).is_true():
+                remainder = self.state.top(result_size)
+            elif expr.signed:
+                remainder = r0.data.SMod(r1.data)
+            else:
+                remainder = r0.data % r1.data
+
+        # truncation if necessary
+        if remainder.size() > result_size:
+            remainder = claripy.Extract(result_size - 1, 0, remainder)
+
+        return RichR(
+            remainder,
+            # | typevar=r0.typevar,  # FIXME: Handle typevars for Mod
+        )
+
+    def _handle_binop_Xor(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+
+        if r0.data.concrete and r1.data.concrete:
+            # constants
+            result_size = arg0.bits
+            return RichR(r0.data ^ r1.data, typevar=typeconsts.unsigned_int_type(result_size), type_constraints=None)
+
+        # xor does not transfer type variables; instead, it forces both operands to be unsigned integers
+        if isinstance(r0.typevar, typevars.TypeVariable):
+            int_type_0 = typeconsts.unsigned_int_type(r0.data.size())
+            if int_type_0 is not None:
+                tc = typevars.Subtype(r0.typevar, int_type_0)
+                self.state.add_type_constraint(tc)
+        if isinstance(r1.typevar, typevars.TypeVariable):
+            int_type_1 = typeconsts.unsigned_int_type(r1.data.size())
+            if int_type_1 is not None:
+                tc = typevars.Subtype(r1.typevar, int_type_1)
+                self.state.add_type_constraint(tc)
+
+        r = self.state.top(expr.bits)
+        return RichR(r)
+
+    def _handle_binop_Shl(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        if not r1.data.concrete:
+            # we don't support symbolic shiftamount
+            r = self.state.top(result_size)
+            return RichR(r)
+
+        shiftamount = r1.data.concrete_value
+        return RichR(r0.data << shiftamount, typevar=typeconsts.int_type(result_size), type_constraints=None)
+
+    def _handle_binop_Shr(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        # logical right shift implies unsigned operand, unless it extracts the sign bit (x >> (bits - 1))
+        is_sign_bit_extraction = r1.data.concrete and r1.data.concrete_value == result_size - 1
+        if isinstance(r0.typevar, typevars.TypeVariable) and not is_sign_bit_extraction:
+            tc = typevars.Subtype(r0.typevar, typeconsts.unsigned_int_type(result_size))
+            self.state.add_type_constraint(tc)
+
+        if not r1.data.concrete:
+            # we don't support symbolic shiftamount
+            r = self.state.top(result_size)
+            return RichR(r)
+
+        shiftamount = r1.data.concrete_value
+
+        return RichR(
+            claripy.LShR(r0.data, shiftamount),
+            typevar=typeconsts.unsigned_int_type(result_size),
+            type_constraints=None,
+        )
+
+    def _handle_binop_Sal(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        if not r1.data.concrete:
+            # we don't support symbolic shiftamount
+            r = self.state.top(result_size)
+            return RichR(r)
+
+        shiftamount = r1.data.concrete_value
+
+        return RichR(r0.data << shiftamount, typevar=typeconsts.signed_int_type(result_size), type_constraints=None)
+
+    def _handle_binop_Sar(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        # arithmetic right shift implies signed operand
+        if isinstance(r0.typevar, typevars.TypeVariable):
+            tc = typevars.Subtype(r0.typevar, typeconsts.signed_int_type(result_size))
+            self.state.add_type_constraint(tc)
+
+        if not r1.data.concrete:
+            # we don't support symbolic shiftamount
+            r = self.state.top(result_size)
+            return RichR(r)
+
+        shiftamount = r1.data.concrete_value
+
+        return RichR(r0.data >> shiftamount, typevar=typeconsts.signed_int_type(result_size), type_constraints=None)
+
+    def _handle_binop_And(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+
+        result_size = arg0.bits
+        if r0.data.concrete and r1.data.concrete:
+            return RichR(
+                r0.data & r1.data,
+                typevar=typeconsts.unsigned_int_type(result_size),
+                type_constraints=None,
+            )
+
+        r = self.state.top(expr.bits)
+        return RichR(r, typevar=typeconsts.unsigned_int_type(result_size))
+
+    def _handle_binop_Or(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0, non_pointer=True)
+        r1 = self._expr_bv(arg1, non_pointer=True)
+
+        result_size = arg0.bits
+        if r0.data.concrete and r1.data.concrete:
+            return RichR(
+                r0.data | r1.data,
+                typevar=typeconsts.unsigned_int_type(result_size),
+                type_constraints=None,
+            )
+
+        r = self.state.top(expr.bits)
+        return RichR(r, typevar=typeconsts.unsigned_int_type(result_size))
+
+    def _handle_binop_LogicalAnd(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0)
+        _ = self._expr_bv(arg1)
+        r = self.state.top(expr.bits)
+        return RichR(r, typevar=r0.typevar)
+
+    def _handle_binop_LogicalOr(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0)
+        _ = self._expr_bv(arg1)
+        r = self.state.top(expr.bits)
+        return RichR(r, typevar=r0.typevar)
+
+    def _handle_binop_LogicalXor(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr_bv(arg0)
+        _ = self._expr_bv(arg1)
+        r = self.state.top(expr.bits)
+        return RichR(r, typevar=r0.typevar)
+
+    def _handle_binop_Rol(self, expr):
+        arg0, arg1 = expr.operands
+
+        _ = self._expr_bv(arg0, non_pointer=True)
+        _ = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        r = self.state.top(result_size)
+        return RichR(r)
+
+    def _handle_binop_Ror(self, expr):
+        arg0, arg1 = expr.operands
+
+        _ = self._expr_bv(arg0, non_pointer=True)
+        _ = self._expr_bv(arg1, non_pointer=True)
+        result_size = arg0.bits
+
+        r = self.state.top(result_size)
+        return RichR(r)
+
+    def _handle_binop_Concat(self, expr):
+        arg0, arg1 = expr.operands
+
+        _ = self._expr_bv(arg0)
+        _ = self._expr_bv(arg1)
+
+        # TODO: Model the operation. Don't lose type constraints
+        return RichR(self.state.top(expr.bits))
+
+    # comparisons may propagate type information
+
+    def _constrain_richr_as_float(self, r: RichR, ft: typeconsts.Float) -> None:
+        """Add a Float lower bound to a RichR's typevar.
+
+        When the typevar is a DerivedTypeVariable, the Typehoon solver can't
+        propagate Float bounds through the DTV chain (sketch lookup returns None
+        for intermediate DTV paths).  In that case, replace the variable's DTV
+        typevar with a fresh TypeVariable constrained by both the DTV and the
+        Float bound.
+        """
+        if r.typevar is not None:
+            self.state.add_type_constraint(typevars.Subtype(ft, r.typevar))
+        if isinstance(r.typevar, typevars.DerivedTypeVariable) and r.variable is not None:
+            var_tv = (
+                self.state.typevars.get_type_variable(r.variable)
+                if self.state.typevars.has_type_variable_for(r.variable)
+                else None
+            )
+            if isinstance(var_tv, typevars.DerivedTypeVariable):
+                fresh_tv = self.tv_manager.new_tv()
+                self.state.typevars.add_type_variable(r.variable, fresh_tv)
+                self.state.add_type_constraint(typevars.Subtype(var_tv, fresh_tv))
+                self.state.add_type_constraint(typevars.Subtype(ft, fresh_tv))
+            elif var_tv is not None:
+                self.state.add_type_constraint(typevars.Subtype(ft, var_tv))
+
+    def _handle_binop_Cmp_Default(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._operand(arg0, expr.floating_point)
+        r1 = self._operand(arg1, expr.floating_point)
+        if (
+            r0.typevar is not None
+            and r1.typevar is not None
+            and (isinstance(r0.typevar, typevars.TypeVariable) or isinstance(r1.typevar, typevars.TypeVariable))
+        ):
+            tc = typevars.Equivalence(r0.typevar, r1.typevar)
+            self.state.add_type_constraint(tc)
+
+        if expr.floating_point:
+            ft = self._fp_type(arg0.bits)
+            if ft is not None:
+                for r in (r0, r1):
+                    self._constrain_richr_as_float(r, ft)
+
+        return RichR(self.state.top(expr.bits))
+
+    _handle_binop_CmpEQ = _handle_binop_Cmp_Default
+    _handle_binop_CmpNE = _handle_binop_Cmp_Default
+
+    def _handle_binop_Cmp_Signed(self, expr):
+        """Handle signed comparisons: add equivalence constraint plus signed type constraint on operands."""
+        arg0, arg1 = expr.operands
+
+        r0 = self._expr(arg0)
+        r1 = self._expr(arg1)
+        if (
+            r0.typevar is not None
+            and r1.typevar is not None
+            and (isinstance(r0.typevar, typevars.TypeVariable) or isinstance(r1.typevar, typevars.TypeVariable))
+        ):
+            tc = typevars.Equivalence(r0.typevar, r1.typevar)
+            self.state.add_type_constraint(tc)
+
+        # add signed type constraint for both operands
+        if isinstance(r0.typevar, typevars.TypeVariable):
+            tc = typevars.Subtype(r0.typevar, typeconsts.signed_int_type(arg0.bits))
+            self.state.add_type_constraint(tc)
+        if isinstance(r1.typevar, typevars.TypeVariable):
+            tc = typevars.Subtype(r1.typevar, typeconsts.signed_int_type(arg1.bits))
+            self.state.add_type_constraint(tc)
+
+        return RichR(self.state.top(expr.bits))
+
+    def _handle_binop_CmpLT(self, expr):
+        if expr.signed and not expr.floating_point:
+            return self._handle_binop_Cmp_Signed(expr)
+        return self._handle_binop_Cmp_Default(expr)
+
+    def _handle_binop_CmpLE(self, expr):
+        if expr.signed and not expr.floating_point:
+            return self._handle_binop_Cmp_Signed(expr)
+        return self._handle_binop_Cmp_Default(expr)
+
+    def _handle_binop_CmpGT(self, expr):
+        if expr.signed and not expr.floating_point:
+            return self._handle_binop_Cmp_Signed(expr)
+        return self._handle_binop_Cmp_Default(expr)
+
+    def _handle_binop_CmpGE(self, expr):
+        if expr.signed and not expr.floating_point:
+            return self._handle_binop_Cmp_Signed(expr)
+        return self._handle_binop_Cmp_Default(expr)
+
+    def _handle_binop_Default(self, expr):
+        arg0, arg1 = expr.operands
+
+        r0 = self._operand(arg0, expr.floating_point)
+        r1 = self._operand(arg1, expr.floating_point)
+
+        if expr.op in _FP_MATH_BINOPS:
+            return self._fp_math_result(expr, (r0, r1))
+        if expr.op == "Scale":
+            # ldexp(x, n): only x is a float
+            return self._fp_math_result(expr, (r0,))
+        if expr.op == "Round":
+            # Round(rm, x): x and the result are floats
+            return self._fp_math_result(expr, (r1,))
+        return RichR(self.state.top(expr.bits))
+
+    def _fp_math_result(self, expr: ailment.expression.BinaryOp | ailment.expression.UnaryOp, operands) -> RichR:
+        # a libm-style FP op: the given operands and the result are floats of the op width
+        ft = self._fp_type(expr.bits)
+        if ft is None:
+            return RichR(self.state.top(expr.bits))
+        for r in operands:
+            self._constrain_richr_as_float(r, ft)
+        typevar = self.tv_manager.new_tv()
+        self.state.add_type_constraint(typevars.Subtype(ft, typevar))
+        return RichR(self.state.top(expr.bits), typevar=typevar)
+
+    _handle_binop_AddF = _handle_binop_Default
+    _handle_binop_SubF = _handle_binop_Default
+    _handle_binop_SubV = _handle_binop_Default
+    _handle_binop_MulF = _handle_binop_Default
+    _handle_binop_DivF = _handle_binop_Default
+    _handle_binop_DivV = _handle_binop_Default
+    _handle_binop_AddV = _handle_binop_Default
+    _handle_binop_MulV = _handle_binop_Default
+    _handle_binop_MulHiV = _handle_binop_Default
+    _handle_binop_Carry = _handle_binop_Default
+    _handle_binop_Borrow = _handle_binop_Default
+    _handle_binop_SCarry = _handle_binop_Default
+    _handle_binop_SBorrow = _handle_binop_Default
+    _handle_binop_InterleaveLOV = _handle_binop_Default
+    _handle_binop_InterleaveHIV = _handle_binop_Default
+    _handle_binop_CasCmpEQ = _handle_binop_Default
+    _handle_binop_CasCmpNE = _handle_binop_Default
+    _handle_binop_ExpCmpNE = _handle_binop_Default
+    _handle_binop_SarNV = _handle_binop_Default
+    _handle_binop_ShrNV = _handle_binop_Default
+    _handle_binop_ShlNV = _handle_binop_Default
+    _handle_binop_PermV = _handle_binop_Default
+    _handle_binop_Set = _handle_binop_Default
+    _handle_binop_MaxV = _handle_binop_Default
+    _handle_binop_MinV = _handle_binop_Default
+
+    def _handle_binop_HAddV(self, expr: ailment.expression.BinaryOp) -> RichR[claripy.ast.BV | claripy.ast.FP]:
+        return cast(RichR[claripy.ast.BV | claripy.ast.FP], self._handle_binop_Default(expr))
+
+    # scalar FP max/min (from SSEScalarLowering) behave like a float Add
+    _handle_binop_MaxF = _handle_binop_Add
+    _handle_binop_MinF = _handle_binop_Add
+    _handle_binop_QAddV = _handle_binop_Default
+    _handle_binop_QSubV = _handle_binop_Default
+    _handle_binop_QNarrowBinV = _handle_binop_Default
+    _handle_binop_CmpORD = _handle_binop_Default
+    _handle_binop_CmpEQV = _handle_binop_Default
+    _handle_binop_CmpNEV = _handle_binop_Default
+    _handle_binop_CmpGEV = _handle_binop_Default
+    _handle_binop_CmpGTV = _handle_binop_Default
+    _handle_binop_CmpLEV = _handle_binop_Default
+    _handle_binop_CmpLTV = _handle_binop_Default
+    _handle_binop_CmpF = _handle_binop_Default
+
+    def _handle_unop_Not(self, expr):
+        arg = expr.operands[0]
+        expr = self._expr_bv(arg)
+
+        result_size = arg.bits
+
+        if expr.data.concrete:
+            return RichR(
+                ~expr.data,
+                typevar=typeconsts.int_type(result_size),
+                type_constraints=None,
+            )
+
+        r = self.state.top(result_size)
+        return RichR(r, typevar=expr.typevar)
+
+    def _handle_unop_Neg(self, expr):
+        unop = expr
+        arg = unop.operands[0]
+        r_inner = self._expr_bv(arg)
+
+        result_size = arg.bits
+
+        if r_inner.data.concrete:
+            return RichR(
+                -r_inner.data,
+                typevar=typeconsts.signed_int_type(result_size),
+                type_constraints=None,
+            )
+
+        # FP negation preserves precision.  Propagate the operand's typevar.
+        # When the peephole has narrowed the Neg to the actual precision
+        # (e.g. 32 bits after Conv round-trip elimination), add a Float
+        # constraint.  Don't add Float64 for 64-bit Neg on x87 -- the
+        # widening Conv fix handles that case.
+        typevar = r_inner.typevar
+        type_constraints: set[typevars.TypeConstraint] | None = None
+        if unop.floating_point and result_size != 64:
+            ft = self._fp_type(result_size)
+            if ft is not None:
+                typevar = self.tv_manager.new_tv()
+                constraint = typevars.Subtype(ft, typevar)
+                self.state.add_type_constraint(constraint)
+                type_constraints = {constraint}
+
+        r = self.state.top(result_size)
+        return RichR(r, typevar=typevar, type_constraints=type_constraints)
+
+    def _handle_unop_BitwiseNeg(self, expr):
+        arg = expr.operands[0]
+        expr = self._expr_bv(arg)
+
+        result_size = arg.bits
+
+        if expr.data.concrete:
+            return RichR(
+                ~expr.data,
+                typevar=typeconsts.unsigned_int_type(result_size),
+                type_constraints=None,
+            )
+
+        r = self.state.top(result_size)
+        return RichR(r, typevar=expr.typevar)
+
+    def _handle_unop_Abs(self, expr):
+        operand = self._expr(expr.operand)
+        return cast(
+            RichR[claripy.ast.BV | claripy.ast.FP],
+            RichR(self.state.top(expr.bits), typevar=operand.typevar),
+        )
+
+    def _handle_unop_Default(self, expr: ailment.expression.UnaryOp) -> RichR[claripy.ast.BV | claripy.ast.FP]:
+        r = self._expr(expr.operands[0])
+        if expr.op in _FP_MATH_UNOPS:
+            return self._fp_math_result(expr, (r,))
+        return cast(RichR[claripy.ast.BV | claripy.ast.FP], RichR(self.state.top(expr.bits)))
+
+    _handle_unop_Dereference = _handle_unop_Default
+    _handle_unop_Clz = _handle_unop_Default
+    _handle_unop_Ctz = _handle_unop_Default
+    _handle_unop_GetMSBs = _handle_unop_Default
+    _handle_unop_unpack = _handle_unop_Default
+    _handle_unop_Sqrt = _handle_unop_Default
+    _handle_unop_RSqrtEst = _handle_unop_Default

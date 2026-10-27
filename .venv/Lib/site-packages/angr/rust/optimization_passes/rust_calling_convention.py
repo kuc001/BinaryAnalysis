@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+from angr.analyses.decompiler.optimization_passes.optimization_pass import OptimizationPass, OptimizationPassStage
+from angr.enums import Flavors
+from angr.knowledge_plugins.functions.function import PrototypeSource
+
+
+class RustCallingConvention(OptimizationPass):
+    """Apply Rust calling convention analysis results to function prototypes."""
+
+    ARCHES = None
+    PLATFORMS = None
+    STAGE = OptimizationPassStage.BEFORE_SSA_LEVEL0_TRANSFORMATION
+    NAME = "Recover Rust prototypes and calling convention for current function"
+
+    def __init__(self, func, manager, **kwargs):
+        super().__init__(func, manager, **kwargs)
+        self.analyze()
+
+    def _check(self):
+        return self.project.is_rust_binary, None
+
+    def _analyze(self, cache=None):
+        rcc = self.project.analyses.RustCallingConvention(self._func, ail_manager=self.manager)
+        # derived from the Rust ABI and type database, not from our own inference: Clinic must not re-derive it
+        # later in the same run. Only the Rust flavor's entry changes; the C prototype stays as it is.
+        self._func.set_prototype(Flavors.RUST_FLAVOR, rcc.prototype, source=PrototypeSource.SIGNATURES)
+        self._func.calling_convention = rcc.calling_convention

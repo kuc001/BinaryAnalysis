@@ -1,0 +1,795 @@
+from __future__ import annotations
+
+import copy
+import logging
+from typing import TYPE_CHECKING, Any, cast
+
+import archinfo
+
+from angr.ailment import Const, Expr, Stmt
+from angr.ailment.manager import Manager
+from angr.analyses.s_reaching_definitions import SRDAView
+from angr.calling_conventions import (
+    SimArrayArg,
+    SimCC,
+    SimCCSyscall,
+    SimComboArg,
+    SimFunctionArgument,
+    SimLyingRegArg,
+    SimReferenceArgument,
+    SimRegArg,
+    SimStackArg,
+    SimStructArg,
+)
+from angr.enums import Flavors
+from angr.errors import AngrTypeError
+from angr.knowledge_plugins.key_definitions.constants import OP_BEFORE
+from angr.procedures.stubs.format_parser import FormatParser, FormatSpecifier
+from angr.sim_type import (
+    SimType,
+    SimTypeBottom,
+    SimTypeChar,
+    SimTypeFloat,
+    SimTypeFunction,
+    SimTypeInt,
+    SimTypeNum,
+    SimTypePointer,
+)
+from angr.utils.types import dereference_simtype_by_lib
+
+from .stackarg_offset_manager import StackArgOffsetManager
+from .variable_map import variable_map_of
+
+if TYPE_CHECKING:
+    from angr.analyses.s_reaching_definitions import SRDAModel
+    from angr.knowledge_plugins.functions import Function
+    from angr.knowledge_plugins.key_definitions.definition import Definition
+    from angr.project import Project
+
+
+l = logging.getLogger(name=__name__)
+
+
+class CallSiteMaker:
+    """
+    Add calling convention, declaration, and args to a call site.
+    """
+
+    def __init__(
+        self,
+        project: Project,
+        block,
+        *,
+        ail_manager: Manager,
+        reaching_definitions: SRDAModel | None = None,
+        stack_pointer_tracker=None,
+        x87_call_ftop: dict[int, int] | None = None,
+        flavor: str = Flavors.DEFAULT_FLAVOR,
+    ):
+        self.project = project
+        self.kb = project.kb
+        self.block = block
+        # the decompilation flavor whose prototypes callees are looked up under
+        self.flavor = flavor
+
+        self._reaching_definitions = reaching_definitions
+        self._stack_pointer_tracker = stack_pointer_tracker
+        self._ail_manager: Manager = ail_manager
+        self._x87_call_ftop = x87_call_ftop
+
+        self.result_block = None
+        # block addr, call ins addr, stack offset, arg size (in bytes)
+        self.stackarg_offset_manager: StackArgOffsetManager = StackArgOffsetManager(self.project.arch.bits)
+        self.removed_vvar_ids: set[int] = set()
+
+        self._analyze()
+
+    def _analyze(self):
+        if not self.block.statements:
+            return
+
+        last_stmt = self.block.statements[-1]
+
+        if isinstance(last_stmt, Stmt.SideEffectStatement):
+            call_expr = last_stmt.expr
+        elif isinstance(last_stmt, Stmt.Assignment) and isinstance(last_stmt.src, Expr.Call):
+            call_expr = last_stmt.src
+        elif (
+            isinstance(last_stmt, Stmt.Assignment)
+            and isinstance(last_stmt.src, Expr.Convert)
+            and isinstance(last_stmt.src.operand, Expr.Call)
+        ):
+            call_expr = last_stmt.src.operand
+        elif (
+            isinstance(last_stmt, Stmt.Assignment)
+            and isinstance(last_stmt.src, Expr.Insert)
+            and isinstance(last_stmt.src.value, Expr.Call)
+        ):
+            call_expr = last_stmt.src.value
+        elif (
+            isinstance(last_stmt, Stmt.Assignment)
+            and isinstance(last_stmt.src, Expr.Extract)
+            and isinstance(last_stmt.src.base, Expr.Call)
+        ):
+            call_expr = last_stmt.src.base
+        else:
+            self.result_block = self.block
+            return
+
+        if isinstance(call_expr.target, str):
+            # custom function calls
+            self.result_block = self.block
+            return
+
+        cc = None
+        prototype: SimTypeFunction | None = None
+        func = None
+        stack_arg_locs: list[SimStackArg] = []
+
+        target = self._get_call_target(call_expr)
+        if target is not None and target in self.kb.functions:
+            # function-specific logic when the calling target is known
+            func = self.kb.functions[target]
+
+        # priority:
+        # 0. manually-specified call-site prototype
+        # 1. function-specific prototype
+        # 2. automatically recovered call-site prototype
+
+        # manually-specified call-site prototype
+        has_callsite_prototype = self.kb.callsite_prototypes.has_prototype(self.block.addr, flavor=self.flavor)
+        if has_callsite_prototype:
+            manually_specified = self.kb.callsite_prototypes.is_prototype_manual(self.block.addr, flavor=self.flavor)
+            if manually_specified:
+                cc = self.kb.callsite_prototypes.get_cc(self.block.addr, flavor=self.flavor)
+                prototype = self.kb.callsite_prototypes.get_prototype(self.block.addr, flavor=self.flavor)
+
+        # function-specific prototype
+        if (cc is None or prototype is None) and func is not None:
+            if func.get_prototype(self.flavor) is None:
+                func.find_declaration()
+            cc = func.calling_convention
+            prototype = func.get_prototype(self.flavor)
+
+        # automatically recovered call-site prototype
+        if (cc is None or prototype is None) and has_callsite_prototype:
+            cc = self.kb.callsite_prototypes.get_cc(self.block.addr, flavor=self.flavor)
+            prototype = self.kb.callsite_prototypes.get_prototype(self.block.addr, flavor=self.flavor)
+
+        # ensure the prototype has been resolved
+        if prototype is not None and func is not None:
+            # make sure the function prototype is resolved.
+            # TODO: Cache resolved function prototypes globally
+            prototype_libname = func.prototype_libname
+            if prototype_libname is not None:
+                prototype = cast(SimTypeFunction, dereference_simtype_by_lib(prototype, prototype_libname))
+
+        if func is None and prototype is not None:
+            # a result type an earlier pass bound to this indirect call (the result registers the caller reads)
+            bound_returnty = variable_map_of(self._ail_manager).returnty(call_expr)
+            if bound_returnty is not None:
+                prototype = prototype.copy()
+                prototype.returnty = bound_returnty
+
+        args = []
+        arg_vvars = []
+        arg_locs = None
+        if cc is None:
+            l.warning("Call site %#x (callee %s) has an unknown calling convention.", self.block.addr, repr(func))
+        elif prototype is not None:
+            # Make arguments
+            arg_locs = cc.arg_locs(prototype)
+            if prototype.variadic:
+                # determine the number of variadic arguments
+                assert func is not None
+                variadic_args = self._determine_variadic_arguments(func, cc, call_expr)
+                if variadic_args:
+                    callsite_ty = copy.copy(prototype)
+                    callsite_ty.args = tuple(callsite_ty.args) + tuple(variadic_args)
+                    arg_locs = cc.arg_locs(callsite_ty)
+
+        if arg_locs is not None and cc is not None:
+            expanded_arg_locs = self._expand_arglocs(arg_locs)
+            for arg_idx, arg_loc in enumerate(expanded_arg_locs):
+                if call_expr.args is not None and arg_idx < len(call_expr.args):
+                    args.append(call_expr.args[arg_idx])
+                    continue
+                if isinstance(arg_loc, SimReferenceArgument):
+                    if not isinstance(arg_loc.ptr_loc, (SimRegArg, SimStackArg)):
+                        raise NotImplementedError("Why would a calling convention produce this?")
+                    if isinstance(arg_loc.main_loc, SimStructArg):
+                        dereference_size = arg_loc.main_loc.struct.size // self.project.arch.byte_width
+                    else:
+                        dereference_size = arg_loc.main_loc.size
+                    arg_loc = arg_loc.ptr_loc
+                else:
+                    dereference_size = None
+
+                x87_offset = None
+                if isinstance(arg_loc, SimLyingRegArg) and arg_loc.x87_index is not None:
+                    x87_offset = self._x87_arg_offset(arg_loc.x87_index, last_stmt)
+                if isinstance(arg_loc, SimRegArg):
+                    size = arg_loc.size
+                    offset = arg_loc.check_offset(cc.arch) if x87_offset is None else x87_offset
+                    value_and_def = self._resolve_register_argument(arg_loc, offset=x87_offset)
+                    if value_and_def is not None:
+                        vvar_def = value_and_def[1]
+                        arg_vvars.append(vvar_def)
+                        vvar_use = Expr.VirtualVariable(
+                            self._ail_manager.next_atom(),
+                            vvar_def.varid,
+                            vvar_def.bits,
+                            vvar_def.category,
+                            oident=vvar_def.oident,
+                            reg_vvars=vvar_def.reg_vvars,
+                            **vvar_def.tags,
+                        )
+                        vvar_def_reg_offset = None
+                        if vvar_def.was_reg:
+                            vvar_def_reg_offset = vvar_def.reg_offset
+                        elif (
+                            vvar_def.was_parameter
+                            and vvar_def.parameter_category == Expr.VirtualVariableCategory.REGISTER
+                        ):
+                            vvar_def_reg_offset = vvar_def.parameter_reg_offset
+
+                        if vvar_def_reg_offset is not None and offset > vvar_def_reg_offset:
+                            # we need to shift the value
+                            vvar_use = Expr.BinaryOp(
+                                self._ail_manager.next_atom(),
+                                "Shr",
+                                [
+                                    vvar_use,
+                                    Expr.Const(
+                                        self._ail_manager.next_atom(),
+                                        (offset - vvar_def_reg_offset) * 8,
+                                        8,
+                                    ),
+                                ],
+                                **vvar_use.tags,
+                            )
+                        if vvar_def.size > arg_loc.size:
+                            # we need to narrow the value
+                            vvar_use = Expr.Convert(
+                                self._ail_manager.next_atom(),
+                                vvar_use.bits,
+                                arg_loc.size * self.project.arch.byte_width,
+                                False,
+                                vvar_use,
+                                **vvar_use.tags,
+                            )
+                        arg_expr = vvar_use
+                    else:
+                        reg = Expr.Register(
+                            self._atom_idx(),
+                            offset,
+                            size * 8,
+                            reg_name=arg_loc.reg_name
+                            if x87_offset is None
+                            else self.project.arch.translate_register_name(offset, size),
+                            ins_addr=last_stmt.tags["ins_addr"],
+                        )
+                        arg_expr = reg
+                elif isinstance(arg_loc, SimStackArg):
+                    stack_arg_locs.append(arg_loc)
+                    _, the_arg = self._resolve_stack_argument(call_expr, arg_loc, cc)
+                    arg_expr = the_arg if the_arg is not None else None
+                elif isinstance(arg_loc, SimStructArg):
+                    arg_expr = None
+                    l.warning("SimStructArg is not yet supported")
+                elif isinstance(arg_loc, SimComboArg):
+                    arg_expr = None
+                    l.warning("SimComboArg is not yet supported")
+                else:
+                    assert False, "Unreachable"
+
+                if arg_expr is not None and dereference_size is not None:
+                    arg_expr = Expr.Load(self._atom_idx(), arg_expr, dereference_size, endness=archinfo.Endness.BE)
+                if arg_expr is not None:
+                    args.append(arg_expr)
+
+        # Remove the old call statement
+        new_stmts = self.block.statements[:-1]
+
+        # remove the statement that stores the return address
+        if self.project.arch.call_pushes_ret:
+            # check if the last statement is storing the return address onto the top of the stack
+            for stmt_idx_r, the_stmt in enumerate(reversed(new_stmts)):
+                stmt_idx = len(new_stmts) - 1 - stmt_idx_r
+                if isinstance(the_stmt, Stmt.SideEffectStatement):
+                    break
+                if isinstance(the_stmt, Stmt.Assignment):
+                    if not (isinstance(the_stmt.dst, Expr.VirtualVariable) and the_stmt.dst.was_stack):
+                        continue
+                    src = the_stmt.src
+                    varid = the_stmt.dst.varid
+                elif isinstance(the_stmt, Stmt.Store):
+                    src = the_stmt.data
+                    varid = None
+                else:
+                    continue
+                if isinstance(src, Expr.Const) and src.value == self.block.addr + self.block.original_size:
+                    # yes it is!
+                    if varid is not None:
+                        self.removed_vvar_ids.add(varid)
+                    new_stmts = new_stmts[:stmt_idx] + new_stmts[stmt_idx + 1 :]
+                    break
+        else:
+            # if there is an lr register...
+            lr_offset = None
+            if archinfo.arch_arm.is_arm_arch(self.project.arch) or self.project.arch.name in {"PPC32", "PPC64"}:
+                lr_offset = self.project.arch.registers["lr"][0]
+            elif self.project.arch.name in {"MIPS32", "MIPS64"}:
+                lr_offset = self.project.arch.registers["ra"][0]
+            # remove the assignment to the lr register
+            if lr_offset is not None:
+                for stmt_idx_r, the_stmt in enumerate(reversed(new_stmts)):
+                    stmt_idx = len(new_stmts) - 1 - stmt_idx_r
+                    if isinstance(the_stmt, Stmt.SideEffectStatement):
+                        break
+                    if not isinstance(the_stmt, Stmt.Assignment):
+                        continue
+                    if isinstance(the_stmt.dst, Expr.Register) and the_stmt.dst.reg_offset == lr_offset:
+                        varid = None
+                    elif (
+                        isinstance(the_stmt.dst, Expr.VirtualVariable)
+                        and the_stmt.dst.was_reg
+                        and the_stmt.dst.reg_offset == lr_offset
+                    ):
+                        varid = the_stmt.dst.varid
+                    else:
+                        continue
+                    # found it
+                    new_stmts = new_stmts[:stmt_idx] + new_stmts[stmt_idx + 1 :]
+                    if varid is not None:
+                        self.removed_vvar_ids.add(varid)
+                    break
+
+        # calculate stack offsets for arguments that are put on the stack. these offsets will be consumed by
+        # simplification steps in the future, which may decide to remove statements that store arguments on the stack.
+        if stack_arg_locs:
+            assert self._stack_pointer_tracker is not None
+            sp_offset = self._stack_pointer_tracker.offset_before(
+                call_expr.tags["ins_addr"], self.project.arch.sp_offset
+            )
+            if sp_offset is None:
+                l.warning(
+                    "Failed to calculate the stack pointer offset at pc %#x. You may find redundant Store statements.",
+                    call_expr.tags["ins_addr"],
+                )
+            else:
+                if sp_offset >= (1 << (self.project.arch.bits - 1)):
+                    # make it a signed integer
+                    sp_offset -= 1 << self.project.arch.bits
+                # same adjustment as _resolve_stack_argument(): STACKARG_SP_DIFF is not always a call-time SP change
+                # (Go on arm reserves 0(RSP) for the saved LR)
+                ret_addr_size = (
+                    self.project.arch.bytes
+                    if self.project.arch.call_pushes_ret and not isinstance(cc, SimCCSyscall)
+                    else 0
+                )
+                for arg in stack_arg_locs:
+                    self.stackarg_offset_manager.add_call_stack_arg_offset(
+                        self.block.addr,
+                        self.block.idx,
+                        call_expr.tags["ins_addr"],
+                        sp_offset + arg.stack_offset - ret_addr_size,
+                        arg.size,
+                    )
+
+        if isinstance(last_stmt, Stmt.SideEffectStatement):
+            ret_expr = last_stmt.ret_expr
+            fp_ret_expr = last_stmt.fp_ret_expr
+        else:
+            ret_expr = None
+            fp_ret_expr = None
+        # if ret_expr and fp_ret_expr are None, it means in previous steps (such as during AIL simplification) we have
+        # deemed the return value of this call statement as useless and is removed.
+
+        if (
+            ret_expr is not None
+            and fp_ret_expr is not None
+            and prototype is not None
+            and prototype.returnty is not None
+        ):
+            # we need to determine the return type of this call (ret_expr vs fp_ret_expr)
+            is_float = isinstance(prototype.returnty, SimTypeFloat)
+            if is_float:
+                ret_expr = None
+            else:
+                fp_ret_expr = None
+
+        if isinstance(ret_expr, Expr.Register) and cc is not None and prototype is not None:
+            ret_expr = self._combo_ret_expr(ret_expr, cc, prototype)
+
+        ret_type_bits = None
+        if (
+            prototype is not None
+            and prototype.returnty is not None
+            and not isinstance(prototype.returnty, SimTypeBottom)
+        ):
+            ret_type_bits = prototype.returnty.with_arch(self.project.arch).size
+            if ret_type_bits is not None:
+                # Narrow the return expression to match the prototype's return type
+                if (
+                    ret_expr is not None
+                    and not isinstance(ret_expr, Expr.VirtualVariable)
+                    and ret_expr.bits > ret_type_bits
+                ):
+                    ret_expr = ret_expr.copy()
+                    ret_expr.bits = ret_type_bits
+                if (
+                    fp_ret_expr is not None
+                    and not isinstance(fp_ret_expr, Expr.VirtualVariable)
+                    and fp_ret_expr.bits > ret_type_bits
+                ):
+                    fp_ret_expr = fp_ret_expr.copy()
+                    fp_ret_expr.bits = ret_type_bits
+
+        tags = call_expr.tags.copy()
+        tags.pop("arg_vvars", None)
+        if func is not None:
+            tags["is_prototype_guessed"] = func.is_prototype_guessed_for(self.flavor)
+        new_call = Expr.Call(
+            call_expr.idx,
+            call_expr.target,
+            args=args,
+            arg_vvars=arg_vvars,
+            **tags,
+        )
+        vm = variable_map_of(self._ail_manager)
+        vm.set_calling_convention(new_call, cc)
+        vm.set_prototype(new_call, prototype)
+        stack_result = self._stack_result_slot(cc, prototype, call_expr)
+        if isinstance(last_stmt, Stmt.Assignment):
+            if not new_call.bits:
+                new_call.bits = last_stmt.src.bits
+            new_stmt = Stmt.Assignment(last_stmt.idx, last_stmt.dst, new_call, **last_stmt.tags)
+        elif stack_result is not None:
+            # the callee leaves its result in the caller's frame (Go's ABI0): the call defines that slot
+            sp_offset, size = stack_result
+            new_call.bits = size * self.project.arch.byte_width
+            new_stmt = Stmt.Store(
+                call_expr.idx,
+                Expr.StackBaseOffset(self._atom_idx(), self.project.arch.bits, sp_offset),
+                new_call,
+                size,
+                self.project.arch.memory_endness,
+                **tags,
+            )
+        else:
+            if not new_call.bits:
+                if ret_expr is not None:
+                    new_call.bits = ret_expr.bits
+                elif fp_ret_expr is not None:
+                    new_call.bits = fp_ret_expr.bits
+            new_stmt = Stmt.SideEffectStatement(
+                call_expr.idx,
+                new_call,
+                ret_expr=ret_expr,
+                fp_ret_expr=fp_ret_expr,
+                **tags,
+            )
+
+        new_stmts.append(new_stmt)
+
+        new_block = self.block.copy(statements=new_stmts)
+
+        self.result_block = new_block
+
+    def _stack_result_slot(self, cc, prototype, call_expr: Expr.Expression) -> tuple[int, int] | None:
+        """(stack offset, size) of a result returned on the stack, relative to this function's stack base."""
+        if (
+            cc is None
+            or prototype is None
+            or prototype.returnty is None
+            or isinstance(prototype.returnty, SimTypeBottom)
+        ):
+            return None
+        if self._stack_pointer_tracker is None or call_expr.tags.get("ins_addr") is None:
+            return None
+        try:
+            ret_loc = cc.return_val(prototype.returnty)
+        except (AngrTypeError, ValueError, KeyError, NotImplementedError):
+            return None
+        locs = self._expand_arglocs([ret_loc]) if ret_loc is not None else []
+        if not locs or not all(isinstance(loc, SimStackArg) for loc in locs):
+            return None
+        sp_base = self._stack_pointer_tracker.offset_before(call_expr.tags["ins_addr"], self.project.arch.sp_offset)
+        if sp_base is None:
+            return None
+        if sp_base >= (1 << (self.project.arch.bits - 1)):
+            sp_base -= 1 << self.project.arch.bits
+        stack_locs = [loc for loc in locs if isinstance(loc, SimStackArg)]
+        start = min(loc.stack_offset for loc in stack_locs)
+        end = max(loc.stack_offset + loc.size for loc in stack_locs)
+        adjust = self.project.arch.bytes if self.project.arch.call_pushes_ret else 0
+        return sp_base + start - adjust, end - start
+
+    def _find_variable_from_definition(self, def_: Definition):
+        """
+
+        :param Definition def_: The reaching definition of a variable.
+        :return:                The variable that is defined.
+        """
+
+        if def_.codeloc.block_addr != self.block.addr:
+            l.warning("TODO: The definition comes from a different block %#x.", def_.codeloc.block_addr)
+            return None
+
+        stmt = self.block.statements[def_.codeloc.stmt_idx]
+        if isinstance(stmt, Stmt.Assignment):
+            return stmt.dst
+        if isinstance(stmt, Stmt.Store):
+            return stmt.addr
+        l.warning(
+            "TODO: Unsupported statement type %s for definitions.",
+            getattr(stmt, "kind_name", None) or type(stmt).__name__,
+        )
+        return None
+
+    def _x87_arg_offset(self, index: int, call_stmt: Stmt.Statement) -> int:
+        """The register holding st(index) at the call site (ftop is 0 there unless IRegisterResolver says otherwise)."""
+        ins_addr = call_stmt.tags.get("ins_addr")
+        ftop = 0
+        if self._x87_call_ftop is not None and isinstance(ins_addr, int):
+            ftop = self._x87_call_ftop.get(ins_addr, 0)
+        return self.project.arch.registers["fpreg"][0] + ((ftop + index) % 8) * 8
+
+    def _resolve_register_argument(
+        self, arg_loc: SimRegArg, offset: int | None = None
+    ) -> tuple[Expr.Expression | None, Expr.VirtualVariable] | None:
+        if offset is None:
+            offset = arg_loc.check_offset(self.project.arch)
+
+        if self._reaching_definitions is not None:
+            # Find its definition
+            view = SRDAView(self._reaching_definitions)
+            vvar = view.get_reg_vvar_by_stmt(
+                offset,
+                arg_loc.size,
+                self.block.addr,
+                self.block.idx,
+                len(self.block.statements) - 1,
+                OP_BEFORE,
+            )
+
+            if vvar is not None:
+                vvar_value = view.get_vvar_value(vvar)
+                if not isinstance(vvar_value, Expr.Phi):
+                    return vvar_value, vvar
+                return None, vvar
+
+        return None
+
+    def _resolve_stack_argument(self, call_stmt: Expr.Call, arg_loc: SimStackArg, cc: SimCC | None) -> tuple[Any, Any]:
+        assert self._stack_pointer_tracker is not None
+
+        size = arg_loc.size
+        offset = arg_loc.stack_offset
+        # The return address is not on the stack yet at an ordinary call site. A syscall is
+        # different: it reaches its handler through a trap, which pushes nothing onto the
+        # stack the arguments sit on, so the slot a call would have filled is already
+        # occupied by whatever the caller put there.
+        if self.project.arch.call_pushes_ret and not isinstance(cc, SimCCSyscall):
+            offset -= self.project.arch.bytes
+
+        call_addr = call_stmt.tags.get("ins_addr", None)
+        assert call_addr is not None
+        sp_base = self._stack_pointer_tracker.offset_before(call_addr, self.project.arch.sp_offset)
+        if sp_base is not None:
+            sp_offset = sp_base + offset
+            if sp_offset >= (1 << (self.project.arch.bits - 1)):
+                # make it a signed integer
+                sp_offset -= 1 << self.project.arch.bits
+
+            if self._reaching_definitions is not None:
+                # find its definition
+                view = SRDAView(self._reaching_definitions)
+                vvar = view.get_stack_vvar_by_stmt(
+                    sp_offset, size, self.block.addr, self.block.idx, len(self.block.statements) - 1, OP_BEFORE
+                )
+                if vvar is not None:
+                    # FIXME: vvar may be larger than that we ask; we may need to chop the correct value of vvar
+                    value = view.get_vvar_value(vvar)
+                    if value is not None and not isinstance(value, Expr.Phi):
+                        v: Expr.Expression = value
+                    else:
+                        v: Expr.Expression = Expr.VirtualVariable(
+                            self._atom_idx(),
+                            vvar.varid,
+                            vvar.bits,
+                            vvar.category,
+                            oident=vvar.oident,
+                            reg_vvars=vvar.reg_vvars,
+                            ins_addr=call_addr,
+                        )
+                    if v.bits // self.project.arch.byte_width > size:
+                        v = Expr.Convert(
+                            self._atom_idx(),
+                            v.bits,
+                            size * self.project.arch.byte_width,
+                            False,
+                            v,
+                            ins_addr=call_addr,
+                        )
+                    return None, v
+
+            return None, Expr.Load(
+                self._atom_idx(),
+                Expr.StackBaseOffset(self._atom_idx(), self.project.arch.bits, sp_offset),
+                size,
+                self.project.arch.memory_endness,
+                func_arg=True,
+            )
+
+        return None, Expr.Load(
+            self._atom_idx(),
+            Expr.StackBaseOffset(self._atom_idx(), self.project.arch.bits, offset),
+            size,
+            self.project.arch.memory_endness,
+            func_arg=True,
+        )
+
+    @staticmethod
+    def _get_call_target(stmt):
+        """
+
+        :param Stmt.Call stmt:
+        :return:
+        """
+
+        if isinstance(stmt.target, Expr.Const):
+            return stmt.target.value
+
+        return None
+
+    def _load_string(self, addr: int) -> bytes:
+        s = b""
+        while True:
+            try:
+                chunk = self.project.loader.memory.load(addr, 8)
+                addr += 8
+            except KeyError:
+                return s
+
+            if b"\x00" in chunk:
+                # found a null byte
+                s += chunk[: chunk.index(b"\x00")]
+                return s
+            s += chunk
+            if len(s) > 2048:
+                break
+
+        return s
+
+    def _determine_variadic_arguments(self, func: Function, cc: SimCC, call_expr: Expr.Call) -> list[SimType]:
+        if "printf" in func.name or "scanf" in func.name:
+            return self._determine_variadic_arguments_for_format_strings(func, cc, call_expr)
+        return []
+
+    def _determine_variadic_arguments_for_format_strings(self, func, cc: SimCC, call_expr: Expr.Call) -> list[SimType]:
+        proto = func.get_prototype(self.flavor)
+        if proto is None:
+            # TODO: Support cases where prototypes are not available
+            return []
+
+        #
+        # get the format string
+        #
+
+        potential_fmt_args: list[int] = []
+        for idx, arg in enumerate(proto.args):
+            if isinstance(arg, SimTypePointer) and isinstance(arg.pts_to, SimTypeChar):
+                # find a char*
+                # we assume this is the format string
+                potential_fmt_args.append(idx)
+
+        if not potential_fmt_args:
+            return []
+
+        fmt_str = None
+        min_arg_count = max(potential_fmt_args) + 1
+        arg_locs = cc.arg_locs(SimCC.guess_prototype([0] * min_arg_count, proto))
+
+        for fmt_arg_idx in potential_fmt_args:
+            value = None
+
+            arg_loc = arg_locs[fmt_arg_idx]
+
+            if isinstance(arg_loc, SimRegArg):
+                value_and_def = self._resolve_register_argument(arg_loc)
+                if value_and_def is not None:
+                    value = value_and_def[0]
+
+            elif isinstance(arg_loc, SimStackArg):
+                value, _ = self._resolve_stack_argument(call_expr, arg_loc, cc)
+            else:
+                # Unexpected type of argument
+                l.warning("Unexpected type of argument type %s.", arg_loc.__class__)
+                continue
+
+            if not isinstance(value, Const) and call_expr.args is not None and len(call_expr.args) > fmt_arg_idx:
+                value = call_expr.args[fmt_arg_idx]
+            if isinstance(value, Const) and isinstance(value.value, int):
+                value = value.value
+            if isinstance(value, int):
+                fmt_str = self._load_string(value)
+                if fmt_str:
+                    break
+
+        if not fmt_str:
+            return []
+
+        #
+        # parse the format string
+        #
+
+        parser = FormatParser(project=self.project)
+        fmt_str_list = [bytes([b]) for b in fmt_str]
+        components = parser.extract_components(fmt_str_list)
+
+        specifiers = [component for component in components if isinstance(component, FormatSpecifier)]
+        if not specifiers:
+            return []
+        return [spec.ty for spec in specifiers]
+
+    def _combo_ret_expr(self, ret_expr: Expr.Register, cc: SimCC, prototype: SimTypeFunction) -> Expr.Expression:
+        """A scalar return value wider than a register (e.g., a long long in edx:eax on x86) defines every register
+        the calling convention returns it in."""
+        returnty = prototype.returnty
+        if returnty is None or isinstance(returnty, (SimTypeBottom, SimTypeFloat)):
+            return ret_expr
+        returnty = returnty.with_arch(self.project.arch)
+        if not isinstance(returnty, (SimTypeInt, SimTypeNum)):
+            return ret_expr
+        try:
+            ret_loc = cc.return_val(returnty)
+        except (AngrTypeError, TypeError, ValueError):
+            return ret_expr
+        if not isinstance(ret_loc, SimComboArg) or not all(isinstance(loc, SimRegArg) for loc in ret_loc.locations):
+            return ret_expr
+        tags = {k: v for k, v in ret_expr.tags.items() if k != "reg_name"}
+        regs = []
+        for loc in ret_loc.locations:
+            assert isinstance(loc, SimRegArg)
+            reg_offset, reg_size = self.project.arch.registers[loc.reg_name]
+            regs.append(Expr.Register(self._atom_idx(), reg_offset, reg_size * 8, reg_name=loc.reg_name, **tags))
+        return Expr.ComboRegister(self._atom_idx(), regs, **tags)
+
+    def _expand_arglocs(
+        self, arg_locs: list[SimFunctionArgument]
+    ) -> list[SimStackArg | SimRegArg | SimReferenceArgument]:
+        expanded_arg_locs: list[SimStackArg | SimRegArg | SimReferenceArgument] = []
+
+        for arg_loc in arg_locs:
+            if isinstance(arg_loc, SimComboArg):
+                # A ComboArg spans across multiple locations (mostly stack) and represents a single
+                # variable (e.g. a double on i386 cdecl occupying two 4-byte stack slots).
+                # Try to merge contiguous stack locations into a single larger SimStackArg.
+                stack_locs = [loc for loc in arg_loc.locations if isinstance(loc, SimStackArg)]
+                if len(stack_locs) == len(arg_loc.locations) and len(stack_locs) >= 2:
+                    # All locations are stack-based -- merge into a single arg at the lowest offset
+                    sorted_locs = sorted(stack_locs, key=lambda l: l.stack_offset)
+                    base_offset = sorted_locs[0].stack_offset
+                    total_size = sum(l.size for l in sorted_locs)
+                    expanded_arg_locs.append(SimStackArg(base_offset, total_size))
+                else:
+                    expanded_arg_locs += arg_loc.locations
+            elif isinstance(arg_loc, SimStructArg):
+                for field_name in arg_loc.struct.fields:
+                    if field_name not in arg_loc.locs:
+                        continue
+                    expanded_arg_locs += self._expand_arglocs([arg_loc.locs[field_name]])
+            elif isinstance(arg_loc, SimArrayArg):
+                # a fixed-size array field: one location per element
+                expanded_arg_locs += self._expand_arglocs(list(arg_loc.locs))
+            elif isinstance(arg_loc, (SimRegArg, SimStackArg, SimReferenceArgument)):
+                expanded_arg_locs.append(arg_loc)
+            else:
+                raise NotImplementedError("Not implemented yet.")
+
+        return expanded_arg_locs
+
+    def _atom_idx(self) -> int:
+        return self._ail_manager.next_atom()

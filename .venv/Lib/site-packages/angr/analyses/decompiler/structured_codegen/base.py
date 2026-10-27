@@ -1,0 +1,355 @@
+# pylint:disable=missing-class-docstring
+from __future__ import annotations
+
+from enum import Enum
+from itertools import count
+from typing import TYPE_CHECKING
+
+from sortedcontainers import SortedDict
+
+from angr.ailment.expression import Convert
+from angr.sim_variable import (
+    SimMemoryVariable,
+    SimRegisterVariable,
+    SimStackVariable,
+    SimTemporaryVariable,
+    SimVariable,
+)
+
+if TYPE_CHECKING:
+    import archinfo
+
+IdentType = tuple[int, int, str]
+
+
+class CConstantType(Enum):
+    """
+    Describes the value type of a CConstant class.
+    """
+
+    INT = 0
+    FLOAT = 1
+    STRING = 2
+
+
+#
+#   Position Mapping Classes
+#
+
+
+class FunctionRef:
+    """
+    A function a parsed decompilation refers to, carried by address until it is first needed, so that parsing a
+    decompilation does not load functions.
+    """
+
+    __slots__ = ("addr",)
+
+    def __init__(self, addr: int):
+        self.addr = addr
+
+
+class PositionMappingElement:
+    __slots__ = ("length", "obj", "start")
+
+    def __init__(self, start, length, obj):
+        self.start: int = start
+        self.length: int = length
+        self.obj = obj
+
+    def __contains__(self, offset):
+        return self.start <= offset < self.start + self.length
+
+    def __repr__(self):
+        return f"<{self.start}-{self.start + self.length}: {self.obj}>"
+
+
+class PositionMapping:
+    __slots__ = ("_posmap",)
+
+    DUPLICATION_CHECK = True
+
+    def __init__(self):
+        self._posmap: SortedDict | dict[int, PositionMappingElement] = SortedDict()
+
+    def items(self):
+        return self._posmap.items()
+
+    def values(self):
+        return self._posmap.values()
+
+    #
+    # Public methods
+    #
+
+    def add_mapping(self, start_pos, length, obj):
+        # duplication check
+        if self.DUPLICATION_CHECK:
+            try:
+                pre = next(self._posmap.irange(maximum=start_pos, reverse=True))
+                if start_pos in self._posmap[pre]:
+                    raise ValueError("New mapping is overlapping with an existing element.")
+            except StopIteration:
+                pass
+
+        self._posmap[start_pos] = PositionMappingElement(start_pos, length, obj)
+
+    def get_node(self, pos: int):
+        element = self.get_element(pos)
+        if element is None:
+            return None
+        return element.obj
+
+    def get_element(self, pos: int) -> PositionMappingElement | None:
+        try:
+            pre = next(self._posmap.irange(maximum=pos, reverse=True))
+        except StopIteration:
+            return None
+
+        element = self._posmap[pre]
+        if pos in element:
+            return element
+        return None
+
+
+class InstructionMappingElement:
+    __slots__ = ("ins_addr", "posmap_pos")
+
+    def __init__(self, ins_addr, posmap_pos):
+        self.ins_addr: int = ins_addr
+        self.posmap_pos: int = posmap_pos
+
+    def __contains__(self, offset: int):
+        return self.ins_addr == offset
+
+    def __repr__(self):
+        return f"<{self.ins_addr}: {self.posmap_pos}>"
+
+
+class InstructionMapping:
+    __slots__ = ("_insmap",)
+
+    def __init__(self):
+        self._insmap: SortedDict | dict[int, InstructionMappingElement] = SortedDict()
+
+    def items(self):
+        return self._insmap.items()
+
+    def values(self):
+        return self._insmap.values()
+
+    def add_mapping(self, ins_addr, posmap_pos):
+        if ins_addr in self._insmap:
+            if posmap_pos <= self._insmap[ins_addr].posmap_pos:
+                self._insmap[ins_addr] = InstructionMappingElement(ins_addr, posmap_pos)
+        else:
+            self._insmap[ins_addr] = InstructionMappingElement(ins_addr, posmap_pos)
+
+    def get_nearest_pos(self, ins_addr: int) -> int | None:
+        # either neighbor may be missing, e.g., a function head that precedes the first mapped statement
+        pre_max = next(self._insmap.irange(maximum=ins_addr, reverse=True), None)
+        pre_min = next(self._insmap.irange(minimum=ins_addr, reverse=False), None)
+        if pre_max is None and pre_min is None:
+            return None
+        if pre_max is None:
+            return self._insmap[pre_min].posmap_pos
+        if pre_min is None:
+            return self._insmap[pre_max].posmap_pos
+
+        e1: InstructionMappingElement = self._insmap[pre_max]
+        e2: InstructionMappingElement = self._insmap[pre_min]
+
+        if abs(ins_addr - e1.ins_addr) <= abs(ins_addr - e2.ins_addr):
+            return e1.posmap_pos
+        return e2.posmap_pos
+
+
+class BaseStructuredCodeGenerator:
+    def __init__(self, flavor=None, notes=None, expr_comments=None, stmt_comments=None, const_formats=None):
+        self.flavor = flavor
+        self.text = None
+        self.map_pos_to_node = None
+        self.map_pos_to_addr = None
+        self.map_addr_to_pos = None
+        self.map_ast_to_pos: dict[SimVariable, set[PositionMappingElement]] | None = None
+        self.notes = notes if notes is not None else {}
+        self.expr_comments: dict[int, str] = expr_comments if expr_comments is not None else {}
+        self.stmt_comments: dict[int, str] = stmt_comments if stmt_comments is not None else {}
+        self.const_formats: dict[IdentType, dict[str, bool]] = const_formats if const_formats is not None else {}
+        # angr version and decompile time copied from the owning DecompilationCache; "" / 0 = unknown
+        self.version: str = ""
+        self.timestamp: int = 0
+        self.ident_counters: dict[str, count] = {}
+        # node idx allocator; 0 is reserved (serialization uses it as the "absent" sentinel), and the counter is
+        # never reset so idx values are unique across the lifetime of this codegen
+        self._next_node_idx: int = 1
+
+    @staticmethod
+    def adjust_mapping_positions(
+        offset: int,
+        pos_to_node: PositionMapping,
+        pos_to_addr: PositionMapping,
+        addr_to_pos: InstructionMapping,
+    ) -> tuple[PositionMapping, PositionMapping, InstructionMapping]:
+        """
+        Adjust positions in the mappings to account for the notes that are prepended to the text.
+
+        :param offset:       The length of the notes to prepend.
+        :param pos_to_node:  The position to node mapping.
+        :param pos_to_addr:  The position to address mapping.
+        :param addr_to_pos:  The address to position mapping.
+        :return:             Adjusted mappings.
+        """
+        new_pos_to_node = PositionMapping()
+        new_pos_to_addr = PositionMapping()
+        new_addr_to_pos = InstructionMapping()
+
+        for pos, node in pos_to_node.items():
+            new_pos_to_node.add_mapping(pos + offset, node.length, node.obj)
+
+        for pos, node in pos_to_addr.items():
+            new_pos_to_addr.add_mapping(pos + offset, node.length, node.obj)
+
+        for addr, pos in addr_to_pos.items():
+            new_addr_to_pos.add_mapping(addr, pos.posmap_pos + offset)
+
+        return new_pos_to_node, new_pos_to_addr, new_addr_to_pos
+
+    def reapply_options(self, options):
+        pass
+
+    def regenerate_text(self) -> None:
+        pass
+
+    def reload_variable_types(self) -> None:
+        pass
+
+    def next_ident(self, key: str) -> str:
+        if key not in self.ident_counters:
+            self.ident_counters[key] = count()
+        return f"{key}_{next(self.ident_counters[key])}"
+
+    def reset_ident_counters(self) -> None:
+        self.ident_counters = {}
+
+    def next_node_idx(self) -> int:
+        v = self._next_node_idx
+        self._next_node_idx += 1
+        return v
+
+
+def vector_convert_name(expr: Convert) -> str:
+    """
+    Intrinsic-style name for a lane-wise conversion, e.g. ``ConvF32toI32Sx4`` for ``Iop_F32toI32Sx4``.
+    """
+    ct = expr.vector_count
+    if ct is None:
+        raise ValueError("not a lane-wise conversion")
+    from_lane = expr.from_bits // ct
+    to_lane = expr.to_bits // ct
+    sign = "S" if expr.is_signed else "U"
+    # VEX spelling: the integer side carries the sign marker (I32StoF32x4, F32toI32Ux4)
+    src = f"F{from_lane}" if expr.from_type == Convert.TYPE_FP else f"I{from_lane}{sign}"
+    dst = f"F{to_lane}" if expr.to_type == Convert.TYPE_FP else f"I{to_lane}{sign}"
+    return f"Conv{src}to{dst}x{ct}"
+
+
+def variable_display_name(v: SimVariable) -> str:
+    """
+    The name of a variable that variable naming did not reach (e.g. a stack variable not in any unified group),
+    as an identifier rather than the SimVariable repr.
+    """
+    if v.name:
+        return v.name
+    if isinstance(v, SimTemporaryVariable):
+        return f"tmp_{v.tmp_id}"
+    if isinstance(v, SimStackVariable):
+        return f"arg_{v.offset:x}" if v.offset >= 0 else f"s_{-v.offset:x}"
+    if isinstance(v, SimRegisterVariable):
+        return f"reg_{v.reg:x}"
+    if isinstance(v, SimMemoryVariable) and isinstance(v.addr, int):
+        return f"g_{v.addr:x}"
+    return v.ident or "unnamed"
+
+
+def register_display_name(arch: archinfo.Arch, reg_offset: int, size: int) -> str:
+    """
+    The architectural name of a register, or reg_<offset> when the architecture has none.
+    """
+    name = arch.translate_register_name(reg_offset, size)
+    # translate_register_name falls back to the decimal offset
+    return name if name.isidentifier() else f"reg_{reg_offset:x}"
+
+
+#
+# Flavor-independent node kinds
+#
+# The C, Rust, and Go code generators each have their own node class hierarchy. These markers let consumers (e.g. the
+# angr management pseudocode view) recognize a kind of node without naming every flavor's class.
+#
+
+
+class CodegenNode:
+    """Marker base of every structured-codegen node kind shared across flavors."""
+
+    __slots__ = ()
+
+
+class ExpressionNode(CodegenNode):
+    __slots__ = ()
+
+
+class VariableNode(CodegenNode):
+    """A variable access; has ``variable`` and ``unified_variable``."""
+
+    __slots__ = ()
+
+
+class IndexedVariableNode(CodegenNode):
+    __slots__ = ()
+
+
+class VariableFieldNode(CodegenNode):
+    __slots__ = ()
+
+
+class StructFieldNode(CodegenNode):
+    """A struct field name; has ``struct_type``, ``offset``, and ``field``."""
+
+    __slots__ = ()
+
+
+class FunctionNode(CodegenNode):
+    """The function being decompiled; has ``addr`` and ``name``."""
+
+    __slots__ = ()
+
+
+class FunctionCallNode(CodegenNode):
+    """A call; has ``callee_func`` (a Function or None) and ``callee_target``."""
+
+    __slots__ = ()
+
+
+class ConstantNode(CodegenNode):
+    """A constant; has ``value`` and ``reference_values``."""
+
+    __slots__ = ()
+
+
+class LabelNode(CodegenNode):
+    __slots__ = ()
+
+
+class BinaryOpNode(CodegenNode):
+    __slots__ = ()
+
+
+class UnaryOpNode(CodegenNode):
+    __slots__ = ()
+
+
+class ClosingObjectNode(CodegenNode):
+    """A closing bracket, brace, or parenthesis."""
+
+    __slots__ = ()

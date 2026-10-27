@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: pyxbe
+Version: 1.0.4
+Summary: Library to work with XBE files
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/mborgerson/pyxbe
+Project-URL: Repository, https://github.com/mborgerson/pyxbe
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Dynamic: license-file
+
+pyxbe
+=====
+[![pypi](https://img.shields.io/pypi/v/pyxbe)](https://pypi.org/project/pyxbe/) [![codecov](https://codecov.io/github/mborgerson/pyxbe/graph/badge.svg?token=67CUOG3G2I)](https://codecov.io/github/mborgerson/pyxbe)
+
+Pure Python 3.12+ library to work with [`.xbe` files](http://xboxdevwiki.net/Xbe), the executable file format for the [original Xbox](https://en.wikipedia.org/wiki/Xbox_(console)) game console.
+
+Documentation covering how to install and use pyxbe is [available here](https://pyxbe.readthedocs.io/en/latest/index.html).
