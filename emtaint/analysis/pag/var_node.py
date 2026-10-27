@@ -66,3 +66,20 @@ class VarNode:
         计算节点变量的值
         """
         pass
+
+
+
+class EntryNode(VarNode):
+    """
+    入口节点类，表示程序的入口节点。
+    """
+    def __init__(self, var, kind=None):
+        super().__init__(var, kind)
+
+
+class ExitNode(VarNode):
+    """
+    出口节点类，表示程序的出口节点。
+    """
+    def __init__(self, var, kind=None):
+        super().__init__(var, kind)

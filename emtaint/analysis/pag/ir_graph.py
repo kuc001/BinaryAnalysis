@@ -2,6 +2,9 @@ import logging
 from emtaint.analysis.variables.reg_value import RegValue
 from emtaint.analysis.variables.mem_value import MemValue
 
+from angr.engines.vex.claripy.irop import SimIROp, operations, vexop_to_simop
+import claripy
+
 
 l = logging.getLogger(name=__name__)
 l.setLevel(logging.DEBUG)
@@ -76,7 +79,7 @@ class IRGraph:
         worklist = []
         visited = set()
         live_vars = {}
-        start_node = self.get_block_entry_node(0x16fd8)
+        start_node = self.get_block_entry_node(0x4009c3)
         worklist.append(start_node)
         while worklist:
             node = worklist.pop()
@@ -85,8 +88,8 @@ class IRGraph:
             visited.add(node)
             # l.debug(f"analyze: {node}")
             print(node)
-            self.find_use(node, live_vars)
-            self.add_live_vars(node, live_vars)
+            # self.find_use(node, live_vars)
+            # self.add_live_vars(node, live_vars)
             for edge in node.out_edges:
                 flow_node = edge.get_flow_node()
                 if flow_node is not None:
@@ -150,4 +153,31 @@ class IRGraph:
                 if node.value.addr == live_node.value.addr:
                     live_vars.pop(var_id)
 
-        
+    
+  
+
+    def exec_stmt(self, edge):
+        """
+        执行stmt, 并返回stmt的输出
+        """
+        use_node = edge.get_src()
+        print(use_node)
+        size = use_node.var.size
+        op_args = []
+        print(operations)
+        for arg in use_node.var.args:
+            print(arg)
+            if isinstance(arg.get_literal(), str):
+                op_args.append(claripy.BVS(arg.get_literal(), size))
+            elif isinstance(arg.get_literal(), int):
+                op_args.append(claripy.BVV(arg.get_literal(), size))
+            else:
+                return None
+
+        irop = vexop_to_simop(use_node.var.op)
+        print(irop)
+        # irop = SimIROp(use_node.var.op, *op_args)
+        result = irop.calculate(*op_args)
+        return result
+
+

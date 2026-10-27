@@ -48,6 +48,7 @@ class BlockIRBuilder():
 
         """
         bb: AngrBlock = self.block.get_block_source()
+        print(bb)
         vex = bb.vex
         arch = bb.arch
         if vex is None:

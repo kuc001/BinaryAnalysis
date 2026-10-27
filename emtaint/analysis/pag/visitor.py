@@ -61,7 +61,7 @@ class PAGVisitor(IRVisitor):
         self._tmp_to_use_node[tmp_node.id] = use_node
 
     def get_tmp_to_use(self, tmp_node):
-        return self._tmp_to_use_node[tmp_node.id]
+        return self._tmp_to_use_node[tmp_node.id] if tmp_node.id in self._tmp_to_use_node else tmp_node
 
     def visit_put(self, put):
         raise NotImplementedError("visit_put")

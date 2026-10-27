@@ -1,11 +1,11 @@
 
-from program_builder import EmProgram
+from emtaint.program_builder import EmProgram
 from emtaint.analysis.pag.ir_graph_builder import IRGraphBuilder
 
 def main():
     """
     """
-    binary = "/Users/chengkai/Software/Dataset/binaries/R6400-V1.0.1.46/httpd"
+    binary = ""
 
     # em_program = EmProgram.get_em_program()
 

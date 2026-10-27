@@ -1,9 +1,14 @@
 
+import logging
 from angr import Project
 from .converter import Converter
 from .ir_builder import IRBuilder
 from emtaint.analysis.graph.cfg.default_cfg_builder import CFGBuilder
 # from emtaint.emtaint.program_builder import EmProgram
+
+
+l = logging.getLogger(name=__name__)
+
 
 class AngrBuilder:
     """
@@ -22,6 +27,9 @@ class AngrBuilder:
         self._cfg_generate_mode = cfg_generate_mode
         self._default_analysis_mode = default_analysis_mode
         self._auto_load_libs = auto_load_libs
+
+        self._project = None
+        self._arch = None
 
     def build(self):
         """
@@ -44,6 +52,9 @@ class AngrBuilder:
                           default_analysis_mode=self._default_analysis_mode,
                           auto_load_libs=self._auto_load_libs)
 
+        self._project = project
+        self._arch = project.arch
+
         if self._cfg_generate_mode is None or self._cfg_generate_mode == "fast":
             cfg = project.analyses.CFGFast()
 
@@ -57,13 +68,16 @@ class AngrBuilder:
         converter = Converter(project, cfg)
         ir_builder = self._em_program.get_ir_builder()
         for func in cfg.kb.functions.values():
-            if func.addr != 0x16FD8:
+            if not func.binary.is_default:
+                l.debug(f"skip external function: {func.name}")
                 continue
-            # print(func)
+            # if func.addr != 0x700000:
+            #     continue
+            # print(func, func.binary.is_default)
             em_func = converter.convert_function(func)
             self._em_program.add_function(em_func)
             em_func.set_frontend_graph(func.graph)
-
+            
             for block in func.blocks:
                 # print(block)
                 em_block = converter.convert_block(block, ir_builder)
@@ -71,5 +85,5 @@ class AngrBuilder:
                 em_func.add_block(em_block)
                 # break
 
-            break
+            # break
             # func_graph = func.func.graph

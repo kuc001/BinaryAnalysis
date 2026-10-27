@@ -1,5 +1,5 @@
 
-from frontend.angr.angr_builder import AngrBuilder
+from emtaint.frontend.angr.angr_builder import AngrBuilder
 # from frontend.angr.ir_builder import IRBuilder
 
 class EmProgram:
@@ -12,6 +12,7 @@ class EmProgram:
 
         self._functions = []
         self._ir_builder = None
+        self._builder = None
 
     @classmethod
     def get_em_program(cls):
@@ -29,6 +30,8 @@ class EmProgram:
         builder = AngrBuilder(binary, em_program, cfg_generate_mode="fast", auto_load_libs=False)
         builder.build()
 
+        em_program._builder = builder
+        
         return em_program
 
     def add_function(self, function):
