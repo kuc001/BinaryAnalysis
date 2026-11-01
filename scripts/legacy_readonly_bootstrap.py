@@ -224,6 +224,9 @@ def main():
     parser.add_argument("--mode", choices=("redirect", "disabled"), default="disabled")
     parser.add_argument("--action", choices=("probe", "environment", "module", "main"), required=True)
     parser.add_argument("--profile-file", type=Path)
+    parser.add_argument("--metrics-file", type=Path)
+    parser.add_argument("--observer-plan", type=Path)
+    parser.add_argument("--observer-sha")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     run_root, archive = args.run_root.resolve(), args.archive_root.resolve()
@@ -236,6 +239,14 @@ def main():
     args.report.resolve().relative_to(archive)
     if args.profile_file is not None:
         args.profile_file.resolve().relative_to(archive)
+    if args.metrics_file is not None:
+        args.metrics_file.resolve().relative_to(archive)
+        if args.action != "main" or args.profile_file is not None or args.observer_plan is None:
+            raise RuntimeError("Metrics require main action, a plan, and no cProfile")
+        args.observer_plan.resolve().relative_to(archive)
+        source = run_root / "_p0b_observer.py"
+        if hashlib.sha256(source.read_bytes()).hexdigest() != args.observer_sha:
+            raise RuntimeError("Observer physical copy hash mismatch")
     if args.mode == "redirect" and args.action != "probe":
         raise RuntimeError("Table-writing reference mode is limited to parser validation")
     cache = run_root / ".p0b-cache" / args.report.stem
@@ -248,6 +259,7 @@ def main():
               "run_root": str(run_root), "archive_root": str(archive)}
     started = time.perf_counter()
     error = None
+    observer = None
     try:
         calls = install_ply_isolation(cache, args.mode)
         report["ply_calls"] = calls
@@ -269,6 +281,11 @@ def main():
         else:
             sys.path.insert(0, str(run_root))
             sys.argv = ["main.py"] + tail
+            if args.metrics_file is not None:
+                from _p0b_observer import LegacyObserver
+                observer = LegacyObserver(run_root, args.observer_plan, args.metrics_file)
+                report["observer_sha256"] = args.observer_sha
+                observer.arm()
             if args.profile_file is None:
                 runpy.run_path("main.py", run_name="__main__")
             else:
@@ -286,6 +303,9 @@ def main():
     except BaseException as caught:
         error = caught
     finally:
+        if observer is not None:
+            metrics = observer.stop()
+            report["metrics_complete"] = metrics["observation_complete"]
         report["wall_seconds"] = time.perf_counter() - started
         report["worker_memory"] = worker_memory()
         report["violations"] = guard.violations

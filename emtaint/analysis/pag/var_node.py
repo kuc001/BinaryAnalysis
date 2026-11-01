@@ -1,3 +1,6 @@
+from uuid import uuid4
+
+
 class VarNode:
     """
     变量节点类，表示程序中的变量节点。
@@ -10,13 +13,15 @@ class VarNode:
         out_edges: 所有从该节点出去的边
     """
     
-    _next_id = 0  # 类变量，用于跟踪下一个可用的ID
-
-    def __init__(self, var, ud, kind=None):
+    def __init__(self, var, ud, kind=None, *, node_id=None, owner=None):
         self.var = var
         self.kind = kind
-        self.id = VarNode._next_id  # 分配唯一ID
-        VarNode._next_id += 1       # ID自增
+        if node_id is not None and (type(node_id) is not int or node_id < 0):
+            raise ValueError('PAG node ID must be a non-negative integer')
+        # Standalone legacy nodes retain an integer handle, without shared state.
+        # Analysis nodes use IRGraph.new_node for graph-local allocation.
+        self.id = uuid4().int if node_id is None else node_id
+        self._owner = owner
 
         self.ues_or_def = ud  # 0: use, 1: def
         self.in_edges = set()   # 所有进入该节点的边

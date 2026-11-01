@@ -1,9 +1,8 @@
 import logging
+from uuid import uuid4
+from .var_node import VarNode
 from emtaint.analysis.variables.reg_value import RegValue
 from emtaint.analysis.variables.mem_value import MemValue
-
-from angr.engines.vex.claripy.irop import SimIROp, operations, vexop_to_simop
-import claripy
 
 
 l = logging.getLogger(name=__name__)
@@ -23,12 +22,19 @@ class IRGraph:
         self.id_to_node_map = {}
         self.edge_num = 0
         self.node_num = 0
+        self._node_scope = uuid4().hex
+        self._next_node_id = 0
 
         self.function_entry_nodes = {} # 记录每个函数入口节点
         self.function_exit_nodes = {} # 记录每个函数出口节点
         self.block_entry_nodes = {} # 记录每个块入口节点
         self.block_exit_nodes = {} # 记录每个块出口节点
     
+    def new_node(self, var, ud, kind=None):
+        node = VarNode(var, ud, kind, node_id=self._next_node_id, owner=self._node_scope)
+        self._next_node_id += 1
+        return node
+
     def add_node(self, id, node):
         """添加节点并自动分配ID
         
@@ -38,9 +44,17 @@ class IRGraph:
         Returns:
             分配给节点的ID
         """
+        if node._owner is not None and node._owner != self._node_scope:
+            raise ValueError('PAG node belongs to another graph')
+        if id != node.id:
+            raise ValueError('Node map key differs from the node ID')
         if id in self.id_to_node_map:
+            if self.id_to_node_map[id] is not node:
+                raise ValueError('Duplicate PAG node ID')
             return id
+        node._owner = self._node_scope
         self.id_to_node_map[id] = node
+        self._next_node_id = max(self._next_node_id, id + 1)
         self.node_num += 1
         return id
 
@@ -72,15 +86,15 @@ class IRGraph:
     def get_block_exit_node(self, block_addr):
         return self.block_exit_nodes.get(block_addr)
     
-    def analyze_graph(self):
+    def analyze_graph(self, entry_block_addrs=None):
         """
         分析图
         """
-        worklist = []
+        addresses = tuple(self.block_entry_nodes) if entry_block_addrs is None else tuple(entry_block_addrs)
+        # Empty graphs are valid; an explicit missing entry is an error.
+        worklist = [self.block_entry_nodes[address] for address in addresses]
         visited = set()
         live_vars = {}
-        start_node = self.get_block_entry_node(0x4009c3)
-        worklist.append(start_node)
         while worklist:
             node = worklist.pop()
             if node in visited:
@@ -94,6 +108,7 @@ class IRGraph:
                 flow_node = edge.get_flow_node()
                 if flow_node is not None:
                     worklist.append(flow_node)
+        return frozenset(visited)
     
     def add_live_vars(self, node, live_vars):
         """
@@ -160,24 +175,7 @@ class IRGraph:
         """
         执行stmt, 并返回stmt的输出
         """
-        use_node = edge.get_src()
-        print(use_node)
-        size = use_node.var.size
-        op_args = []
-        print(operations)
-        for arg in use_node.var.args:
-            print(arg)
-            if isinstance(arg.get_literal(), str):
-                op_args.append(claripy.BVS(arg.get_literal(), size))
-            elif isinstance(arg.get_literal(), int):
-                op_args.append(claripy.BVV(arg.get_literal(), size))
-            else:
-                return None
-
-        irop = vexop_to_simop(use_node.var.op)
-        print(irop)
-        # irop = SimIROp(use_node.var.op, *op_args)
-        result = irop.calculate(*op_args)
-        return result
+        from emtaint.compat.legacy_pag import execute_edge
+        return execute_edge(edge)
 
 

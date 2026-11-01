@@ -1,0 +1,3133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emtaint:Memory-Semantics-v1",
+  "title": "Memory-Semantics-v1",
+  "$ref": "#/$defs/MemorySnapshot",
+  "$defs": {
+    "BinaryId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "BinaryId"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "FunctionId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "FunctionId"
+        },
+        "binary": {
+          "$ref": "#/$defs/BinaryId"
+        },
+        "rva": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "binary",
+        "rva"
+      ],
+      "additionalProperties": false
+    },
+    "BlockId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "BlockId"
+        },
+        "function": {
+          "$ref": "#/$defs/FunctionId"
+        },
+        "rva": {
+          "type": "integer"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "function",
+        "rva",
+        "index",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "ProgramPoint": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ProgramPoint"
+        },
+        "block": {
+          "$ref": "#/$defs/BlockId"
+        },
+        "statement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instruction_rva": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "block",
+        "statement",
+        "instruction_rva"
+      ],
+      "additionalProperties": false
+    },
+    "CallSiteId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CallSiteId"
+        },
+        "point": {
+          "$ref": "#/$defs/ProgramPoint"
+        },
+        "ordinal": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "point",
+        "ordinal"
+      ],
+      "additionalProperties": false
+    },
+    "ContextId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ContextId"
+        },
+        "call_string": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CallSiteId"
+          }
+        },
+        "abstraction": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "call_string",
+        "abstraction"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryObjectId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryObjectId"
+        },
+        "kind": {
+          "$ref": "#/$defs/MemoryKind"
+        },
+        "binary": {
+          "$ref": "#/$defs/BinaryId"
+        },
+        "function": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FunctionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "site": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProgramPoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "kind",
+        "binary",
+        "function",
+        "context",
+        "site",
+        "coordinates"
+      ],
+      "additionalProperties": false
+    },
+    "Register": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Register"
+        },
+        "name": {
+          "type": "string"
+        },
+        "bits": {
+          "type": "integer"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "name",
+        "bits",
+        "offset"
+      ],
+      "additionalProperties": false
+    },
+    "Architecture": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Architecture"
+        },
+        "name": {
+          "type": "string"
+        },
+        "address_bits": {
+          "type": "integer"
+        },
+        "pointer_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "byte_bits": {
+          "type": "integer"
+        },
+        "registers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Register"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "name",
+        "address_bits",
+        "pointer_bits",
+        "endian",
+        "byte_bits",
+        "registers"
+      ],
+      "additionalProperties": false
+    },
+    "ABI": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ABI"
+        },
+        "name": {
+          "type": "string"
+        },
+        "argument_registers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "return_registers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stack_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stack_alignment": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "caller_saved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "callee_saved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "name",
+        "argument_registers",
+        "return_registers",
+        "stack_pointer",
+        "stack_alignment",
+        "caller_saved",
+        "callee_saved"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryObject": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryObject"
+        },
+        "id": {
+          "$ref": "#/$defs/MemoryObjectId"
+        },
+        "provenance": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "address_space": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "provenance",
+        "size_bytes",
+        "address_space"
+      ],
+      "additionalProperties": false
+    },
+    "Assessment": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Assessment"
+        },
+        "status": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "precision": {
+          "$ref": "#/$defs/Precision"
+        },
+        "precision_loss": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unsupported_ops": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "status",
+        "precision",
+        "precision_loss",
+        "unsupported_ops",
+        "diagnostics"
+      ],
+      "additionalProperties": false
+    },
+    "Producer": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Producer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "frontend": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "name",
+        "version",
+        "frontend"
+      ],
+      "additionalProperties": false
+    },
+    "Origin": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Origin"
+        },
+        "id": {
+          "type": "string"
+        },
+        "point": {
+          "$ref": "#/$defs/ProgramPoint"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "source_opcode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "point",
+        "producer",
+        "source_opcode"
+      ],
+      "additionalProperties": false
+    },
+    "ValueType": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ValueType"
+        },
+        "kind": {
+          "$ref": "#/$defs/TypeKind"
+        },
+        "bits": {
+          "type": "integer"
+        },
+        "signedness": {
+          "$ref": "#/$defs/Signedness"
+        },
+        "address_space": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "kind",
+        "bits",
+        "signedness",
+        "address_space"
+      ],
+      "additionalProperties": false
+    },
+    "ValueRef": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ValueRef"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/ValueType"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "Constant": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Constant"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "type": {
+          "$ref": "#/$defs/ValueType"
+        }
+      },
+      "required": [
+        "$type",
+        "value",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "AnalysisScope": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AnalysisScope"
+        },
+        "function": {
+          "$ref": "#/$defs/FunctionId"
+        },
+        "context": {
+          "$ref": "#/$defs/ContextId"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "cfg_version": {
+          "type": "integer"
+        },
+        "cg_version": {
+          "type": "integer"
+        },
+        "state_revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "function",
+        "context",
+        "session_id",
+        "cfg_version",
+        "cg_version",
+        "state_revision"
+      ],
+      "additionalProperties": false
+    },
+    "ScopedId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ScopedId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "SymbolicExprId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "SymbolicExprId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryVersionId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryVersionId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "AccessPathId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AccessPathId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "AccessGraphId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AccessGraphId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryLocationId": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryLocationId"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "SemanticBudgets": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "SemanticBudgets"
+        },
+        "apg_nodes": {
+          "type": "integer"
+        },
+        "apg_edges": {
+          "type": "integer"
+        },
+        "apg_summaries": {
+          "type": "integer"
+        },
+        "sse_nodes": {
+          "type": "integer"
+        },
+        "heap_objects": {
+          "type": "integer"
+        },
+        "heap_cells": {
+          "type": "integer"
+        },
+        "worklist_states": {
+          "type": "integer"
+        },
+        "worklist_iterations": {
+          "type": "integer"
+        },
+        "contexts": {
+          "type": "integer"
+        },
+        "alias_candidates": {
+          "type": "integer"
+        },
+        "solver_queries": {
+          "type": "integer"
+        },
+        "solver_timeout_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "apg_nodes",
+        "apg_edges",
+        "apg_summaries",
+        "sse_nodes",
+        "heap_objects",
+        "heap_cells",
+        "worklist_states",
+        "worklist_iterations",
+        "contexts",
+        "alias_candidates",
+        "solver_queries",
+        "solver_timeout_ms"
+      ],
+      "additionalProperties": false
+    },
+    "AccessRoot": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AccessRoot"
+        },
+        "object_id": {
+          "$ref": "#/$defs/MemoryObjectId"
+        },
+        "region": {
+          "type": "string"
+        },
+        "address_space": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "object_id",
+        "region",
+        "address_space",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "Offset": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Offset"
+        },
+        "delta_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "delta_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "Deref": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Deref"
+        },
+        "pointer_bits": {
+          "type": "integer"
+        },
+        "value_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "address_space": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "pointer_bits",
+        "value_bits",
+        "endian",
+        "address_space"
+      ],
+      "additionalProperties": false
+    },
+    "Index": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Index"
+        },
+        "expression": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "stride_bytes": {
+          "type": "integer"
+        },
+        "lower": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "expression",
+        "stride_bytes",
+        "lower",
+        "upper"
+      ],
+      "additionalProperties": false
+    },
+    "UnknownOffset": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "UnknownOffset"
+        },
+        "lower": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "lower",
+        "upper",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "AccessPath": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AccessPath"
+        },
+        "id": {
+          "$ref": "#/$defs/AccessPathId"
+        },
+        "root": {
+          "$ref": "#/$defs/AccessRoot"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Offset"
+              },
+              {
+                "$ref": "#/$defs/Deref"
+              },
+              {
+                "$ref": "#/$defs/Index"
+              },
+              {
+                "$ref": "#/$defs/UnknownOffset"
+              }
+            ]
+          }
+        },
+        "width_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "root",
+        "segments",
+        "width_bits",
+        "endian",
+        "origin",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "APGNode": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "APGNode"
+        },
+        "id": {
+          "type": "string"
+        },
+        "root": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AccessRoot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "root"
+      ],
+      "additionalProperties": false
+    },
+    "APGEdge": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "APGEdge"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Offset"
+            },
+            {
+              "$ref": "#/$defs/Deref"
+            },
+            {
+              "$ref": "#/$defs/Index"
+            },
+            {
+              "$ref": "#/$defs/UnknownOffset"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "source",
+        "target",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "APGSummary": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "APGSummary"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Offset"
+              },
+              {
+                "$ref": "#/$defs/Deref"
+              },
+              {
+                "$ref": "#/$defs/Index"
+              },
+              {
+                "$ref": "#/$defs/UnknownOffset"
+              }
+            ]
+          }
+        },
+        "minimum_repetitions": {
+          "type": "integer"
+        },
+        "maximum_repetitions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trigger": {
+          "$ref": "#/$defs/ProgramPoint"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "coverage_argument": {
+          "type": "string"
+        },
+        "precision_loss": {
+          "type": "string"
+        },
+        "soundness": {
+          "$ref": "#/$defs/Completeness"
+        }
+      },
+      "required": [
+        "$type",
+        "source",
+        "target",
+        "pattern",
+        "minimum_repetitions",
+        "maximum_repetitions",
+        "trigger",
+        "reason",
+        "coverage_argument",
+        "precision_loss",
+        "soundness"
+      ],
+      "additionalProperties": false
+    },
+    "AccessGraph": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AccessGraph"
+        },
+        "id": {
+          "$ref": "#/$defs/AccessGraphId"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/APGNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/APGEdge"
+          }
+        },
+        "summaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/APGSummary"
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "accepting": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "nodes",
+        "edges",
+        "summaries",
+        "entries",
+        "accepting",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "HeapObject": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "HeapObject"
+        },
+        "object_id": {
+          "$ref": "#/$defs/MemoryObjectId"
+        },
+        "region": {
+          "type": "string"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/ObjectCardinality"
+        },
+        "lifetime": {
+          "$ref": "#/$defs/ObjectLifetime"
+        },
+        "allocation_origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "object_id",
+        "region",
+        "cardinality",
+        "lifetime",
+        "allocation_origin",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "HeapCell": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "HeapCell"
+        },
+        "location": {
+          "$ref": "#/$defs/MemoryLocationId"
+        },
+        "value": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "defined_in": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "location",
+        "value",
+        "defined_in",
+        "origin",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryLocation": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryLocation"
+        },
+        "id": {
+          "$ref": "#/$defs/MemoryLocationId"
+        },
+        "object_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryObjectId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "offset_lower": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "offset_upper": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "width_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "address_space": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "object_id",
+        "offset_lower",
+        "offset_upper",
+        "width_bits",
+        "endian",
+        "address_space",
+        "origin",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "AliasResult": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "AliasResult"
+        },
+        "kind": {
+          "$ref": "#/$defs/AliasKind"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "kind",
+        "evidence",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "InitialMemory": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "InitialMemory"
+        },
+        "origin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "WriteMemory": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "WriteMemory"
+        },
+        "parent": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "location": {
+          "$ref": "#/$defs/MemoryLocationId"
+        },
+        "value": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SymbolicExprId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "update": {
+          "$ref": "#/$defs/UpdateKind"
+        },
+        "alias": {
+          "$ref": "#/$defs/AliasResult"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "unique_target": {
+          "type": "boolean"
+        },
+        "exact_coverage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "$type",
+        "parent",
+        "location",
+        "value",
+        "guard",
+        "update",
+        "alias",
+        "origin",
+        "unique_target",
+        "exact_coverage"
+      ],
+      "additionalProperties": false
+    },
+    "JoinInput": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "JoinInput"
+        },
+        "version": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SymbolicExprId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "version",
+        "guard"
+      ],
+      "additionalProperties": false
+    },
+    "JoinMemory": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "JoinMemory"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JoinInput"
+          }
+        },
+        "origin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "inputs",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "HavocMemory": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "HavocMemory"
+        },
+        "parent": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SymbolicExprId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "parent",
+        "regions",
+        "reason",
+        "origin",
+        "guard"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryVersion": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemoryVersion"
+        },
+        "id": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitialMemory"
+            },
+            {
+              "$ref": "#/$defs/WriteMemory"
+            },
+            {
+              "$ref": "#/$defs/JoinMemory"
+            },
+            {
+              "$ref": "#/$defs/HavocMemory"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "definition"
+      ],
+      "additionalProperties": false
+    },
+    "ReadMemory": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ReadMemory"
+        },
+        "state": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "location": {
+          "$ref": "#/$defs/MemoryLocationId"
+        },
+        "result": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SymbolicExprId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "state",
+        "location",
+        "result",
+        "guard",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "SymbolicNode": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "SymbolicNode"
+        },
+        "id": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "type": {
+          "$ref": "#/$defs/ValueType"
+        },
+        "op": {
+          "$ref": "#/$defs/SymbolicOp"
+        },
+        "operands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SymbolicExprId"
+          }
+        },
+        "origin": {
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryVersionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryLocationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "type",
+        "op",
+        "operands",
+        "origin",
+        "value",
+        "state",
+        "location",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "TaintFact": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "TaintFact"
+        },
+        "id": {
+          "type": "string"
+        },
+        "root": {
+          "$ref": "#/$defs/AccessRoot"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AccessPathId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "graph": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AccessGraphId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "$ref": "#/$defs/ContextId"
+        },
+        "memory_version": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SymbolicExprId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "taint_kind": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "provenance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "root",
+        "path",
+        "graph",
+        "context",
+        "memory_version",
+        "guard",
+        "taint_kind",
+        "origin",
+        "provenance",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "MemorySnapshot": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "MemorySnapshot"
+        },
+        "scope": {
+          "$ref": "#/$defs/AnalysisScope"
+        },
+        "architecture": {
+          "$ref": "#/$defs/Architecture"
+        },
+        "origin_map": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Origin"
+          }
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryObject"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AccessPath"
+          }
+        },
+        "graphs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AccessGraph"
+          }
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryLocation"
+          }
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryVersion"
+          }
+        },
+        "reads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReadMemory"
+          }
+        },
+        "expressions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SymbolicNode"
+          }
+        },
+        "taint_facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaintFact"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "object_facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HeapObject"
+          }
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HeapCell"
+          }
+        },
+        "budgets": {
+          "$ref": "#/$defs/SemanticBudgets"
+        },
+        "schema_version": {
+          "const": "Memory-Semantics-v1"
+        }
+      },
+      "required": [
+        "$type",
+        "scope",
+        "architecture",
+        "origin_map",
+        "objects",
+        "paths",
+        "graphs",
+        "locations",
+        "versions",
+        "reads",
+        "expressions",
+        "taint_facts",
+        "assessment",
+        "object_facts",
+        "cells",
+        "budgets",
+        "schema_version"
+      ],
+      "additionalProperties": false
+    },
+    "QueryBudget": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "QueryBudget"
+        },
+        "max_steps": {
+          "type": "integer"
+        },
+        "max_alias_candidates": {
+          "type": "integer"
+        },
+        "max_solver_queries": {
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "max_steps",
+        "max_alias_candidates",
+        "max_solver_queries",
+        "timeout_ms"
+      ],
+      "additionalProperties": false
+    },
+    "ReadResult": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ReadResult"
+        },
+        "value": {
+          "$ref": "#/$defs/SymbolicExprId"
+        },
+        "state": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "value",
+        "state",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "WriteResult": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "WriteResult"
+        },
+        "state": {
+          "$ref": "#/$defs/MemoryVersionId"
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "state",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "PointsToResult": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "PointsToResult"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryObjectId"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "candidates",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "DefinitionResult": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "DefinitionResult"
+        },
+        "definitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryVersionId"
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "$type",
+        "definitions",
+        "assessment"
+      ],
+      "additionalProperties": false
+    },
+    "Compute": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "Compute"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/ValueRef"
+        },
+        "op": {
+          "$ref": "#/$defs/ValueOp"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ValueRef"
+              },
+              {
+                "$ref": "#/$defs/Constant"
+              }
+            ]
+          }
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "result",
+        "op",
+        "args",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "LoadEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "LoadEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/ValueRef"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "width_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "address_space": {
+          "type": "string"
+        },
+        "alignment_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "volatile": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "result",
+        "address",
+        "width_bits",
+        "endian",
+        "guard",
+        "address_space",
+        "alignment_bytes",
+        "volatile"
+      ],
+      "additionalProperties": false
+    },
+    "StoreEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "StoreEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "width_bits": {
+          "type": "integer"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "address_space": {
+          "type": "string"
+        },
+        "alignment_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "volatile": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "address",
+        "value",
+        "width_bits",
+        "endian",
+        "guard",
+        "address_space",
+        "alignment_bytes",
+        "volatile"
+      ],
+      "additionalProperties": false
+    },
+    "RegisterSlice": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "RegisterSlice"
+        },
+        "register": {
+          "type": "string"
+        },
+        "bit_offset": {
+          "type": "integer"
+        },
+        "width_bits": {
+          "type": "integer"
+        },
+        "register_width_bits": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "$type",
+        "register",
+        "bit_offset",
+        "width_bits",
+        "register_width_bits"
+      ],
+      "additionalProperties": false
+    },
+    "ReadRegister": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ReadRegister"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/ValueRef"
+        },
+        "source": {
+          "$ref": "#/$defs/RegisterSlice"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "result",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "WriteRegister": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "WriteRegister"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/RegisterSlice"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/RegisterWritePolicy"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "target",
+        "value",
+        "policy",
+        "guard"
+      ],
+      "additionalProperties": false
+    },
+    "DirectTarget": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "DirectTarget"
+        },
+        "function": {
+          "$ref": "#/$defs/FunctionId"
+        }
+      },
+      "required": [
+        "$type",
+        "function"
+      ],
+      "additionalProperties": false
+    },
+    "IndirectTarget": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "IndirectTarget"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "address"
+      ],
+      "additionalProperties": false
+    },
+    "ExternalTarget": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ExternalTarget"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "symbol"
+      ],
+      "additionalProperties": false
+    },
+    "UnknownTarget": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "UnknownTarget"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "CallFootprint": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CallFootprint"
+        },
+        "read_regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "write_regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "clobbered_registers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknown": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "read_regions",
+        "write_regions",
+        "clobbered_registers",
+        "unknown",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "CallEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CallEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "site": {
+          "$ref": "#/$defs/CallSiteId"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DirectTarget"
+            },
+            {
+              "$ref": "#/$defs/IndirectTarget"
+            },
+            {
+              "$ref": "#/$defs/ExternalTarget"
+            },
+            {
+              "$ref": "#/$defs/UnknownTarget"
+            }
+          ]
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ValueRef"
+              },
+              {
+                "$ref": "#/$defs/Constant"
+              }
+            ]
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValueRef"
+          }
+        },
+        "abi": {
+          "$ref": "#/$defs/ABI"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "footprint": {
+          "$ref": "#/$defs/CallFootprint"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "site",
+        "target",
+        "arguments",
+        "results",
+        "abi",
+        "guard",
+        "footprint"
+      ],
+      "additionalProperties": false
+    },
+    "BranchEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "BranchEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "if_true": {
+          "$ref": "#/$defs/BlockId"
+        },
+        "if_false": {
+          "$ref": "#/$defs/BlockId"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "condition",
+        "if_true",
+        "if_false"
+      ],
+      "additionalProperties": false
+    },
+    "JumpEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "JumpEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockId"
+            },
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "target"
+      ],
+      "additionalProperties": false
+    },
+    "ReturnEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "ReturnEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ValueRef"
+              },
+              {
+                "$ref": "#/$defs/Constant"
+              }
+            ]
+          }
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "values",
+        "guard"
+      ],
+      "additionalProperties": false
+    },
+    "HavocEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "HavocEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "registers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "$ref": "#/$defs/Constant"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "regions",
+        "registers",
+        "guard",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "UnknownEffect": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "UnknownEffect"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "source_opcode": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "may_write_regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "may_write_registers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "may_change_control": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "$type",
+        "origin",
+        "source_opcode",
+        "reason",
+        "may_write_regions",
+        "may_write_registers",
+        "may_change_control"
+      ],
+      "additionalProperties": false
+    },
+    "CIRBlock": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CIRBlock"
+        },
+        "id": {
+          "$ref": "#/$defs/BlockId"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Compute"
+              },
+              {
+                "$ref": "#/$defs/LoadEffect"
+              },
+              {
+                "$ref": "#/$defs/StoreEffect"
+              },
+              {
+                "$ref": "#/$defs/ReadRegister"
+              },
+              {
+                "$ref": "#/$defs/WriteRegister"
+              },
+              {
+                "$ref": "#/$defs/CallEffect"
+              },
+              {
+                "$ref": "#/$defs/BranchEffect"
+              },
+              {
+                "$ref": "#/$defs/JumpEffect"
+              },
+              {
+                "$ref": "#/$defs/ReturnEffect"
+              },
+              {
+                "$ref": "#/$defs/HavocEffect"
+              },
+              {
+                "$ref": "#/$defs/UnknownEffect"
+              }
+            ]
+          }
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$type",
+        "id",
+        "effects",
+        "size_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "CIRFunction": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CIRFunction"
+        },
+        "function_id": {
+          "$ref": "#/$defs/FunctionId"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValueRef"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CIRBlock"
+          }
+        },
+        "entry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "abi": {
+          "$ref": "#/$defs/ABI"
+        }
+      },
+      "required": [
+        "$type",
+        "function_id",
+        "values",
+        "blocks",
+        "entry",
+        "abi"
+      ],
+      "additionalProperties": false
+    },
+    "CIRModule": {
+      "type": "object",
+      "properties": {
+        "$type": {
+          "const": "CIRModule"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "architecture": {
+          "$ref": "#/$defs/Architecture"
+        },
+        "endian": {
+          "$ref": "#/$defs/Endian"
+        },
+        "binary_sha256": {
+          "type": "string"
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CIRFunction"
+          }
+        },
+        "origin_map": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Origin"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "access-graph-descriptors",
+              "memory-descriptors",
+              "taint-fact-descriptors",
+              "typed-effects"
+            ]
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "memory_snapshots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemorySnapshot"
+          }
+        },
+        "schema_version": {
+          "const": "CIR-Wire-v1"
+        },
+        "memory_semantics_version": {
+          "const": "Memory-Semantics-v1"
+        }
+      },
+      "required": [
+        "$type",
+        "producer",
+        "architecture",
+        "endian",
+        "binary_sha256",
+        "functions",
+        "origin_map",
+        "capabilities",
+        "assessment",
+        "memory_snapshots",
+        "schema_version",
+        "memory_semantics_version"
+      ],
+      "additionalProperties": false
+    },
+    "MemoryKind": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "MemoryKind"
+        },
+        "value": {
+          "enum": [
+            "stack",
+            "global",
+            "heap",
+            "argument",
+            "return",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Endian": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "Endian"
+        },
+        "value": {
+          "enum": [
+            "little",
+            "big"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Completeness": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "Completeness"
+        },
+        "value": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Precision": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "Precision"
+        },
+        "value": {
+          "enum": [
+            "exact",
+            "over_approx",
+            "incomplete"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "TypeKind": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "TypeKind"
+        },
+        "value": {
+          "enum": [
+            "bool",
+            "bitvector",
+            "pointer"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Signedness": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "Signedness"
+        },
+        "value": {
+          "enum": [
+            "unsigned",
+            "signed",
+            "unspecified"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectCardinality": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "ObjectCardinality"
+        },
+        "value": {
+          "enum": [
+            "singleton",
+            "summary",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectLifetime": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "ObjectLifetime"
+        },
+        "value": {
+          "enum": [
+            "static",
+            "stack_frame",
+            "allocated",
+            "external",
+            "freed",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "AliasKind": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "AliasKind"
+        },
+        "value": {
+          "enum": [
+            "must_alias",
+            "may_alias",
+            "no_alias",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "UpdateKind": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "UpdateKind"
+        },
+        "value": {
+          "enum": [
+            "strong",
+            "weak"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "SymbolicOp": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "SymbolicOp"
+        },
+        "value": {
+          "enum": [
+            "symbol",
+            "constant",
+            "add",
+            "copy",
+            "sub",
+            "mul",
+            "and_bits",
+            "or_bits",
+            "xor_bits",
+            "ult",
+            "slt",
+            "extract",
+            "zero_extend",
+            "sign_extend",
+            "concat",
+            "if",
+            "not",
+            "eq",
+            "memory_read",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ValueOp": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "ValueOp"
+        },
+        "value": {
+          "enum": [
+            "copy",
+            "add",
+            "sub",
+            "mul",
+            "and_bits",
+            "or_bits",
+            "xor_bits",
+            "eq",
+            "ult",
+            "slt",
+            "not",
+            "extract",
+            "zero_extend",
+            "sign_extend",
+            "concat",
+            "if"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "RegisterWritePolicy": {
+      "type": "object",
+      "properties": {
+        "$enum": {
+          "const": "RegisterWritePolicy"
+        },
+        "value": {
+          "enum": [
+            "full",
+            "preserve_others",
+            "zero_upper"
+          ]
+        }
+      },
+      "required": [
+        "$enum",
+        "value"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

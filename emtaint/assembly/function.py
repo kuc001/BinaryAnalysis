@@ -1,12 +1,9 @@
 import logging
 
-from angr.serializable import Serializable
-
-
 l = logging.getLogger(name=__name__)
 
 
-class Function(Serializable):
+class Function:
     """
 
     """
@@ -25,9 +22,9 @@ class Function(Serializable):
         cfg=None,
     ):
         self.addr = addr
-        self.name = name,
-        self.syscall = syscall,
-        self.is_simprocedure = False,
+        self.name = name
+        self.syscall = syscall
+        self.is_simprocedure = is_simprocedure
         self.is_alignment = alignment
         self.binary_name = binary_name
 
@@ -46,6 +43,20 @@ class Function(Serializable):
     def get_frontend_graph(self):
         return self._frontend_graph
 
+    def serialize(self):
+        # The former angr Serializable base had no implemented protobuf hooks
+        # here. Preserve its explicit unsupported API without importing angr.
+        raise NotImplementedError('Legacy Function has no protobuf schema')
+
+    serialize_to_cmessage = serialize
+
+    @classmethod
+    def parse(cls, *args, **kwargs):
+        raise NotImplementedError('Legacy Function has no protobuf schema')
+
+    _get_cmsg = parse
+    parse_from_cmessage = parse
+
     def set_frontend_graph(self, graph):
         self._frontend_graph = graph
 
@@ -53,7 +64,7 @@ class Function(Serializable):
         """
 
         """
-        if block.addr and block.addr not in self._local_blocks:
+        if block.addr is not None and block.addr not in self._local_blocks:
             self._local_blocks[block.addr] = block
             self._local_block_addrs.add(block.addr)
 

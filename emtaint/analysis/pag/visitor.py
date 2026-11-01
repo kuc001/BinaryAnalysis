@@ -11,7 +11,6 @@ from emtaint.analysis.variables.binop_value import BinopValue
 from emtaint.analysis.variables.cons_value import ConsValue
 from emtaint.analysis.variables.mem_value import MemValue
 from emtaint.analysis.variables.unop_value import UnopValue
-from .var_node import VarNode
 from .var_edge import VarEdge, OpEdge, AssignEdge, FlowEdge, AddrEdge, EdgeKind
 
 
@@ -53,7 +52,7 @@ class PAGVisitor(IRVisitor):
                 node.change_var_kind(kind)
             return node
         
-        node = VarNode(TmpValue(name, size, kind, expr=rd_tmp, loc=self._current_loc), 1)
+        node = self.ir_graph.new_node(TmpValue(name, size, kind, expr=rd_tmp, loc=self._current_loc), 1)
         self._block_tmp_nodes[name] = node
         return node
     
@@ -74,7 +73,7 @@ class PAGVisitor(IRVisitor):
 
         use_node = self.get_tmp_node(use_expr.get_name(), use_expr)
         use_node = self.get_tmp_to_use(use_node)
-        def_node = VarNode(def_value, 1)
+        def_node = self.ir_graph.new_node(def_value, 1)
 
         edge = AssignEdge(use_node, def_node, kind=EdgeKind.Assign, stmt=put_tmp)
         self.ir_graph.add_edge(edge)
@@ -91,8 +90,8 @@ class PAGVisitor(IRVisitor):
         def_value = RegValue(def_name, None, ValueKind.Unknown, loc=self._current_loc)
         use_value = ConsValue(use_cons, None, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
-        def_node = VarNode(def_value, 1)
+        use_node = self.ir_graph.new_node(use_value, 0)
+        def_node = self.ir_graph.new_node(def_value, 1)
 
         edge = AssignEdge(use_node, def_node, kind=EdgeKind.Assign, stmt=put_const)
         self.ir_graph.add_edge(edge)
@@ -135,7 +134,7 @@ class PAGVisitor(IRVisitor):
         size = use_expr.get_size()
         use_value = RegValue(use_name, size, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
+        use_node = self.ir_graph.new_node(use_value, 0)
         def_node = self.get_tmp_node(def_name, size=size)
 
         self.add_tmp_to_use(def_node, use_node)
@@ -162,7 +161,7 @@ class PAGVisitor(IRVisitor):
         args_value = [arg_node.var for arg_node in args_node]
 
         use_value = BinopValue(use_expr.op, args_value, size, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
-        use_node = VarNode(use_value, 0)
+        use_node = self.ir_graph.new_node(use_value, 0)
         def_node = self.get_tmp_node(def_name, size=size)
 
         self.add_tmp_to_use(def_node, use_node)
@@ -195,10 +194,10 @@ class PAGVisitor(IRVisitor):
         size = use_expr.get_size()
 
         addr_value = ConsValue(use_name, None, ValueKind.GlobalPtr, expr=use_expr.addr, loc=self._current_loc)
-        addr_node = VarNode(addr_value, 0)
+        addr_node = self.ir_graph.new_node(addr_value, 0)
         use_value = MemValue(addr_value, size, ValueKind.MemAccess, "load", expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
+        use_node = self.ir_graph.new_node(use_value, 0)
         def_node = self.get_tmp_node(def_name, size=size)
 
         self.add_tmp_to_use(def_node, use_node)
@@ -228,7 +227,7 @@ class PAGVisitor(IRVisitor):
         addr_node = self.get_tmp_node(use_name, rd_tmp=use_expr.addr, kind=ValueKind.Pointer)
         use_value = MemValue(addr_node.var, size, ValueKind.MemAccess, "load", expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
+        use_node = self.ir_graph.new_node(use_value, 0)
         def_node = self.get_tmp_node(def_name, size=size)
 
         self.add_tmp_to_use(def_node, use_node)
@@ -268,7 +267,7 @@ class PAGVisitor(IRVisitor):
             
         elif isinstance(guard_name, int):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
-            guard_node = VarNode(guard_value, 0)
+            guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
             raise l.error("The guard of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
          
@@ -278,7 +277,7 @@ class PAGVisitor(IRVisitor):
             
         elif isinstance(use_name_iftrue, int):
             use_value_iftrue = ConsValue(use_name_iftrue, None, ValueKind.Unknown, expr=iftrue_expr, loc=self._current_loc)
-            use_node_iftrue = VarNode(use_value_iftrue, 0)
+            use_node_iftrue = self.ir_graph.new_node(use_value_iftrue, 0)
         else:
             raise l.error("The alt of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
         
@@ -288,7 +287,7 @@ class PAGVisitor(IRVisitor):
 
         elif isinstance(use_name_iffalse, int):
             use_value_iffalse = ConsValue(use_name_iffalse, None, ValueKind.Unknown, expr=iffalse_expr, loc=self._current_loc)
-            use_node_iffalse = VarNode(use_value_iffalse, 0)
+            use_node_iffalse = self.ir_graph.new_node(use_value_iffalse, 0)
         else:
             raise l.error("The alt of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
         
@@ -320,7 +319,7 @@ class PAGVisitor(IRVisitor):
         args_value = [arg_node.var for arg_node in args_node]
         use_value = UnopValue(use_expr.op, args_value, size, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
+        use_node = self.ir_graph.new_node(use_value, 0)
         def_node = self.get_tmp_node(def_name, size=size)
 
         self.add_tmp_to_use(def_node, use_node)
@@ -359,7 +358,7 @@ class PAGVisitor(IRVisitor):
             guard_node = self.get_tmp_node(guard_name, rd_tmp=guard_expr, kind=ValueKind.Condition)
         elif isinstance(guard_name, int):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
-            guard_node = VarNode(guard_value, 0)
+            guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
             raise l.error("The guard of the loadg statement %s is not a temporary or a constant.", loadg)
         
@@ -368,12 +367,12 @@ class PAGVisitor(IRVisitor):
             addr_node = self.get_tmp_to_use(addr_node)
             addr_node.change_var_kind(ValueKind.Pointer)
             use_value_in_guard = MemValue(addr_node.var, None, ValueKind.MemAccess, "load", expr=use_expr_in_guard, loc=self._current_loc)
-            use_node_in_guard = VarNode(use_value_in_guard, 0)
+            use_node_in_guard = self.ir_graph.new_node(use_value_in_guard, 0)
         elif isinstance(use_name_in_guard, int):
             addr_value = ConsValue(use_name_in_guard, None, ValueKind.Pointer, expr=use_expr_in_guard, loc=self._current_loc)
-            addr_node = VarNode(addr_value, 0)
+            addr_node = self.ir_graph.new_node(addr_value, 0)
             use_value_in_guard = MemValue(addr_value, None, ValueKind.MemAccess, "load", expr=use_expr_in_guard, loc=self._current_loc)
-            use_node_in_guard = VarNode(use_value_in_guard, 0)
+            use_node_in_guard = self.ir_graph.new_node(use_value_in_guard, 0)
         else:
             raise l.error("The use of the loadg statement %s is not a temporary or a constant.", loadg)
 
@@ -383,7 +382,7 @@ class PAGVisitor(IRVisitor):
         
         elif isinstance(use_name_no_guard, int):
             use_value_no_guard = ConsValue(use_name_no_guard, None, ValueKind.Unknown, expr=use_expr_no_guard, loc=self._current_loc)
-            use_node_no_guard = VarNode(use_value_no_guard, 0)
+            use_node_no_guard = self.ir_graph.new_node(use_value_no_guard, 0)
         else:
             raise l.error("The alt of the loadg statement %s is not a temporary or a constant.", loadg)
         
@@ -427,7 +426,7 @@ class PAGVisitor(IRVisitor):
             # guard_value = TmpValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
         elif isinstance(guard_name, int):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
-            guard_node = VarNode(guard_value, 0)
+            guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
             raise l.error("The guard of the storeg statement %s is not a temporary or a constant.", storeg)
         
@@ -436,7 +435,7 @@ class PAGVisitor(IRVisitor):
             use_node = self.get_tmp_to_use(use_node)
         elif isinstance(use_name, int):
             use_value = ConsValue(use_name, None, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
-            use_node = VarNode(use_value, 0)
+            use_node = self.ir_graph.new_node(use_value, 0)
         else:
             raise l.error("The use of the storeg statement %s is not a temporary or a constant.", storeg)
         
@@ -445,12 +444,12 @@ class PAGVisitor(IRVisitor):
             addr_node = self.get_tmp_to_use(addr_node)
             addr_node.change_var_kind(ValueKind.Pointer)
             def_value = MemValue(addr_node.var, None, ValueKind.MemAccess, "store", expr=def_expr, loc=self._current_loc)
-            def_node = VarNode(def_value, 1)
+            def_node = self.ir_graph.new_node(def_value, 1)
         elif isinstance(def_name, int):
             addr_value = ConsValue(def_name, None, ValueKind.Pointer, expr=def_expr, loc=self._current_loc)
-            addr_node = VarNode(addr_value, 0)
+            addr_node = self.ir_graph.new_node(addr_value, 0)
             def_value = MemValue(addr_node.var, None, ValueKind.MemAccess, "store", expr=def_expr, loc=self._current_loc)
-            def_node = VarNode(def_value, 1)
+            def_node = self.ir_graph.new_node(def_value, 1)
         else:
             raise l.error("The def of the storeg statement %s is not a temporary or a constant.", storeg)
         
@@ -486,7 +485,7 @@ class PAGVisitor(IRVisitor):
 
         use_node = self.get_tmp_node(use_name, rd_tmp=use_expr)
         use_node = self.get_tmp_to_use(use_node)
-        def_node = VarNode(def_value, 1)
+        def_node = self.ir_graph.new_node(def_value, 1)
 
         edge = AssignEdge(use_node, def_node, kind=EdgeKind.StoreAssign, stmt=reg_store_tmp)
         self.ir_graph.add_edge(edge)
@@ -516,8 +515,8 @@ class PAGVisitor(IRVisitor):
         def_value = MemValue(addr_node.var, None, ValueKind.MemAccess, "store", expr=def_expr, loc=self._current_loc)
         use_value = ConsValue(use_cons, None, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
 
-        use_node = VarNode(use_value, 0)
-        def_node = VarNode(def_value, 1)
+        use_node = self.ir_graph.new_node(use_value, 0)
+        def_node = self.ir_graph.new_node(def_value, 1)
 
         edge = AssignEdge(use_node, def_node, kind=EdgeKind.StoreAssign, stmt=reg_store_cons)
         self.ir_graph.add_edge(edge)
@@ -551,7 +550,7 @@ class PAGVisitor(IRVisitor):
             raise l.warning("The exit statement %s is not a boring exit.", ext)
 
         guard_node = self.get_tmp_node(guard_name, rd_tmp=ext.guard, kind=ValueKind.Condition)
-        target_node = VarNode(target_value, 0)
+        target_node = self.ir_graph.new_node(target_value, 0)
 
         edge = FlowEdge(guard_node, target_node, kind=EdgeKind.Jump, guard=guard_node, stmt=ext)
         self.ir_graph.add_edge(edge)
@@ -590,5 +589,5 @@ class PAGVisitor(IRVisitor):
         return self.get_tmp_node(rdtmp.get_name(), rd_tmp=rdtmp, kind=ValueKind.Unknown)
     
     def visit_const(self, const):
-        return VarNode(ConsValue(const.get_name(), None, ValueKind.Const, expr=const, loc=self._current_loc), 0)
+        return self.ir_graph.new_node(ConsValue(const.get_name(), None, ValueKind.Const, expr=const, loc=self._current_loc), 0)
         

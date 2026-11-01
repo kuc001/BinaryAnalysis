@@ -22,3 +22,24 @@ venv*/
 .idea/
 *.swp
 *.swo
+
+# P1 isolated probes, native caches, and immutable local evidence
+.p1-work/
+
+# P2 model regression and immutable integrity evidence
+.p2-work/
+
+# P3 typed CIR / memory contract evidence
+.p3-work/
+
+# P4 isolated native lifting and immutable evidence
+.p4-work/
+
+# P5 memory conformance, native solver probes and immutable evidence
+.p5-work/
+
+# P6 isolated dataflow/target comparisons and immutable evidence
+.p6-work/
+
+# P7 isolated CLI outputs, characterization and immutable evidence
+.p7-work/

@@ -12,11 +12,9 @@ def main():
     em_program = EmProgram.build(binary)
 
     IRGraphBuilder().build(em_program)
+    return em_program
 
 
 if __name__ == "__main__":
-    main()
-
-    world = EmProgram.get_em_program()
+    world = main()
     # print(world.functions)
-    

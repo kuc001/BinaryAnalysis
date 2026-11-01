@@ -1,5 +1,4 @@
 import logging
-from .visitor import PAGVisitor
 from .ir_graph import IRGraph
 from .var_edge import FlowEdge, EdgeKind
 
@@ -11,14 +10,15 @@ class IRGraphBuilder:
 
     ID = "pag"
 
-    def __init__(self):
-        self.ir_graph = IRGraph()
+    def __init__(self, graph=None, visitor_factory=None):
+        self.ir_graph = IRGraph() if graph is None else graph
         self._visitor = None
+        self._visitor_factory = visitor_factory
     
     def set_visitor(self, visitor):
         self._visitor = visitor
         
-    def build(self, em_program):
+    def build(self, em_program, *, function_addrs=None, entry_block_addrs=None):
         """
         分析程序并构建程序赋值图(PAG)
         Args:
@@ -26,10 +26,19 @@ class IRGraphBuilder:
         Returns:
             构建的PAG图
         """
-        self.set_visitor(PAGVisitor(self.ir_graph))
+        functions = em_program.functions
+        selected = None if function_addrs is None else frozenset(function_addrs)
+        if selected is not None and (any(type(a) is not int or a < 0 for a in selected)
+                                     or not selected <= {f.addr for f in functions}):
+            raise ValueError('Function selection contains an invalid or unknown address')
+        factory = self._visitor_factory
+        if factory is None:
+            from .visitor import PAGVisitor
+            factory = PAGVisitor
+        self.set_visitor(factory(self.ir_graph))
 
-        for function in em_program.functions:
-            if not function.addr in [0x400963]:
+        for function in functions:
+            if selected is not None and function.addr not in selected:
                 continue
             l.debug("Analyzing function: %s", function.name)
             cfg = function.cfg
@@ -101,7 +110,7 @@ class IRGraphBuilder:
 
         # for node in self.ir_graph.get_nodes():
         #     print(node)
-        self.ir_graph.analyze_graph()
+        self.ir_graph.analyze_graph(entry_block_addrs)
                   
     def _process_statement(self, stmt):
         """
@@ -122,15 +131,14 @@ class IRGraphBuilder:
 
 
 
-    def _forward_analysis(self):
+    def _forward_analysis(self, entry_block_addrs=None):
         """
         前向分析
         """
-        worklist = []
+        addresses = tuple(self.ir_graph.block_entry_nodes) if entry_block_addrs is None else tuple(entry_block_addrs)
+        worklist = [self.ir_graph.block_entry_nodes[address] for address in addresses]
         visited = set()
         live_vars = {}
-        start_node = self.get_block_entry_node(0x16fd8)
-        worklist.append(start_node)
         while worklist:
             node = worklist.pop()
             if node in visited:

@@ -263,7 +263,7 @@ print(json.dumps({'python':sys.version,'executable':sys.executable,'prefix':sys.
             raise RuntimeError(label + " failed: " + str(python))
 
 
-def run_stage(run_root, archive, stage, profile, timeout, proof):
+def run_stage(run_root, archive, stage, profile, timeout, proof, observed=False):
     import psutil  # Already installed in the target environment; never install packages.
     validate_run_root(run_root)
     require_isolation(proof)
@@ -271,6 +271,12 @@ def run_stage(run_root, archive, stage, profile, timeout, proof):
     previous_mtime = result_path.stat().st_mtime_ns
     bootstrap_report = archive / (stage + ".bootstrap.json")
     command = bootstrap_command(run_root, archive, bootstrap_report, "main")
+    if observed:
+        observer = run_root / "_p0b_observer.py"
+        if sha(observer) != sha(TARGET / "scripts/legacy_observer.py"):
+            raise RuntimeError("Observer physical copy changed")
+        command += ["--metrics-file", str(archive / (stage + ".metrics.json")),
+                    "--observer-plan", str(archive / "observer-plan.json"), "--observer-sha", sha(observer)]
     if profile:
         command += ["--profile-file", str(archive / (stage + ".prof"))]
     command += ["--", "-f", "./firmware-binaries/rv130_v44/httpd",
@@ -291,8 +297,9 @@ def run_stage(run_root, archive, stage, profile, timeout, proof):
                 pass
             if time.perf_counter() - start > timeout:
                 timed_out = True
-                process.kill()
-                process.wait()
+                sys.path.insert(0, str(TARGET))
+                from emtaint.solver.process_port import terminate_tree
+                terminate_tree(process)
                 break
             time.sleep(0.2)
     record = {"command": command, "cwd": str(run_root), "started_at_utc": start_utc,
