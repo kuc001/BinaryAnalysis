@@ -279,16 +279,16 @@ class AnalysisScope(Record, StableIdentity):
 
     def __hash__(self):
         # Implementation memo only: fields/wire identity remain unchanged.
-        value=getattr(self,'_stable_hash',None)
+        value=getattr(self, '_stable_hash', None)
         if value is None:
-            value=hash((self.function,self.context,self.session_id,self.cfg_version,self.cg_version,self.state_revision))
-            object.__setattr__(self,'_stable_hash',value)
+            value=hash((self.function, self.context, self.session_id, self.cfg_version, self.cg_version, self.state_revision))
+            object.__setattr__(self, '_stable_hash', value)
         return value
 
     def __reduce__(self):
         # Python hash randomization differs between processes. Reconstruct
         # from semantic fields so a cached hash is never persisted by pickle.
-        return type(self),(self.function,self.context,self.session_id,self.cfg_version,self.cg_version,self.state_revision)
+        return type(self), (self.function, self.context, self.session_id, self.cfg_version, self.cg_version, self.state_revision)
 
     def __post_init__(self):
         super().__post_init__()

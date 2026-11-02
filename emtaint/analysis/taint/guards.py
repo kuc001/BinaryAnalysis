@@ -141,38 +141,40 @@ class EqualityGuard:
 
 def arm_zero_flag_equal(effects: tuple, condition: ValueRef | Constant) -> EqualityGuard | None:
     """Recognize the ARM EQ flag chain only when its subtraction is exact."""
-    definitions={effect.result.id:effect for effect in effects if isinstance(effect,Compute)}
+    definitions={effect.result.id:effect for effect in effects if isinstance(effect, Compute)}
 
     def unwrap(value):
         for _ in range(12):
-            effect=definitions.get(value.id) if isinstance(value,ValueRef) else None
+            effect=definitions.get(value.id) if isinstance(value, ValueRef) else None
             if effect is None:return value
             if effect.op==ValueOp.COPY:
-                value=effect.args[0];continue
-            if effect.op==ValueOp.EXTRACT and effect.params==(0,0):
-                value=effect.args[0];continue
+                value=effect.args[0]
+                continue
+            if effect.op==ValueOp.EXTRACT and effect.params==(0, 0):
+                value=effect.args[0]
+                continue
             return value
         return value
 
-    def match_equal(value,constant):
-        effect=definitions.get(value.id) if isinstance(value,ValueRef) else None
+    def match_equal(value, constant):
+        effect=definitions.get(value.id) if isinstance(value, ValueRef) else None
         if effect is None or effect.op!=ValueOp.EQ:return None
-        first,second=effect.args
-        if isinstance(second,Constant) and second.value==constant:return unwrap(first)
-        if isinstance(first,Constant) and first.value==constant:return unwrap(second)
+        first, second=effect.args
+        if isinstance(second, Constant) and second.value==constant:return unwrap(first)
+        if isinstance(first, Constant) and first.value==constant:return unwrap(second)
         return None
 
-    bit=match_equal(unwrap(condition),1)
-    choice=definitions.get(bit.id) if isinstance(bit,ValueRef) else None
+    bit=match_equal(unwrap(condition), 1)
+    choice=definitions.get(bit.id) if isinstance(bit, ValueRef) else None
     if choice is None or choice.op!=ValueOp.IF:return None
-    if not (isinstance(choice.args[1],Constant) and choice.args[1].value==1 and
-            isinstance(choice.args[2],Constant) and choice.args[2].value==0):return None
-    difference=match_equal(unwrap(choice.args[0]),0)
-    subtract=definitions.get(difference.id) if isinstance(difference,ValueRef) else None
+    if not (isinstance(choice.args[1], Constant) and choice.args[1].value==1 and
+            isinstance(choice.args[2], Constant) and choice.args[2].value==0):return None
+    difference=match_equal(unwrap(choice.args[0]), 0)
+    subtract=definitions.get(difference.id) if isinstance(difference, ValueRef) else None
     if subtract is None or subtract.op!=ValueOp.SUB:return None
-    left,right=subtract.args
-    if not isinstance(left,ValueRef) or left.type.bits!=right.type.bits:return None
-    return EqualityGuard(left,right,left.type.bits)
+    left, right=subtract.args
+    if not isinstance(left, ValueRef) or left.type.bits!=right.type.bits:return None
+    return EqualityGuard(left, right, left.type.bits)
 
 
 def arm_unsigned_hi(effects: tuple, condition: ValueRef | Constant) -> UnsignedHiGuard | None:
@@ -182,59 +184,61 @@ def arm_unsigned_hi(effects: tuple, condition: ValueRef | Constant) -> UnsignedH
     ``x <=u y``. Require both comparisons to use the same 32-bit operands;
     nearby signed or mismatched flag expressions remain unsupported.
     """
-    definitions={effect.result.id:effect for effect in effects if isinstance(effect,Compute)}
+    definitions={effect.result.id:effect for effect in effects if isinstance(effect, Compute)}
 
     def definition(value):
-        return definitions.get(value.id) if isinstance(value,ValueRef) else None
+        return definitions.get(value.id) if isinstance(value, ValueRef) else None
 
-    def literal(value,number):
-        return isinstance(value,Constant) and value.value==number
+    def literal(value, number):
+        return isinstance(value, Constant) and value.value==number
 
     def unwrap(value):
         for _ in range(12):
             effect=definition(value)
             if effect is None:return value
             if effect.op==ValueOp.COPY:
-                value=effect.args[0];continue
-            if effect.op==ValueOp.EXTRACT and effect.params==(0,0):
-                value=effect.args[0];continue
+                value=effect.args[0]
+                continue
+            if effect.op==ValueOp.EXTRACT and effect.params==(0, 0):
+                value=effect.args[0]
+                continue
             return value
         return value
 
-    def equality_to(value,number):
+    def equality_to(value, number):
         effect=definition(unwrap(value))
         if effect is None or effect.op!=ValueOp.EQ:return None
-        first,second=effect.args
-        if literal(second,number):return unwrap(first)
-        if literal(first,number):return unwrap(second)
+        first, second=effect.args
+        if literal(second, number):return unwrap(first)
+        if literal(first, number):return unwrap(second)
         return None
 
     def greater_equal_part(value):
         effect=definition(unwrap(value))
-        if effect is None or effect.op!=ValueOp.IF or not literal(effect.args[1],0) or not literal(effect.args[2],1):return None
+        if effect is None or effect.op!=ValueOp.IF or not literal(effect.args[1], 0) or not literal(effect.args[2], 1):return None
         compare=definition(unwrap(effect.args[0]))
         return compare.args if compare is not None and compare.op==ValueOp.ULT else None
 
     def not_equal_part(value):
         effect=definition(unwrap(value))
         if effect is None or effect.op!=ValueOp.XOR:return None
-        first,second=effect.args
-        inner=first if literal(second,1) else second if literal(first,1) else None
+        first, second=effect.args
+        inner=first if literal(second, 1) else second if literal(first, 1) else None
         choice=definition(unwrap(inner)) if inner is not None else None
-        if choice is None or choice.op!=ValueOp.IF or not literal(choice.args[1],1) or not literal(choice.args[2],0):return None
-        difference=equality_to(choice.args[0],0)
+        if choice is None or choice.op!=ValueOp.IF or not literal(choice.args[1], 1) or not literal(choice.args[2], 0):return None
+        difference=equality_to(choice.args[0], 0)
         subtract=definition(difference) if difference is not None else None
         return subtract.args if subtract is not None and subtract.op==ValueOp.SUB else None
 
-    body=equality_to(condition,1)
+    body=equality_to(condition, 1)
     combined=definition(body) if body is not None else None
     if combined is None or combined.op!=ValueOp.AND:return None
-    first,second=combined.args
-    pairs=((greater_equal_part(first),not_equal_part(second)),
-           (greater_equal_part(second),not_equal_part(first)))
-    for unsigned,unequal in pairs:
+    first, second=combined.args
+    pairs=((greater_equal_part(first), not_equal_part(second)),
+           (greater_equal_part(second), not_equal_part(first)))
+    for unsigned, unequal in pairs:
         if unsigned is None or unequal is None or unsigned!=unequal:continue
-        left,right=unsigned
-        if not isinstance(left,ValueRef) or left.type.bits!=32 or right.type.bits!=32:continue
-        return UnsignedHiGuard(left,right,32)
+        left, right=unsigned
+        if not isinstance(left, ValueRef) or left.type.bits!=32 or right.type.bits!=32:continue
+        return UnsignedHiGuard(left, right, 32)
     return None

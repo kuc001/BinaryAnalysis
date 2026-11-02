@@ -62,11 +62,11 @@ class SymbolicExprDAG:
     def operation(self, op, type_, operands, origin, params=()):
         # Constant folding uses target modular BV arithmetic only.
         if op == SymbolicOp.IF:
-            validate_value_operation(op.value,type_,[self.nodes[x].type for x in operands],params)
+            validate_value_operation(op.value, type_, [self.nodes[x].type for x in operands], params)
             guard=self.constant_value(operands[0])
             selected=operands[1] if guard is True else operands[2] if guard is False else operands[1] if operands[1]==operands[2] else None
             if selected is not None:
-                return self.operation(SymbolicOp.COPY,type_,(selected,),origin)
+                return self.operation(SymbolicOp.COPY, type_, (selected,), origin)
         ref = self.make(type_, op, operands, origin, params=params)
         value = self.constant_value(ref)
         if value is not None:
@@ -84,7 +84,7 @@ class SymbolicExprDAG:
     def materialize(self, lazy):
         if lazy in self._substitution_memo:
             return self._substitution_memo[lazy]
-        self.accounting.check('sse_nodes',len(self.nodes)+len(self._substitution_memo)+1)
+        self.accounting.check('sse_nodes', len(self.nodes)+len(self._substitution_memo)+1)
         replacements = dict(lazy.replacements)
         done, stack = dict(replacements), [(lazy.root, False)]
         while stack:

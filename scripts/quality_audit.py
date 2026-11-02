@@ -12,13 +12,18 @@ import argparse
 import ast
 from collections import Counter
 from dataclasses import asdict, dataclass
+import io
 import json
 from pathlib import Path
+import tokenize
 from typing import Iterable, Sequence
 
 
 SAFETY_CODES = frozenset(
     {"syntax-error", "bare-except", "silent-exception", "wildcard-import"}
+)
+STYLE_CODES = frozenset(
+    {"compact-comma", "semicolon-statement", "line-too-long"}
 )
 
 
@@ -149,11 +154,71 @@ def _is_silent_handler(node: ast.ExceptHandler) -> bool:
     return bool(node.body) and all(isinstance(statement, ast.Pass) for statement in node.body)
 
 
-def _audit_tree(path: Path, tree: ast.Module) -> list[Finding]:
+def _style_findings(path: Path, source: str) -> list[Finding]:
+    """Find readability regressions without inspecting strings or comments.
+
+    The checks intentionally cover only the concrete problems enforced by the
+    project: packed semicolon statements, missing whitespace after commas and
+    physical lines longer than 100 columns.  Findings are reported once per
+    code and line so a compact legacy line does not create noisy duplicates.
+    """
+
+    display = path.as_posix()
+    rows = source.splitlines()
+    findings: set[Finding] = set()
+    for line, value in enumerate(rows, start=1):
+        if len(value.expandtabs(4)) > 100:
+            findings.add(
+                Finding(
+                    display,
+                    line,
+                    "line-too-long",
+                    "Physical line exceeds 100 columns",
+                )
+            )
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for item in tokens:
+            if item.type != tokenize.OP:
+                continue
+            line = item.start[0]
+            if item.string == ";":
+                findings.add(
+                    Finding(
+                        display,
+                        line,
+                        "semicolon-statement",
+                        "Place each simple statement on its own line",
+                    )
+                )
+            if item.string != ",":
+                continue
+            row = rows[line - 1]
+            next_column = item.end[1]
+            if next_column >= len(row):
+                continue
+            following = row[next_column]
+            if not following.isspace() and following not in ")]}":
+                findings.add(
+                    Finding(
+                        display,
+                        line,
+                        "compact-comma",
+                        "Add whitespace after a comma",
+                    )
+                )
+    except (IndentationError, tokenize.TokenError):
+        # ast.parse reports the authoritative syntax-error finding. Style
+        # scanning remains best-effort for an already invalid source file.
+        pass
+    return sorted(findings)
+
+
+def _audit_tree(path: Path, tree: ast.Module, source: str) -> list[Finding]:
     """Collect local findings without executing the parsed module."""
 
     display = path.as_posix()
-    findings: list[Finding] = []
+    findings = _style_findings(path, source)
     parents = {
         child: parent
         for parent in ast.walk(tree)
@@ -284,12 +349,13 @@ def audit(source_root: Path, selected_paths: Sequence[Path] = ()) -> AuditReport
 
     for path, module in module_by_path.items():
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            source = path.read_text(encoding="utf-8-sig")
+            tree = ast.parse(source, filename=str(path))
         except (OSError, UnicodeError, SyntaxError) as error:
             findings.append(Finding(path.as_posix(), 1, "syntax-error", str(error)))
             continue
         if not selected or path in selected:
-            findings.extend(_audit_tree(path, tree))
+            findings.extend(_audit_tree(path, tree, source))
         package = module if path.name == "__init__.py" else module.rpartition(".")[0]
         for node in ast.walk(tree):
             for name in _import_names(node, package):

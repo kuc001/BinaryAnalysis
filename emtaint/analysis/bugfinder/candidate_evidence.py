@@ -48,17 +48,17 @@ def source_fact_references(rows: tuple[dict, ...],
     selected=exact or matching
     latest={}
     for row in selected:
-        key=row.get('function'),row.get('program_site')
-        latest[key]=max(latest.get(key,-1),row.get('round',-1))
+        key=row.get('function'), row.get('program_site')
+        latest[key]=max(latest.get(key, -1), row.get('round', -1))
     selected=tuple(row for row in selected
-        if row.get('round',-1)==latest[row.get('function'),row.get('program_site')])
-    fields=('fact_id','function','round','origin','program_site','receipt','archive','manifest_sha256')
+        if row.get('round', -1)==latest[row.get('function'), row.get('program_site')])
+    fields=('fact_id', 'function', 'round', 'origin', 'program_site', 'receipt', 'archive', 'manifest_sha256')
     return tuple({field:row[field] for field in fields if field in row}
-        for row in sorted(selected,key=lambda item:(item.get('program_site',-1),item.get('fact_id',''))))
+        for row in sorted(selected, key=lambda item:(item.get('program_site', -1), item.get('fact_id', ''))))
 
 
 def merge_fact_references(existing: tuple[dict, ...],
                           additions: tuple[dict, ...]) -> tuple[dict, ...]:
     """Deduplicate additive fact references without dropping MemoryVersions."""
     rows={tuple(sorted(row.items())):row for row in existing+additions}
-    return tuple(rows[key] for key in sorted(rows,key=repr))
+    return tuple(rows[key] for key in sorted(rows, key=repr))

@@ -47,7 +47,8 @@ class SourceHandleEvidence:
 
 def fake_file_sources(handles):
     """SecurityCheck.get_file_open_taint_sources, including socket override."""
-    files=set();sockets=set()
+    files=set()
+    sockets=set()
     for handle in handles:
         if not handle.flag&0x4000 or not handle.sources:continue
         if handle.constraint_type==0x11:sockets.update(handle.sources)
@@ -56,24 +57,25 @@ def fake_file_sources(handles):
 
 
 class LegacySecurityPolicy:
-    def __init__(self,*,max_length=0,fake_sources=()):
-        self.max_length=max_length;self.fake_sources=frozenset(fake_sources)
+    def __init__(self, *, max_length=0, fake_sources=()):
+        self.max_length=max_length
+        self.fake_sources=frozenset(fake_sources)
 
     @staticmethod
     def guess_max_length(values):
-        return max((v for v in values if type(v) is int and v>=0x2000),default=0)
+        return max((v for v in values if type(v) is int and v>=0x2000), default=0)
 
-    def classify(self,evidence):
-        if evidence.source in self.fake_sources:return PolicyDecision(evidence,False,None,'Legacy file-handle source filtered')
-        if evidence.kind=='command':return PolicyDecision(evidence,True,None,'Legacy command weak evidence reaches sink; feasibility not proved')
-        if evidence.kind not in ('copy','copy_length'):return PolicyDecision(evidence,False,None,'Unsupported legacy weak category')
+    def classify(self, evidence):
+        if evidence.source in self.fake_sources:return PolicyDecision(evidence, False, None, 'Legacy file-handle source filtered')
+        if evidence.kind=='command':return PolicyDecision(evidence, True, None, 'Legacy command weak evidence reaches sink; feasibility not proved')
+        if evidence.kind not in ('copy', 'copy_length'):return PolicyDecision(evidence, False, None, 'Unsupported legacy weak category')
         constraints=evidence.constraints
         if any(type(c) is str and c!='Y' for c in constraints):
-            return PolicyDecision(evidence,False,None,'Legacy symbolic constraint filter; not a safety proof')
+            return PolicyDecision(evidence, False, None, 'Legacy symbolic constraint filter; not a safety proof')
         offset=(0x7fffffff-evidence.stack_address if evidence.stack_address is not None else evidence.memory_size or None)
         if offset is None or not 0<=offset<=0xfffff:
-            return PolicyDecision(evidence,False,offset,'Legacy destination extent unavailable/outside heuristic range')
-        concrete=[c for c in constraints if type(c) is int and c not in (0,1)]
+            return PolicyDecision(evidence, False, offset, 'Legacy destination extent unavailable/outside heuristic range')
+        concrete=[c for c in constraints if type(c) is int and c not in (0, 1)]
         minimum=min(concrete) if concrete else None
         # A concrete value is only an excluding upper bound when every
         # inherited length recipe was resolved.  Otherwise it describes one
@@ -87,7 +89,7 @@ class LegacySecurityPolicy:
             (minimum is None and self.max_length and self.max_length>=offset) or
             (minimum is None and self.max_length==0) or
             (minimum is not None and minimum>=offset))
-        return PolicyDecision(evidence,bool(candidate),offset,
+        return PolicyDecision(evidence, bool(candidate), offset,
             ('Incomplete length frontier; conservative MAY, not a safety or exploitability proof'
                 if incomplete_bound and minimum<offset else
              'Legacy length/extent candidate; path and constraints require independent validation') if candidate else

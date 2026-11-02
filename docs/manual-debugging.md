@@ -89,6 +89,33 @@ icall.artifact.written
 cli.completed
 ```
 
+控制台默认显示 `INFO` 级阶段进度，完整 `DEBUG` 事件写入格式化 JSON 数组，避免数万次 SSE/Memory
+操作淹没人工终端。每条控制台日志仅显示源码文件名、代码行和函数，例如：
+
+```text
+2026-11-02T11:57:07 INFO emtaint.cli [cli.py:127 run_icall] icall.sites.discovered {...}
+```
+
+如确需把全部采样事件也显示到终端，可在 CLI 中传入
+`--log-console-level DEBUG`；`manual_debug.ps1` 默认使用 `INFO`。日志文件沿用
+`.jsonl` 文件名以兼容既有命令，但内容是可直接阅读和解析的缩进 JSON 数组。每个事件的
+`source_file`、`source_line`、`source_function` 字段可直接跳转到首次产生日志的源码。
+
+核心事件按实现层划分：
+
+| 层 | 关键事件 |
+|---|---|
+| CFG/CG | `cfg.replaced`、`cg.edges.added`、`cg.inferred_edges.replaced`、`analysis.dependencies.invalidated` |
+| Worklist | `icall.search.round.started/completed`、`icall.search.function.dispatched` |
+| SSE/传播 | `sse.*`、`dataflow.transfer.started/completed`、`dataflow.value.updated`、`dataflow.register.updated` |
+| AccessPath/APG | `apg.address.bound`、`apg.path.created/cache_hit`、`apg.field_closure.*`、`apg.membership.*` |
+| MemoryVersion | `memory.read/write/havoc/definitions.completed`、`memory.location.*` |
+| Alias | `alias.query.completed`、`alias.cache.hit/miss` |
+| 跨函数 | `summary.recipe.stored`、`icall.cir_search.recipe.*`、`taint.round.*` |
+
+高频事件采用“开头完整记录 + 周期采样”，每条带 `event_sequence`；最终
+`diagnostic_event_counts` 保存真实总次数。因此未看到每一次操作不表示操作未执行，应同时查看总计。
+
 运行结束后脚本会直接打印状态、站点覆盖、候选目标数、轮数、pending 数、三个核心文件
 SHA256，以及日志事件/函数执行/ERROR 计数。
 
@@ -96,28 +123,41 @@ SHA256，以及日志事件/函数执行/ERROR 计数。
 $Run = (Get-ChildItem .p7-work\manual-debug -Directory |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $Log = Join-Path $Run 'debug-icall.jsonl'
+$Events = @(Get-Content -LiteralPath $Log -Raw | ConvertFrom-Json)
 
 # 当前/最慢函数及资源成本
-Get-Content $Log | ConvertFrom-Json |
+$Events |
   Where-Object event -eq 'icall.analysis.completed' |
   Sort-Object wall_seconds -Descending |
   Select-Object function,sites,target_values,steps,wall_seconds,metrics |
   Format-Table -AutoSize
 
 # 每轮新增事实、失效和下一轮重算规模
-Get-Content $Log | ConvertFrom-Json |
+$Events |
   Where-Object event -eq 'icall.search.round.completed' |
   Format-List round,target_facts,target_values,affected,next_worklist,new_runtime_events
 
 # 17 个站点的结果
-Get-Content $Log | ConvertFrom-Json |
+$Events |
   Where-Object event -eq 'icall.site.resolved' |
   Format-Table function,site,targets,certainty,exhaustive -AutoSize
 
 # 异常、ERROR 或尚未结束的 started/heartbeat
-Get-Content $Log | ConvertFrom-Json |
+$Events |
   Where-Object { $_.level -eq 'ERROR' -or $_.event -like '*.heartbeat' } |
   Format-Table timestamp,event,function,elapsed_seconds -AutoSize
+
+# 直接定位事件源码
+$Events |
+  Select-Object -First 30 timestamp,event,source_file,source_line,source_function |
+  Format-Table -AutoSize
+
+# SSE/Memory/Alias/APG 采样轨迹
+$Events | Where-Object {
+  $_.event -like 'sse.*' -or $_.event -like 'memory.*' -or
+  $_.event -like 'alias.*' -or $_.event -like 'apg.*'
+} | Select-Object event,event_sequence,function,origin,state,location,expression |
+  Format-Table -AutoSize
 ```
 
 正确的当前 RV130 基线应至少满足：`status=candidate_fixed_point`、输入/观察站点
@@ -129,24 +169,25 @@ Get-Content $Log | ConvertFrom-Json |
 ```powershell
 $Run = (Get-ChildItem .p7-work\manual-debug -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $Log = Join-Path $Run 'debug-taint.jsonl'
+$Events = @(Get-Content -LiteralPath $Log -Raw | ConvertFrom-Json)
 
 # 阶段/轮次/函数概览
-Get-Content $Log | ConvertFrom-Json | Where-Object event -in @(
+$Events | Where-Object event -in @(
   'taint.started','taint.round.started','taint.function.completed',
   'taint.round.completed','taint.completed','cli.failed'
 ) | Format-Table timestamp,event,function,round,status,changed,pending,wall_seconds -AutoSize
 
 # 预算、超限和未完成查询
-Get-Content $Log | ConvertFrom-Json | Where-Object {
+$Events | Where-Object {
   $_.event -in @('taint.function.limited','taint.query.incomplete')
 } | Format-List
 
 # 单函数或单查询
-Get-Content $Log | ConvertFrom-Json | Where-Object function -eq '0x2d228' | Format-List
-Get-Content $Log | ConvertFrom-Json | Where-Object query_id -eq '<query-id>' | Format-List
+$Events | Where-Object function -eq '0x2d228' | Format-List
+$Events | Where-Object query_id -eq '<query-id>' | Format-List
 
 # Summary/table 失效链
-Get-Content $Log | ConvertFrom-Json | Where-Object {
+$Events | Where-Object {
   $_.event -in @('taint.table.updated','taint.round.completed')
 } | Format-Table event,writer,version,sources,invalidated,changed,next_worklist -AutoSize
 ```
@@ -179,7 +220,7 @@ Get-Content (Join-Path $Phase.FullName 'unknowns.json') | ConvertFrom-Json | For
 ```
 
 常用命令：`b 文件.py:行号` 设置断点，`c` 继续，`n` 单步，`s` 进入，`p 表达式`
-查看值，`where` 查看调用栈，`q` 退出。端到端 CLI 很大，优先用上面的函数子集和 JSONL
+查看值，`where` 查看调用栈，`q` 退出。端到端 CLI 很大，优先用上面的函数子集和结构化 JSON
 找到具体 query/function 后，再在对应 transfer、memory query 或 summary join 位置断点。
 
 ## 7. 每次人工 check 的记录模板

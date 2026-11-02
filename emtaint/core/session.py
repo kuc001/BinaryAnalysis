@@ -156,13 +156,14 @@ class AnalysisSession:
         self._cache.clear()
         self._summaries.clear()
 
-    def invalidate_semantics(self,function,reason):
+    def invalidate_semantics(self, function, reason):
         """Invalidate scoped handles after a body/summary semantic change.
 
         The CFG/CG topology versions do not change merely because a recipe
         changes. The global state revision still rejects stale memory handles.
         """
-        self.program.function(function);text(reason,'semantic invalidation reason')
+        self.program.function(function)
+        text(reason, 'semantic invalidation reason')
         self._invalidate()
 
     def replace_cfg(self, cfg):
@@ -183,16 +184,40 @@ class AnalysisSession:
         self._invalidate()
 
     def replace_cg(self, cg):
+        """Replace the call graph after validating its completeness."""
+
         from emtaint.graph import CallGraph
+
+        # Validate the input type before comparing graph state.
         typed(cg, CallGraph, 'call graph')
-        if cg.nodes != frozenset(f.id for f in self.program.functions):
+
+        # Ensure every declared function is retained.
+        expected_nodes = frozenset(
+            function.id for function in self.program.functions
+        )
+        if cg.nodes != expected_nodes:
             raise ValueError('CG must retain every declared function')
-        expected = frozenset(s.id for s in self.program.callsites)
-        if frozenset(e.site for e in cg.edges) != expected:
-            raise ValueError('Each declared callsite needs a target or explicit unknown edge')
+
+        # Ensure every declared callsite has an explicit graph edge.
+        expected_callsites = frozenset(
+            callsite.id for callsite in self.program.callsites
+        )
+        actual_callsites = frozenset(
+            edge.site for edge in cg.edges
+        )
+        if actual_callsites != expected_callsites:
+            raise ValueError(
+                'Each declared callsite needs a target or explicit unknown edge'
+            )
+
+        # Avoid unnecessary updates when the graph is unchanged.
         if cg == self.cg:
             return
+
+        # Validate resource constraints before committing the update.
         self._check_graph_budget(self._cfgs, cg)
+
+        # Commit the new graph and invalidate dependent analyses.
         self._cg = cg
         self._cg_version += 1
         self._invalidate()

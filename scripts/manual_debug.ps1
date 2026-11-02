@@ -61,7 +61,8 @@ $arguments = @(
     '--log-level', 'DEBUG',
     '--log-file', ('debug-' + $Mode.ToLowerInvariant() + '.jsonl'),
     '--log-format', 'jsonl',
-    '--log-console'
+    '--log-console',
+    '--log-console-level', 'INFO'
 )
 if ($Mode -eq 'Icall') {
     $arguments += '-i'
@@ -100,7 +101,7 @@ if ($Mode -eq 'Icall') {
     }
     $logPath = Join-Path $run 'debug-icall.jsonl'
     if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-        $events = @(Get-Content -LiteralPath $logPath | ForEach-Object { $_ | ConvertFrom-Json })
+        $events = @(Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json)
         Write-Host ("Log summary: events={0}, function-runs={1}, rounds={2}, errors={3}" -f `
             $events.Count, @($events | Where-Object event -eq 'icall.analysis.completed').Count, `
             @($events | Where-Object event -eq 'icall.search.round.completed').Count, `

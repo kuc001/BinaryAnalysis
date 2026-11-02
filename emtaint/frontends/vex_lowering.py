@@ -106,9 +106,9 @@ class VEXLowerer(ARMScalarLowering):
             'angr=' + importlib.metadata.version('angr') + '/pyvex=' + importlib.metadata.version('pyvex'), frontend)
         self.abi = ABI('unmodeled:' + native_arch.name)
         if native_arch.name == 'ARMEL':
-            self.abi = ABI('AAPCS32:ELF',('r0','r1','r2','r3'),('r0',),'sp',8,
-                ('r0','r1','r2','r3','r12','lr','cc_op','cc_dep1','cc_dep2','cc_ndep'),
-                ('r4','r5','r6','r7','r8','r9','r10','r11','sp'))
+            self.abi = ABI('AAPCS32:ELF', ('r0', 'r1', 'r2', 'r3'), ('r0',), 'sp', 8,
+                ('r0', 'r1', 'r2', 'r3', 'r12', 'lr', 'cc_op', 'cc_dep1', 'cc_dep2', 'cc_ndep'),
+                ('r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'sp'))
         self.origins, self.coverage, self.mappings = [], [], []
         self.unsupported = set()
         self.expression_histogram = Counter()
@@ -149,18 +149,19 @@ class VEXLowerer(ARMScalarLowering):
         self.effects.append(Compute(self.origin.id, result, op, tuple(args), tuple(params)))
         known=[self.known_constant(a) for a in args]
         if all(a is not None for a in known):
-            a=[x.value for x in known];value=None
+            a=[x.value for x in known]
+            value=None
             if op==ValueOp.COPY:value=a[0]
             elif op==ValueOp.OR:value=a[0]|a[1]
             elif op==ValueOp.AND:value=a[0]&a[1]
             elif op==ValueOp.XOR:value=a[0]^a[1]
             elif op==ValueOp.ADD:value=a[0]+a[1]
             elif op==ValueOp.SUB:value=a[0]-a[1]
-            if value is not None:self.constant_values[result.id]=Constant(bool(value) if type_.kind==TypeKind.BOOL else value%(1<<type_.bits),type_)
+            if value is not None:self.constant_values[result.id]=Constant(bool(value) if type_.kind==TypeKind.BOOL else value%(1<<type_.bits), type_)
         return result
 
-    def known_constant(self,operand):
-        return operand if isinstance(operand,Constant) else self.constant_values.get(operand.id)
+    def known_constant(self, operand):
+        return operand if isinstance(operand, Constant) else self.constant_values.get(operand.id)
 
     def ptr(self, value):
         if value.type.kind == TypeKind.POINTER:
@@ -230,20 +231,20 @@ class VEXLowerer(ARMScalarLowering):
                                             self.expr(expression.iffalse)), type_)
         if isinstance(expression, pyvex.expr.CCall):
             name = expression.cee.name
-            allowed = {'armg_calculate_condition','armg_calculate_flags_nzcv',
-                       'armg_calculate_flag_n','armg_calculate_flag_z',
-                       'armg_calculate_flag_c','armg_calculate_flag_v'}
+            allowed = {'armg_calculate_condition', 'armg_calculate_flags_nzcv',
+                       'armg_calculate_flag_n', 'armg_calculate_flag_z',
+                       'armg_calculate_flag_c', 'armg_calculate_flag_v'}
             if self.native_arch.name.startswith('ARM') and name in allowed and len(expression.args) == 4:
-                try:return self.arm_helper(name,tuple(self.expr(a) for a in expression.args))
-                except ValueError as error:raise UnsupportedVEX('Iex_CCall:'+name,str(error)) from error
-            raise UnsupportedVEX('Iex_CCall:'+name,'Pure helper has no validated scalar expansion')
+                try:return self.arm_helper(name, tuple(self.expr(a) for a in expression.args))
+                except ValueError as error:raise UnsupportedVEX('Iex_CCall:'+name, str(error)) from error
+            raise UnsupportedVEX('Iex_CCall:'+name, 'Pure helper has no validated scalar expansion')
         if isinstance(expression, (pyvex.expr.Unop, pyvex.expr.Binop)):
             args = tuple(self.expr(arg) for arg in expression.args)
             op = expression.op
-            shift = re.fullmatch(r'Iop_(Shl|Shr|Sar)(8|16|32|64)',op)
+            shift = re.fullmatch(r'Iop_(Shl|Shr|Sar)(8|16|32|64)', op)
             if shift:
-                return self.scalar_shift(shift[1],args[0],args[1])
-            if op in ('Iop_Clz32','Iop_Clz64'):
+                return self.scalar_shift(shift[1], args[0], args[1])
+            if op in ('Iop_Clz32', 'Iop_Clz64'):
                 return self.scalar_clz(args[0])
             ordinary = re.fullmatch(r'Iop_(Add|Sub|Mul|And|Or|Xor)(\d+)', op)
             if ordinary:
@@ -313,17 +314,17 @@ class VEXLowerer(ARMScalarLowering):
 
     def unknown(self, error, statement=None):
         self.unsupported.add(error.opcode)
-        if isinstance(statement,pyvex.stmt.WrTmp):
+        if isinstance(statement, pyvex.stmt.WrTmp):
             # A pure value failure cannot write guest memory or unrelated
             # registers. Its missing result may affect subsequent control.
-            self.effects.append(UnknownEffect(self.origin.id,error.opcode,error.detail,(),(),True))
-        elif isinstance(statement,pyvex.stmt.Put):
+            self.effects.append(UnknownEffect(self.origin.id, error.opcode, error.detail, (), (), True))
+        elif isinstance(statement, pyvex.stmt.Put):
             width=int(statement.data.result_type(self.vex.tyenv)[5:])
-            target=self.register_slice(statement.offset,width).register
-            self.effects.append(UnknownEffect(self.origin.id,error.opcode,error.detail,(),(target,),target in ('pc','ip','rip','eip')))
-            self.register_constants.pop(target,None)
-        elif isinstance(statement,(pyvex.stmt.Store,pyvex.stmt.StoreG)):
-            self.effects.append(UnknownEffect(self.origin.id,error.opcode,error.detail,('*',),(),False))
+            target=self.register_slice(statement.offset, width).register
+            self.effects.append(UnknownEffect(self.origin.id, error.opcode, error.detail, (), (target,), target in ('pc', 'ip', 'rip', 'eip')))
+            self.register_constants.pop(target, None)
+        elif isinstance(statement, (pyvex.stmt.Store, pyvex.stmt.StoreG)):
+            self.effects.append(UnknownEffect(self.origin.id, error.opcode, error.detail, ('*',), (), False))
         else:
             self.effects.append(UnknownEffect(self.origin.id, error.opcode, error.detail))
             self.register_constants.clear()
@@ -362,7 +363,7 @@ class VEXLowerer(ARMScalarLowering):
                       else RegisterWritePolicy.PRESERVE_OTHERS)
             self.effects.append(WriteRegister(self.origin.id, sl, value, policy, self.truth))
             known=self.known_constant(value)
-            self.register_constants.pop(sl.register,None)
+            self.register_constants.pop(sl.register, None)
             if policy==RegisterWritePolicy.FULL and known is not None:self.register_constants[sl.register]=known
         elif isinstance(statement, pyvex.stmt.Store):
             addr, data = self.ptr(self.expr(statement.addr)), self.expr(statement.data)
@@ -412,7 +413,7 @@ class VEXLowerer(ARMScalarLowering):
         for chunk in chunks:
             self.current_id, self.mode = self.starts[chunk.start], chunk.mode
             self.vex, self.tmps, self.effects = chunk.vex, {}, []
-            self.constant_values,self.register_constants={},{}
+            self.constant_values, self.register_constants={}, {}
             self.instruction = chunk.start
             self.truth = Constant(True, ValueType.boolean())
             before = len(self.blocks)
@@ -434,20 +435,20 @@ class VEXLowerer(ARMScalarLowering):
                             'statement_index': index, 'origin': self.origin.id, 'kind': statement.jumpkind,
                             'target': statement.dst.value, 'guard_class': statement.guard.tag})
                     saved = (len(self.effects), len(self.values), dict(self.tmps),
-                             dict(self.constant_values),dict(self.register_constants))
+                             dict(self.constant_values), dict(self.register_constants))
                     detail = ''
                     try:
                         self.count_expressions(statement)
                         status = self.statement(statement)
                     except UnsupportedVEX as error:
-                        length, value_length, self.tmps,self.constant_values,self.register_constants = saved
+                        length, value_length, self.tmps, self.constant_values, self.register_constants = saved
                         del self.effects[length:]
                         del self.values[value_length:]
                         for name in ('tmp', 'dst', 'result', 'oldLo', 'oldHi'):
                             temp = getattr(statement, name, None)
                             if type(temp) is int:
                                 self.tmps.pop(temp, None)
-                        self.unknown(error,statement)
+                        self.unknown(error, statement)
                         status, detail = 'unsupported', str(error)
                     self.coverage.append(self.coverage_row(chunk, index, statement.tag, status, detail))
                 self.set_origin('Next:' + chunk.vex.jumpkind, len(chunk.vex.statements))
@@ -467,28 +468,28 @@ class VEXLowerer(ARMScalarLowering):
                             call_target = IndirectTarget(self.ptr(target))
                         arguments=[]
                         for name in self.abi.argument_registers:
-                            result=self.ref(ValueType.bv(self.arch.pointer_bits),'arg')
-                            self.effects.append(ReadRegister(self.origin.id,result,
-                                RegisterSlice(name,0,self.arch.pointer_bits,self.arch.pointer_bits)))
+                            result=self.ref(ValueType.bv(self.arch.pointer_bits), 'arg')
+                            self.effects.append(ReadRegister(self.origin.id, result,
+                                RegisterSlice(name, 0, self.arch.pointer_bits, self.arch.pointer_bits)))
                             arguments.append(result)
-                        results=tuple(self.ref(ValueType.bv(self.arch.pointer_bits),'ret') for _ in self.abi.return_registers)
-                        footprint=(CallFootprint(clobbered_registers=self.abi.caller_saved,unknown=False,
+                        results=tuple(self.ref(ValueType.bv(self.arch.pointer_bits), 'ret') for _ in self.abi.return_registers)
+                        footprint=(CallFootprint(clobbered_registers=self.abi.caller_saved, unknown=False,
                             reason='AAPCS32 nonvolatile registers preserved; unknown memory writes remain *')
                             if self.abi.caller_saved else CallFootprint())
                         self.effects.append(CallEffect(self.origin.id, CallSiteId(self.origin.point), call_target,
                             tuple(arguments), results, self.abi, self.truth, footprint))
-                        for name,value in zip(self.abi.return_registers,results):
+                        for name, value in zip(self.abi.return_registers, results):
                             self.effects.append(WriteRegister(self.origin.id,
-                                RegisterSlice(name,0,self.arch.pointer_bits,self.arch.pointer_bits),value,
-                                RegisterWritePolicy.FULL,self.truth))
+                                RegisterSlice(name, 0, self.arch.pointer_bits, self.arch.pointer_bits), value,
+                                RegisterWritePolicy.FULL, self.truth))
                         self.unsupported.add('CallMemoryEffects')
                         self.effects.append(JumpEffect(self.origin.id, self.target(chunk.end)))
                     elif chunk.vex.jumpkind == 'Ijk_Ret':
                         results=[]
                         for name in self.abi.return_registers:
-                            result=self.ref(ValueType.bv(self.arch.pointer_bits),'return')
-                            self.effects.append(ReadRegister(self.origin.id,result,
-                                RegisterSlice(name,0,self.arch.pointer_bits,self.arch.pointer_bits)))
+                            result=self.ref(ValueType.bv(self.arch.pointer_bits), 'return')
+                            self.effects.append(ReadRegister(self.origin.id, result,
+                                RegisterSlice(name, 0, self.arch.pointer_bits, self.arch.pointer_bits)))
                             results.append(result)
                         self.effects.append(ReturnEffect(self.origin.id, tuple(results), self.truth))
                     elif chunk.vex.jumpkind == 'Ijk_Boring':

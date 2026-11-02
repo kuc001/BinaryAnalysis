@@ -1,6 +1,6 @@
 # BinaryAnalysis 系统性代码质量计划
 
-更新日期：2026-11-01（Asia/Shanghai）
+更新日期：2026-11-02（Asia/Shanghai）
 
 本计划覆盖 `BinaryAnalysis/` 中的 Python 生产代码、测试、脚本和质量配置。执行顺序以静态导入拓扑为主，并同时尊重 `AGENTS.md` 中的 P6 冻结、P7 语义、旧仓库只读和公共接口兼容约束。不能由调用关系与测试证明安全的修改只记录，不为提高指标而机械改写。
 
@@ -90,6 +90,7 @@
 | Q9 | orchestration/CLI SCC C2、入口和适配器 | 保持 CLI、JSON、退出码和结果结构 | 已完成 |
 | Q10 | 全目录复核 | 完整测试、静态复扫、循环/TODO/临时兼容复核 | 已完成 |
 | Q11 | 旧 IR/PAG 基础层质量续改 | 清零模块文档；精确化表达式、语句和值包装器 | 已完成本批 |
+| Q12 | 全链路诊断与可读性基线 | 源码行日志、CFG/CG/SSE/APG/Memory/Alias/传播事件；清零逗号紧排和分号多语句 | 已完成本批 |
 
 ## 6. 问题登记
 
@@ -174,6 +175,26 @@
 - legacy graph node/edge 增加 graph navigation Protocol 和明确节点类型；补回 `stmt_node.py` 缺失的运行时导入，并用 `ValueError` 取代外部构造参数上的 `assert`。
 - 新增表达式包装器和 graph node 契约测试各 2 项。完整回归为 464/464 通过；生产 safety 审计仍为 0。
 - 所有 185 个生产模块现在都有模块文档。剩余质量债务为 112 个公共类文档、400 个公共可调用文档和 486 个完整公共类型标注。
+
+### Q12：全链路诊断与可读性基线
+
+- 文本日志与格式化 JSON 数组现在都包含真实调用源码的文件名、行号和函数，不再写入
+  冗长的绝对目录；heartbeat 穿过 `contextlib` 后仍指向发起分析的调用点。文件和控制台
+  可使用独立阈值；人工脚本默认 `DEBUG` 写文件、`INFO` 输出终端，完整细节可检索且不会
+  淹没阶段进度。既有 `.jsonl` 文件名为命令兼容而保留，读取时使用完整 JSON 数组解析。
+- iCall 主链、版本化 Runtime、AccurateDataFlow、MemoryRuntimePort 和 AccessGraphArena
+  增加结构化事件，覆盖 CFG/CG 更新与失效、worklist、SSE、AccessPath/APG、MemoryVersion、
+  Alias、函数内传播和 procedure recipe。高频事件保留真实总计并执行有序采样；日志不参与
+  事实、缓存键、预算或结果序列化。
+- `quality_audit.py` 新增 `compact-comma`、`semicolon-statement`、`line-too-long` 三类只读
+  检查；`readability_rewrite.py` 仅对 Python token 做可重复的逗号空格与安全简单语句拆分。
+  全 180 个生产模块的逗号紧排由 2257 条清零，分号多语句由 425 条清零。剩余超长行
+  1119 条、公共类文档 98 条、公共 callable 文档 348 条、完整 callable 类型 427 条，按依赖
+  层继续人工处理，不能用空洞 docstring 或宽泛 `Any` 机械消项。
+- 专项日志测试 8 项、P5 31 项、P6 47 项、P7 219 项及完整回归 475 项全部通过。真实
+  RV130 iCall 新目录 `20261102T115647-44b0cb02` 为 17/17 站点、535 目标、2 轮、0 pending、
+  0 ERROR、0 写越界；三个冻结产物 SHA256 分别为 `DD48F812...5389`、
+  `0A5DA0E2...5E19`、`B4C67595...7586`，与 P6 冻结结果逐字节一致。
 
 ## 8. 当前剩余批次和无法安全修改项
 

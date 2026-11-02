@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.quality_audit import SAFETY_CODES, _exit_code, audit
+from scripts.quality_audit import SAFETY_CODES, STYLE_CODES, _exit_code, audit
 
 
 class QualityAuditTests(unittest.TestCase):
@@ -19,6 +19,8 @@ class QualityAuditTests(unittest.TestCase):
         (package / "first.py").write_text(
             "from fixturepkg.second import value\n"
             "from fixturepkg.second import *\n"
+            "left=1;right=2\n"
+            "pair=(left,right)\n"
             "\n"
             "def public(value):\n"
             "    def nested_helper():\n"
@@ -46,6 +48,9 @@ class QualityAuditTests(unittest.TestCase):
 
         codes = {finding.code for finding in report.findings}
         self.assertTrue(SAFETY_CODES.intersection(codes))
+        self.assertTrue(STYLE_CODES.intersection(codes))
+        self.assertIn("semicolon-statement", codes)
+        self.assertIn("compact-comma", codes)
         self.assertIn("missing-module-doc", codes)
         self.assertIn("missing-callable-doc", codes)
         self.assertIn("missing-callable-type", codes)

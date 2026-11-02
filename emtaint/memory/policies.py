@@ -22,7 +22,7 @@ class Accounting:
             error=BudgetExceeded(dimension, getattr(self.budgets, dimension), observed)
             self.exhaustions.append(error.assessment)
             raise error
-        if self.observer is not None:self.observer(dimension,observed)
+        if self.observer is not None:self.observer(dimension, observed)
 
     def set(self, dimension, observed):
         self.check(dimension, observed)
