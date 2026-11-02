@@ -1,3 +1,5 @@
+"""Define the abstract interface shared by legacy control-flow graphs."""
+
 import networkx
 from collections import defaultdict
 from abc import ABC, abstractmethod

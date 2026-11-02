@@ -4,28 +4,40 @@ from enum import Enum
 import hashlib
 import json
 import re
+from typing import Self, TypeVar
 
 
-def integer(value, name, minimum=0):
+T = TypeVar('T')
+
+
+def integer(value: object, name: str, minimum: int | None = 0) -> None:
+    """Require an exact integer at or above an optional inclusive minimum."""
+
     if type(value) is not int:
         raise TypeError(name + ' must be an integer')
     if minimum is not None and value < minimum:
         raise ValueError(name + ' is below its minimum')
 
 
-def text(value, name, allow_empty=False):
+def text(value: object, name: str, allow_empty: bool = False) -> None:
+    """Require text and reject empty values unless the contract permits them."""
+
     if type(value) is not str:
         raise TypeError(name + ' must be text')
     if not allow_empty and not value:
         raise ValueError(name + ' must not be empty')
 
 
-def typed(value, kind, name):
+def typed(value: object, kind: type[T], name: str) -> None:
+    """Require ``value`` to satisfy a concrete runtime class contract."""
+
     if not isinstance(value, kind):
         raise TypeError(name + ' must be ' + kind.__name__)
 
 
-def tuple_of(value, kind, name):
+def tuple_of(value: object, kind: type[T], name: str) -> None:
+    """Require an immutable tuple whose members all have ``kind``."""
+
     if type(value) is not tuple:
         raise TypeError(name + ' must be an immutable tuple')
     for item in value:
@@ -33,8 +45,12 @@ def tuple_of(value, kind, name):
 
 
 class StableIdentity:
+    """Mixin for deterministic identities independent of Python hash seeding."""
+
     @property
-    def token(self):
+    def token(self) -> str:
+        """Return the SHA-256 token of the identity type and semantic fields."""
+
         # Public identity is a deterministic digest, never Python's salted hash.
         payload = {'type': type(self).__name__, 'fields': asdict(self)}
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
@@ -42,6 +58,8 @@ class StableIdentity:
 
 @dataclass(frozen=True)
 class BinaryId(StableIdentity):
+    """Identity of one binary image by lowercase SHA-256 digest."""
+
     sha256: str
 
     def __post_init__(self):
@@ -50,7 +68,9 @@ class BinaryId(StableIdentity):
             raise ValueError('BinaryId requires a lowercase SHA256 of the image bytes')
 
     @classmethod
-    def from_bytes(cls, data):
+    def from_bytes(cls, data: bytes) -> Self:
+        """Construct an image identity from its exact byte content."""
+
         if type(data) is not bytes:
             raise TypeError('Binary bytes required')
         return cls(hashlib.sha256(data).hexdigest())
@@ -58,6 +78,8 @@ class BinaryId(StableIdentity):
 
 @dataclass(frozen=True)
 class FunctionId(StableIdentity):
+    """Function identity scoped to a binary and image-relative address."""
+
     binary: BinaryId
     rva: int
 
@@ -68,6 +90,8 @@ class FunctionId(StableIdentity):
 
 @dataclass(frozen=True)
 class BlockId(StableIdentity):
+    """Basic-block identity including RVA, decoding mode, and variant index."""
+
     function: FunctionId
     rva: int
     index: int = 0
@@ -82,6 +106,8 @@ class BlockId(StableIdentity):
 
 @dataclass(frozen=True)
 class ProgramPoint(StableIdentity):
+    """Optional statement/instruction position within a declared basic block."""
+
     block: BlockId
     statement: int | None = None
     instruction_rva: int | None = None
@@ -94,12 +120,16 @@ class ProgramPoint(StableIdentity):
             integer(self.instruction_rva, 'instruction RVA')
 
     @property
-    def function(self):
+    def function(self) -> FunctionId:
+        """Return the function that owns this program point."""
+
         return self.block.function
 
 
 @dataclass(frozen=True)
 class CallSiteId(StableIdentity):
+    """Call occurrence at a program point, disambiguated by ordinal."""
+
     point: ProgramPoint
     ordinal: int = 0
 
@@ -108,12 +138,16 @@ class CallSiteId(StableIdentity):
         integer(self.ordinal, 'call ordinal')
 
     @property
-    def function(self):
+    def function(self) -> FunctionId:
+        """Return the function that contains this call site."""
+
         return self.point.function
 
 
 @dataclass(frozen=True)
 class ContextId(StableIdentity):
+    """Explicit call-string context and its abstraction policy."""
+
     call_string: tuple[CallSiteId, ...] = ()
     abstraction: str = 'exact'
 
@@ -124,6 +158,8 @@ class ContextId(StableIdentity):
 
 
 class MemoryKind(str, Enum):
+    """Supported abstract memory-object ownership categories."""
+
     STACK = 'stack'
     GLOBAL = 'global'
     HEAP = 'heap'
@@ -144,7 +180,7 @@ class MemoryObjectId(StableIdentity):
     function: FunctionId | None
     context: ContextId | None
     site: ProgramPoint | None
-    coordinates: tuple
+    coordinates: tuple[str | int, ...]
 
     def __post_init__(self):
         typed(self.kind, MemoryKind, 'memory kind')
@@ -186,25 +222,53 @@ class MemoryObjectId(StableIdentity):
             integer(self.coordinates[1], 'global RVA')
 
     @classmethod
-    def stack(cls, function, context, frame_id, offset=0):
+    def stack(
+        cls, function: FunctionId, context: ContextId, frame_id: str, offset: int = 0
+    ) -> Self:
+        """Create a stack object keyed by function, context, frame, and offset."""
+
         return cls(MemoryKind.STACK, function.binary, function, context, None, (frame_id, offset))
 
     @classmethod
-    def global_object(cls, binary, region, rva):
+    def global_object(cls, binary: BinaryId, region: str, rva: int) -> Self:
+        """Create a context-independent global object at an image RVA."""
+
         return cls(MemoryKind.GLOBAL, binary, None, None, None, (region, rva))
 
     @classmethod
-    def heap(cls, site, context, instance='allocation-site-summary'):
+    def heap(
+        cls,
+        site: ProgramPoint,
+        context: ContextId,
+        instance: str = 'allocation-site-summary',
+    ) -> Self:
+        """Create a heap object using allocation site and context abstraction."""
+
         return cls(MemoryKind.HEAP, site.function.binary, site.function, context, site, (instance,))
 
     @classmethod
-    def argument(cls, function, index, context):
+    def argument(cls, function: FunctionId, index: int, context: ContextId) -> Self:
+        """Create the abstract object representing a function argument."""
+
         return cls(MemoryKind.ARGUMENT, function.binary, function, context, None, (index,))
 
     @classmethod
-    def return_value(cls, function, context, index=0):
+    def return_value(
+        cls, function: FunctionId, context: ContextId, index: int = 0
+    ) -> Self:
+        """Create the abstract object representing a function return slot."""
+
         return cls(MemoryKind.RETURN, function.binary, function, context, None, (index,))
 
     @classmethod
-    def unknown(cls, binary, region, reason, origin_key, context=None):
+    def unknown(
+        cls,
+        binary: BinaryId,
+        region: str,
+        reason: str,
+        origin_key: str,
+        context: ContextId | None = None,
+    ) -> Self:
+        """Create an explicit unknown object without inventing alias precision."""
+
         return cls(MemoryKind.UNKNOWN, binary, None, context, None, (region, reason, origin_key))

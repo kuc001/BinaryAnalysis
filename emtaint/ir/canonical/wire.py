@@ -59,7 +59,15 @@ def _encode(value, depth, count, max_nodes, max_depth):
     raise TypeError('Only registered immutable contract types can cross the wire')
 
 
-def dumps(record, *, max_nodes=100000, max_depth=64, max_bytes=16 * 1024 * 1024):
+def dumps(
+    record: object,
+    *,
+    max_nodes: int = 100000,
+    max_depth: int = 64,
+    max_bytes: int = 16 * 1024 * 1024,
+) -> str:
+    """Encode one registered immutable contract record as bounded tagged JSON."""
+
     if not is_dataclass(record) or isinstance(record, type):
         raise TypeError('Wire root must be a registered contract record')
     value = _encode(record, 0, [0], max_nodes, max_depth)
@@ -115,7 +123,19 @@ def _decode(value, depth, count, max_nodes, max_depth):
     return cls(**kwargs)
 
 
-def loads(payload, *, max_nodes=100000, max_depth=64, max_bytes=16 * 1024 * 1024):
+def loads(
+    payload: str,
+    *,
+    max_nodes: int = 100000,
+    max_depth: int = 64,
+    max_bytes: int = 16 * 1024 * 1024,
+) -> object:
+    """Decode bounded tagged JSON into a registered immutable contract record.
+
+    The concrete return type is selected by the closed wire tag registry; no
+    dynamic import or caller-provided class resolution is performed.
+    """
+
     if type(payload) is not str:
         raise TypeError('Wire decoder needs UTF-8 JSON text')
     if len(payload.encode('utf8')) > max_bytes:
@@ -151,7 +171,9 @@ def _shape(annotation):
     raise TypeError('Unspecified wire field schema: ' + str(annotation))
 
 
-def schema_documents():
+def schema_documents() -> dict[str, dict[str, object]]:
+    """Build JSON Schema documents for the current CIR and memory wire roots."""
+
     definitions = {}
     for name, cls in REGISTRY.items():
         if issubclass(cls, Enum):

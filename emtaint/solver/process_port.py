@@ -13,7 +13,7 @@ from .port import SolverQuery, SolverResult, SolverStatus, UnsupportedQuery
 TARGET = Path(__file__).resolve().parents[2]
 
 
-def terminate_tree(process):
+def terminate_tree(process: subprocess.Popen[bytes]) -> list[int]:
     """Windows venv launchers have an actual Python child; kill both on deadline."""
     killed = []
     try:
@@ -26,7 +26,8 @@ def terminate_tree(process):
             child.kill()
             killed.append(child.pid)
         except psutil.NoSuchProcess:
-            pass
+            # A child may exit between enumeration and termination.
+            continue
     if process.poll() is None:
         process.kill()
         killed.append(process.pid)
@@ -36,7 +37,13 @@ def terminate_tree(process):
 
 
 class SubprocessSolverPort:
-    def __init__(self, work_root=None, wall_timeout=None):
+    """Run each native solver request in an isolated target-Python process."""
+
+    def __init__(
+        self,
+        work_root: str | Path | None = None,
+        wall_timeout: float | None = None,
+    ) -> None:
         self.work_root = Path(work_root or TARGET / ".p1-work/solver-requests").resolve()
         self.work_root.relative_to(TARGET / ".p1-work")
         if wall_timeout is not None and wall_timeout <= 0:
@@ -44,6 +51,8 @@ class SubprocessSolverPort:
         self.wall_timeout = wall_timeout
 
     def solve(self, query: SolverQuery) -> SolverResult:
+        """Validate, execute, and decode one isolated solver request."""
+
         try:
             query.validate()
         except UnsupportedQuery as error:
@@ -97,6 +106,8 @@ class SubprocessSolverPort:
                     or (query.operation == "check" and result.values)):
                 raise ValueError("Worker returned invalid model values/status")
             if query.operation != "check" and result.status == SolverStatus.SAT:
+                # Query validation guarantees a concrete BV expression here.
+                assert query.expression is not None and query.expression.width is not None
                 if (not 1 <= len(result.values) <= query.limit
                         or any(not 0 <= v < (1 << query.expression.width) for v in result.values)):
                     raise ValueError("Worker model does not match BV width/evaluation limit")

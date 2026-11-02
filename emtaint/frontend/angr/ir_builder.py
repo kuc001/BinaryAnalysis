@@ -1,3 +1,5 @@
+"""Coordinate legacy VEX IR construction for angr-discovered functions."""
+
 import logging
 import time
 

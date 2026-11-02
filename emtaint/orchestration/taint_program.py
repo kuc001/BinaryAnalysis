@@ -1,11 +1,17 @@
 """Session-owned interprocedural P7 summaries over actual acquired CIR."""
+
+from __future__ import annotations
+
+import argparse
 from dataclasses import asdict,replace
 import hashlib
 import json
+import logging
 from pathlib import Path
 import time
 import uuid
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 from emtaint.core import ContextId,FunctionId
 from emtaint.core.contracts import AnalysisScope,SemanticBudgets
 from emtaint.graph import CallGraph,CallEdge,TargetKind
@@ -28,16 +34,35 @@ from emtaint.procedures.legacy_policy import excluded_functions
 from emtaint.analysis.taint.evidence import summary_evidence,EvidenceEncoder,focused_snapshot
 from emtaint.procedures.legacy import legacy_copy_weak_kind,uniform_copy_length_constraints
 from emtaint.results.memory_archive import archive_memory
+from emtaint.debugging import log_event
 
 
-def summary_receipt_paths(receipt,raw_summary,summary):
+LOGGER = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from emtaint.frontends.function_store import FunctionStore
+
+
+def summary_receipt_paths(
+    receipt: Path,
+    raw_summary: TaintProcedureSummary,
+    summary: TaintProcedureSummary,
+) -> tuple[Path, Path]:
     """Return lossless raw/final evidence paths without identical duplication."""
     result=receipt.with_name(receipt.name+'-result.json')
     raw=result if raw_summary==summary else receipt.with_name(receipt.name+'-raw-summary.json')
     return raw,result
 
 
-def run_taint(args,store,folder):
+def run_taint(
+    args: argparse.Namespace, store: FunctionStore, folder: Path
+) -> dict[str, object]:
+    """Run bounded interprocedural taint fixed points over an acquired program.
+
+    The store type is imported only for static checking so the existing CLI SCC
+    does not gain another runtime import edge.
+    """
+
     from emtaint.cli import write
     started=time.monotonic();attempt=uuid.uuid4().hex[:8];phase=folder/('taint-'+attempt);phase.mkdir(exist_ok=False)
     previous=json.loads((folder/'icall.json').read_text(encoding='utf8'))
@@ -66,13 +91,20 @@ def run_taint(args,store,folder):
     accumulated=SummaryAccumulator();summary_receipts={};source_evidence_index={}
     caller_by_site={site.id.point.instruction_rva+store.base:site.id.function.rva+store.base
         for site in index.program.callsites if site.id.point.instruction_rva is not None}
+    log_event(LOGGER,'taint.started',level=logging.INFO,attempt=attempt,functions=len(allowed),
+        initial_worklist=len(todo),coverage='full-program' if selected is None else 'diagnostic-subset',
+        function_seconds=args.function_seconds,round_budget=args.taint_rounds)
     while todo and rounds<args.taint_rounds:
         rounds+=1;changed=set()
+        log_event(LOGGER,'taint.round.started',level=logging.INFO,round=rounds,worklist=len(todo),
+            pending=len(runtime.pending),table_version=table_version)
         runtime.pending.difference_update(todo)
         for fid in callee_first(todo,runtime.session.cg):
             receipt=phase/('round-'+str(rounds).zfill(3)+'-function-'+hex(fid.rva+store.base))
             write(receipt.with_name(receipt.name+'-start.json'),{'function':fid.rva+store.base,'round':rounds,'status':'started'})
             address=fid.rva+store.base;module,cfg,digest=store.load(address)
+            log_event(LOGGER,'taint.function.started',function=hex(address),round=rounds,
+                cir_sha256=digest,summary_inputs=len(summaries))
             # Native/IDA edge refinement is explicit and versioned.
             runtime.replace_cfg(cfg)
             context=ContextId();scope=AnalysisScope.from_session(runtime.session,fid,context)
@@ -92,6 +124,8 @@ def run_taint(args,store,folder):
                     function_deadline=tick+args.function_seconds)
                 summary=demand.analyze()
             except (BudgetExceeded,DemandLimit,RecursionError) as error:
+                log_event(LOGGER,'taint.function.limited',level=logging.WARNING,error_type=type(error).__name__,
+                    error_message=str(error),function=hex(address),round=rounds)
                 summary=demand.partial_summary(error) if demand else TaintProcedureSummary(address,pending=(('constructor',type(error).__name__+': '+str(error)),))
             raw_summary=summary
             callees=sorted({callee for _,_,call in demand.calls.values()
@@ -121,6 +155,11 @@ def run_taint(args,store,folder):
                            'wall_seconds':time.monotonic()-tick}
             invocations.append({'function':address,'round':rounds,'pending':len(summary.pending),
                 'sinks':len(summary.sinks),'source_facts':len(engine.facts),'steps':getattr(demand,'steps',0),'wall_seconds':time.monotonic()-tick})
+            log_event(LOGGER,'taint.function.completed',function=hex(address),round=rounds,
+                changed=fid in changed,pending=len(summary.pending),sinks=len(summary.sinks),
+                source_facts=len(engine.facts),queries=len(getattr(demand,'query_history',())),
+                taint_steps=getattr(demand,'steps',0),memory_metrics=last[address]['metrics'],
+                wall_seconds=time.monotonic()-tick)
             if engine.facts:
                 archive_started=time.monotonic();archive_folder=receipt.with_name(receipt.name+'-source-memory')
                 archive=archive_memory(focused_snapshot(engine.snapshot()),archive_folder)
@@ -160,11 +199,15 @@ def run_taint(args,store,folder):
                     affected=runtime.invalidate_dependencies(readers,'P7 hsearch source-state version '+str(table_version)) if readers else frozenset()
                     table_events.append({'version':table_version,'writer':address,'table':asdict(root),'source_sites':sorted({dep.value for dep in joined if dep.kind=='source'}),
                         'invalidated':[value.rva+store.base for value in sorted(affected,key=lambda f:f.rva)]})
+                    log_event(LOGGER,'taint.table.updated',writer=hex(address),version=table_version,
+                        sources=len(joined),invalidated=len(affected))
             if len(invocations)%25==0:print('TAINT_FUNCTIONS='+str(len(invocations))+' round='+str(rounds),flush=True)
         affected=runtime.invalidate_dependencies(changed,'P7 taint procedure summary changed')
         # A changed logical summary invalidates dependent results. Ports are
         # reconstructed on the next pass; portable summaries contain no IDs.
         todo={f for f in (set(affected)|set(runtime.pending))&allowed if f.rva+store.base not in excluded}
+        log_event(LOGGER,'taint.round.completed',level=logging.INFO,round=rounds,changed=len(changed),
+            invalidated=len(affected),next_worklist=len(todo),invocations=len(invocations))
     sources={dep.value for summary in summaries.values() for sink in summary.sinks for dep in sink.dependencies if dep.kind=='source'}
     max_length=LegacySecurityPolicy.guess_max_length(bound for summary in summaries.values() for sink in summary.sinks
         for dep in sink.dependencies if dep.kind=='source' for bound in dep.constraints)
@@ -271,4 +314,7 @@ def run_taint(args,store,folder):
         'wall_seconds':time.monotonic()-started,'gate_a':'NOT_EVALUATED; requires independent Golden/evidence comparison'}
     manifest['evidence_directory']=str(phase)
     write(phase/'manifest.json',manifest);write(folder/('taint.json' if not (folder/'taint.json').exists() else 'taint-'+attempt+'.json'),manifest)
+    log_event(LOGGER,'taint.completed',level=logging.INFO,status=manifest['status'],rounds=rounds,
+        invocations=len(invocations),candidates=len(candidates),unknowns=len(unknowns),
+        pending_functions=len(pending),wall_seconds=manifest['wall_seconds'],evidence_directory=str(phase))
     return manifest

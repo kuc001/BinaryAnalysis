@@ -3,10 +3,13 @@ from dataclasses import dataclass, fields
 from enum import Enum
 from functools import lru_cache
 import types
-from typing import get_args, get_origin, get_type_hints, Union
+from typing import TYPE_CHECKING, Mapping, Self, get_args, get_origin, get_type_hints, Union
 
 from .identity import FunctionId, ProgramPoint, ContextId, StableIdentity, integer, text
 from .program import Completeness
+
+if TYPE_CHECKING:
+    from .session import AnalysisSession
 
 CIR_VERSION = 'CIR-Wire-v1'
 MEMORY_VERSION = 'Memory-Semantics-v1'
@@ -16,7 +19,9 @@ class UnsupportedSemantics(NotImplementedError):
     """A missing semantic implementation must never be interpreted as no effect."""
 
 
-def check_type(value, annotation):
+def check_type(value: object, annotation: object) -> bool:
+    """Validate the immutable type forms supported by the wire contract."""
+
     origin, args = get_origin(annotation), get_args(annotation)
     if origin in (Union, types.UnionType):
         return any(check_type(value, kind) for kind in args)
@@ -36,7 +41,7 @@ def check_type(value, annotation):
 
 
 @lru_cache(maxsize=512)
-def record_annotations(cls):
+def record_annotations(cls: type[object]) -> Mapping[str, object]:
     """Immutable class metadata only; no session/analysis objects are cached."""
     return types.MappingProxyType(get_type_hints(cls))
 
@@ -50,19 +55,25 @@ class Record:
                 raise TypeError(type(self).__name__ + '.' + field.name + ' has an invalid type')
 
 
-def key(value):
+def key(value: str) -> None:
+    """Validate a stable non-empty reference key and its wire size bound."""
+
     text(value, 'reference key')
     if len(value) > 256:
         raise ValueError('Reference key exceeds 256 characters')
 
 
-def bits(value, byte_access=False):
+def bits(value: int, byte_access: bool = False) -> None:
+    """Validate a supported bit width, optionally requiring whole bytes."""
+
     integer(value, 'bit width', 1)
     if value > 4096 or (byte_access and value % 8):
         raise ValueError('Unsupported bit width (memory v1 uses whole 8-bit bytes)')
 
 
 class Precision(str, Enum):
+    """Precision classification carried by every semantic assessment."""
+
     EXACT = 'exact'
     OVER_APPROX = 'over_approx'
     INCOMPLETE = 'incomplete'
@@ -70,6 +81,8 @@ class Precision(str, Enum):
 
 @dataclass(frozen=True)
 class Assessment(Record):
+    """Completeness, precision loss, unsupported operations, and diagnostics."""
+
     status: Completeness = Completeness.INCOMPLETE
     precision: Precision = Precision.INCOMPLETE
     precision_loss: tuple[str, ...] = ()
@@ -86,12 +99,16 @@ class Assessment(Record):
             raise ValueError('Incomplete/unknown assessment requires diagnostics')
 
     @classmethod
-    def complete(cls):
+    def complete(cls) -> Self:
+        """Construct an exact, complete assessment with no diagnostics."""
+
         return cls(Completeness.COMPLETE, Precision.EXACT, diagnostics=())
 
 
 @dataclass(frozen=True)
 class Producer(Record):
+    """Identity of the frontend or fixture that produced semantic records."""
+
     name: str
     version: str
     frontend: str
@@ -104,6 +121,8 @@ class Producer(Record):
 
 @dataclass(frozen=True)
 class Origin(Record):
+    """Traceable source location and opcode for a generated semantic record."""
+
     id: str
     point: ProgramPoint
     producer: Producer
@@ -116,12 +135,16 @@ class Origin(Record):
 
 
 class TypeKind(str, Enum):
+    """Scalar sorts supported by Canonical IR and solver boundaries."""
+
     BOOL = 'bool'
     BV = 'bitvector'
     POINTER = 'pointer'
 
 
 class Signedness(str, Enum):
+    """Explicit integer interpretation; unspecified is not implicitly signed."""
+
     UNSIGNED = 'unsigned'
     SIGNED = 'signed'
     UNSPECIFIED = 'unspecified'
@@ -129,6 +152,8 @@ class Signedness(str, Enum):
 
 @dataclass(frozen=True)
 class ValueType(Record):
+    """Bit width, scalar kind, signedness, and optional pointer address space."""
+
     kind: TypeKind
     bits: int
     signedness: Signedness = Signedness.UNSPECIFIED
@@ -145,20 +170,28 @@ class ValueType(Record):
             text(self.address_space, 'pointer address space')
 
     @classmethod
-    def boolean(cls):
+    def boolean(cls) -> Self:
+        """Return the canonical one-bit boolean type."""
+
         return cls(TypeKind.BOOL, 1)
 
     @classmethod
-    def bv(cls, width, signedness=Signedness.UNSPECIFIED):
+    def bv(cls, width: int, signedness: Signedness = Signedness.UNSPECIFIED) -> Self:
+        """Construct a fixed-width bit-vector type."""
+
         return cls(TypeKind.BV, width, signedness)
 
     @classmethod
-    def pointer(cls, width, address_space='default'):
+    def pointer(cls, width: int, address_space: str = 'default') -> Self:
+        """Construct an unsigned pointer type in an explicit address space."""
+
         return cls(TypeKind.POINTER, width, Signedness.UNSIGNED, address_space)
 
 
 @dataclass(frozen=True)
 class ValueRef(Record):
+    """Typed reference to a symbolic value owned by the current scope."""
+
     id: str
     type: ValueType
 
@@ -169,6 +202,8 @@ class ValueRef(Record):
 
 @dataclass(frozen=True)
 class Constant(Record):
+    """Width-checked boolean, bit-vector, or pointer constant."""
+
     value: int | bool
     type: ValueType
 
@@ -184,12 +219,19 @@ class Constant(Record):
 Operand = ValueRef | Constant
 
 
-def boolean(value):
+def boolean(value: Operand) -> None:
+    """Require an operand whose declared sort is boolean."""
+
     if not check_type(value, Operand) or value.type.kind != TypeKind.BOOL:
         raise ValueError('Guard must be an explicitly typed boolean')
 
 
-def validate_value_operation(op, result, types, params=()):
+def validate_value_operation(
+    op: str,
+    result: ValueType,
+    types: list[ValueType],
+    params: tuple[int, ...] = (),
+) -> None:
     """Shared CIR/SSE scalar typing rules; no evaluation or AST construction."""
     if op in ('add', 'sub', 'mul', 'and_bits', 'or_bits', 'xor_bits'):
         ordinary = len(types) == 2 and types == [result, result] and result.kind == TypeKind.BV
@@ -226,6 +268,8 @@ def validate_value_operation(op, result, types, params=()):
 
 @dataclass(frozen=True)
 class AnalysisScope(Record, StableIdentity):
+    """Function/context scope pinned to session and graph revision numbers."""
+
     function: FunctionId
     context: ContextId
     session_id: str
@@ -256,7 +300,14 @@ class AnalysisScope(Record, StableIdentity):
             raise ValueError('Single-image analysis scope contains a foreign callsite')
 
     @classmethod
-    def from_session(cls, session, function, context):
+    def from_session(
+        cls,
+        session: 'AnalysisSession',
+        function: FunctionId,
+        context: ContextId,
+    ) -> Self:
+        """Capture a validated scope from the session's current revisions."""
+
         from .session import AnalysisSession
         if not isinstance(session, AnalysisSession):
             raise TypeError('AnalysisSession required')
@@ -265,13 +316,17 @@ class AnalysisScope(Record, StableIdentity):
         return cls(function, context, session.stamp.session_id, session.cfg_version(function),
                    session.cg_version, session.stamp.state_revision)
 
-    def assert_current(self, session):
+    def assert_current(self, session: 'AnalysisSession') -> None:
+        """Reject a scope after its graph or session state becomes stale."""
+
         if self != type(self).from_session(session, self.function, self.context):
             raise ValueError('Stale or foreign analysis scope; graph/state revisions changed')
 
 
 @dataclass(frozen=True)
 class ScopedId(Record, StableIdentity):
+    """Stable textual key owned by one exact analysis scope."""
+
     scope: AnalysisScope
     key: str
 
@@ -282,36 +337,50 @@ class ScopedId(Record, StableIdentity):
 
 @dataclass(frozen=True)
 class SymbolicExprId(ScopedId):
+    """Identity of a symbolic expression DAG node."""
+
     pass
 
 
 @dataclass(frozen=True)
 class MemoryVersionId(ScopedId):
+    """Identity of an immutable memory-state version."""
+
     pass
 
 
 @dataclass(frozen=True)
 class AccessPathId(ScopedId):
+    """Identity of a normalized access path."""
+
     pass
 
 
 @dataclass(frozen=True)
 class AccessGraphId(ScopedId):
+    """Identity of an access-path graph."""
+
     pass
 
 
 @dataclass(frozen=True)
 class MemoryLocationId(ScopedId):
+    """Identity of a width- and endian-qualified memory location."""
+
     pass
 
 
-def same_scope(scope, *references):
+def same_scope(scope: AnalysisScope, *references: ScopedId | None) -> None:
+    """Reject references that cross session, context, or graph revisions."""
+
     if any(ref is not None and ref.scope != scope for ref in references):
         raise ValueError('Cross-session/context/graph-version reference')
 
 
 @dataclass(frozen=True)
 class SemanticBudgets(Record):
+    """Positive, explicit resource ceilings for semantic analysis domains."""
+
     apg_nodes: int = 10000
     apg_edges: int = 20000
     apg_summaries: int = 1000
@@ -330,7 +399,9 @@ class SemanticBudgets(Record):
         for name, value in vars(self).items():
             integer(value, name, 1)
 
-    def exhausted(self, dimension):
+    def exhausted(self, dimension: str) -> Assessment:
+        """Return an incomplete assessment for one exhausted budget dimension."""
+
         if dimension not in vars(self):
             raise ValueError('Unknown semantic budget dimension')
         return Assessment(diagnostics=('Budget exhausted: ' + dimension + '; no absence-of-facts conclusion',))

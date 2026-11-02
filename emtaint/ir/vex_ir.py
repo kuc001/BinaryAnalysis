@@ -1,3 +1,5 @@
+"""Store legacy VEX statements grouped by their originating basic block."""
+
 import logging
 from typing import List
 from pyvex import IRSB

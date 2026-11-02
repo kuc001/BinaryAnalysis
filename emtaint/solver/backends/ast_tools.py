@@ -5,17 +5,24 @@ not CIR/Heap/SSE. Annotated or unsupported nodes fail explicitly.
 """
 import hashlib
 import json
+from typing import Any, Dict, Iterator, List, Optional
+
+# Claripy deliberately stays optional and version-pinned outside this module.
+# ``Any`` is limited to that untyped third-party boundary; exported data is a
+# validated portable dictionary before it crosses into the solver protocol.
 
 
 class UnsupportedAST(ValueError):
-    pass
+    """A native AST cannot be represented by the portable pure-BV protocol."""
 
 
-def _base(claripy):
+def _base(claripy: Any) -> type:
     return claripy.ast.Base
 
 
-def children(claripy, root, unique=False, max_visits=10000):
+def children(
+    claripy: Any, root: Any, unique: bool = False, max_visits: int = 10000
+) -> Iterator[Any]:
     """Preorder descendants, preserving legacy occurrence order by default."""
     stack = [iter(root.args)]
     seen = set()
@@ -40,7 +47,9 @@ def children(claripy, root, unique=False, max_visits=10000):
         stack.append(iter(child.args))
 
 
-def leaves(claripy, root, max_visits=10000):
+def leaves(claripy: Any, root: Any, max_visits: int = 10000) -> Iterator[Any]:
+    """Yield unique leaf ASTs in the legacy LIFO traversal order."""
+
     stack, seen = [root], set()
     count = 0
     while stack:
@@ -68,7 +77,15 @@ _SUPPORTED = {"Add", "Sub", "Mul", "AndBits", "OrBits", "XorBits", "Eq",
               "ZeroExt", "SignExt", "Concat", "If"}
 
 
-def export(claripy, root, allow_legacy_memory=False, depth=0, budget=None):
+def export(
+    claripy: Any,
+    root: Any,
+    allow_legacy_memory: bool = False,
+    depth: int = 0,
+    budget: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    """Export a bounded native AST to the portable pure-BV term shape."""
+
     if budget is None:
         budget = [10000]
     budget[0] -= 1
@@ -108,12 +125,16 @@ def export(claripy, root, allow_legacy_memory=False, depth=0, budget=None):
     return {"op": op, "width": width, "args": args}
 
 
-def structural_key(claripy, root):
+def structural_key(claripy: Any, root: Any) -> str:
+    """Hash the portable semantic structure rather than native object identity."""
+
     data = export(claripy, root)
     return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def replace(claripy, root, old, new):
+def replace(claripy: Any, root: Any, old: Any, new: Any) -> Any:
+    """Replace equal-sort ASTs through the native or module-level API."""
+
     if not all(isinstance(a, _base(claripy)) for a in (root, old, new)):
         raise TypeError("Replacement operands must be ASTs")
     old_bv, new_bv = isinstance(old, claripy.ast.BV), isinstance(new, claripy.ast.BV)

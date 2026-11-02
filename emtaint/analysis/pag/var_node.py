@@ -1,3 +1,5 @@
+"""Define graph-local variable nodes for the legacy program-assignment graph."""
+
 from uuid import uuid4
 
 
@@ -80,8 +82,6 @@ class EntryNode(VarNode):
     """
     def __init__(self, var, kind=None):
         super().__init__(var, kind)
-
-
 class ExitNode(VarNode):
     """
     出口节点类，表示程序的出口节点。

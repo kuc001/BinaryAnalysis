@@ -1,4 +1,6 @@
 
+"""Implement the legacy block-level control-flow graph."""
+
 from .abstract_cfg import AbstractCFG
 from ..node.block_node import BlockNode
 

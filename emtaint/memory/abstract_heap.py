@@ -13,12 +13,16 @@ if TYPE_CHECKING:
 
 
 class ObjectCardinality(str, Enum):
+    """Whether an abstract object denotes one allocation or a summary set."""
+
     SINGLETON = 'singleton'
     SUMMARY = 'summary'
     UNKNOWN = 'unknown'
 
 
 class ObjectLifetime(str, Enum):
+    """Known allocation lifetime; unknown and freed remain explicit states."""
+
     STATIC = 'static'
     FRAME = 'stack_frame'
     ALLOCATED = 'allocated'
@@ -29,6 +33,8 @@ class ObjectLifetime(str, Enum):
 
 @dataclass(frozen=True)
 class HeapObject(Record):
+    """Cardinality, lifetime, region, and provenance for an abstract object."""
+
     object_id: MemoryObjectId
     region: str
     cardinality: ObjectCardinality
@@ -47,6 +53,8 @@ class HeapObject(Record):
 
 @dataclass(frozen=True)
 class HeapCell(Record):
+    """Value stored at a scoped location in one immutable memory version."""
+
     location: MemoryLocationId
     value: SymbolicExprId
     defined_in: MemoryVersionId
@@ -60,13 +68,28 @@ class HeapCell(Record):
 
 
 class AbstractHeap(Protocol):
-    def snapshot(self, state: MemoryVersionId) -> 'MemorySnapshot': ...
-    def object_info(self, object_id: MemoryObjectId) -> HeapObject: ...
+    """Read-only heap interface exposed to analysis layers."""
+
+    def snapshot(self, state: MemoryVersionId) -> 'MemorySnapshot':
+        """Materialize a validated snapshot rooted at ``state``."""
+
+        ...
+
+    def object_info(self, object_id: MemoryObjectId) -> HeapObject:
+        """Return lifetime/cardinality evidence for a registered object."""
+
+        ...
 
 
 class UnimplementedAbstractHeap:
-    def snapshot(self, state):
+    """Fail-closed placeholder used before an executable heap is supplied."""
+
+    def snapshot(self, state: MemoryVersionId) -> 'MemorySnapshot':
+        """Reject snapshot requests instead of returning an empty result."""
+
         raise UnsupportedSemantics('AbstractHeap snapshots require the P5 engine')
 
-    def object_info(self, object_id):
+    def object_info(self, object_id: MemoryObjectId) -> HeapObject:
+        """Reject object queries instead of inventing lifetime information."""
+
         raise UnsupportedSemantics('Object lifetime/cardinality analysis requires P5')

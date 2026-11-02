@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from emtaint.frontends.inputs import InputBlock, FunctionInput, parse_ida_cfg, ELFImage, InputError
+from emtaint.frontends.saved_cir import load_saved_cir
 
 
 def tiny_elf(code=b'\x90\xc3', machine=62):
@@ -65,6 +66,11 @@ class InputTests(unittest.TestCase):
             FunctionInput(0, 'zero', (InputBlock(0, 4),), calls=[])
         with self.assertRaises(InputError):
             parse_ida_cfg({'0': {'block': [[0, 4]], 'jmp': [], 'call': [], 'unknown_effect': 1}})
+
+    def test_saved_cir_requires_a_positive_byte_budget(self):
+        for budget in (0, -1, True, 1.5):
+            with self.subTest(budget=budget), self.assertRaises(InputError):
+                load_saved_cir(ROOT, max_bytes=budget)
 
 
 if __name__ == '__main__':

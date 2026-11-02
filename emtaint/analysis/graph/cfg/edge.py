@@ -1,7 +1,14 @@
 
+"""Define typed edge kinds for the legacy control-flow graph."""
+
 from enum import Enum
 
+from ..node.node import Node
+
+
 class Kind(Enum):
+    """Classify entry, branch, call, and return CFG edges."""
+
     ENTRY = 1   # Edge from entry node to real start node.
 
     FALL_THROUGH = 2    # Edge kind for fall-through to next statement.
@@ -20,7 +27,9 @@ class Kind(Enum):
 
 
 class CFGEdge:
-    def __init__(self, kind: Kind, source, target):
+    """Connect two legacy CFG nodes with an explicit control-flow kind."""
+
+    def __init__(self, kind: Kind, source: Node, target: Node) -> None:
         self.kind = kind
         self.source = source
         self.target = target

@@ -1,16 +1,24 @@
+"""Adapt VEX load-linked/store-conditional statements to legacy visitors."""
+
 from pyvex.stmt import LLSC
 from pyvex.expr import IRExpr
+
 from ..visitors import IRVisitor
 
+
 class LLSC(LLSC):
-    """
-    Either Load-Linked or Store-Conditional, depending on STOREDATA. If STOREDATA is NULL then this is a Load-Linked,
-    else it is a Store-Conditional.
+    """Represent a load-linked or store-conditional memory operation.
+
+    A ``None`` store value denotes load-linked; an expression denotes
+    store-conditional. The distinction is preserved for downstream semantics.
     """
 
-    def __init__(self, addr: IRExpr, storedata: IRExpr, result: int, end: str):
+    def __init__(
+        self, addr: IRExpr, storedata: IRExpr | None, result: int, end: str
+    ) -> None:
         super().__init__(addr, storedata, result, end)
-        
 
-    def accept(self, visitor: IRVisitor):
+    def accept(self, visitor: IRVisitor) -> object:
+        """Dispatch this statement to ``visitor.visit_llsc``."""
+
         return visitor.visit_llsc(self)

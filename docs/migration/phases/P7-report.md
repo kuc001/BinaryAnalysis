@@ -471,3 +471,46 @@ caller `0x25bac→0x607fc` 又暴露一个更早的 Worklist 首差。历史 `se
 真实新目录 `p77-vsnprintf-deferred-probe-02` 对 `0x1dc44:0x1dc6c` 直接执行 transfer：format formal slot 为 1，va_list base 为 entry stack `-8`，七个 Store 的精确 offset 从 `-28` 到 `-4`；恢复 formal 1/2/3 的 position-0 selector，并保留 Unknown。该 wrapper 的格式化局部缓冲随后只传给旧版为 noop 的 `fprintf` 和未建模 `BIO_printf`，没有 caller 可见输出或旧漏洞 Sink，所以普通函数摘要仍不应伪造 output/Sink；probe 是 transfer/MemoryVersion 边界证据，不是 Finding。最小回归另验证 proved entry-frame Store、selector 生成、caller `%s` 正例、`%d` 反例及 v5 codec 往返。受影响 70 tests 通过，完整回归为 **448 tests OK，exit 0**。
 
 全新封存目录 `p77-milestone-v5-01` 已从当前源码执行实际 `-i`，exit 0、source unchanged；`icall.json`、`icall-targets.json`、`cg-logical-edges.json` 与冻结 P6 逐字节相同，535 个 MAY targets 和显式空 unknown 站点保留。相同封存源码的完整 `-t` 已启动，仍在运行；完成前不得据中间 round 更新 Gate。最终仍须生成 150 条逐证据比较、解释额外 MAY 与所有 Unknown/Incomplete，并复核完整回归/保护清单，因此当前阶段判定仍为 **NOT_PASSED**。
+
+## 2026-11-02：人工调试日志与无用占位清理
+
+为后续 P7.7 首差定位增加了默认静默、显式启用的标准库日志。CLI 新增
+`--log-level`、`--log-file`、`--log-format`；日志文件名只能位于当前新输出目录，使用
+exclusive create，已有文件拒绝覆盖。JSONL 事件覆盖 CLI、taint 轮次、函数、独立 query、
+预算/未完成、table 版本与失效、最终状态；函数事件同时记录既有 Memory/APG 计数。
+日志只读取现有状态，不参与 transfer、worklist、summary、Finding 或持久化 Schema。
+新增 `scripts/manual_debug.ps1` 会把冻结 `icall.json`/`icall-targets.json` 复制到唯一新目录后
+运行诊断子集，配套 `docs/manual-debugging.md` 给出检查、日志过滤、证据文件和 `pdb` 步骤。
+
+删除前检查了 AST 入边、文本引用、动态注册、访问器、测试和打包入口。仅删除 1 个空实现
+`analysis/graph/cfg/stmt_cfg.py`、5 个没有任何成员或引用的占位命名空间，以及 22 个
+`emtaint` 下生成的 `__pycache__`；12 个当前主链零入边但属于公开 visitor 兼容面的 VEX
+表达式/语句适配器全部保留。质量审计现为 180 个生产模块、449 条内部边、4 个原有 SCC，
+safety finding 为 0。
+
+日志专项 3 tests、query discover 18 tests、P7 discover 219 tests 均通过；最终完整
+`unittest discover -s tests -p 'test_*.py' -q` 为 **467 tests OK，exit 0**。实际 smoke run
+`.p7-work/manual-debug/20261102T093152-92832240` 使用冻结 17-site/535-target iCall 输入，
+只分析 `0x2d228`、1 轮、5 秒函数预算，生成 66 条结构化事件；最终状态按预期为
+diagnostic-subset/incomplete，保留 10 个 unknown summary dependency 和 6 个 pending effect，
+没有把它们解释为无漏洞。旧仓库、Golden、P6 冻结结果与历史回放均未写入。
+
+本轮属于诊断能力和已证明无引用占位的独立清理，不改变此前 Gate 判定：P7-A/B/C/D
+仍未同时通过，P7 仍为 **NOT_PASSED**，不得推进 P8。
+
+### 2026-11-02：iCall 实时路径日志补强
+
+人工执行 `manual_debug.ps1 -Mode Icall` 时，原实现只把 CLI 起止写入文件，固定点内部和
+控制台均缺少进度。现在增加 acquisition heartbeat、函数 CIR 加载、ProgramIndex 构造、
+每轮 Worklist、函数调度、单函数 `CIRLegacySearch` 起止/10 秒 heartbeat、SSE/APG/Alias/
+MemoryVersion 成本、target fact/value、recipe、CG/CFG 失效、下一轮重算、17 个站点结果及
+9 个产物写入事件。`--log-console` 只增加实时 text handler；JSONL 仍 exclusive-create，
+日志线程只读取 elapsed time，不触碰 transfer、缓存、图或结果。
+
+真实隔离运行位于 `.p7-work/manual-debug/20261102T110116-b5c5d0a3`：187 条事件、30 次函数
+执行、2 轮、0 ERROR，状态 `candidate_fixed_point`，17/17 站点、535 个 MAY target、
+`graph_pending=[]`、0 写保护违规。`icall.json`、`icall-targets.json`、
+`cg-logical-edges.json` 与完整冻结 P6 目录逐字节 SHA256 相同。日志专项 5 tests 连续 5 轮、
+P6 discover 47 tests、完整回归 **469 tests** 均通过。heartbeat 初版 35ms 固定睡眠在一次
+全量回归中只调度出 1 条事件；测试改为在 0.5 秒硬上限内等待 2 条，未降低断言，随后连续
+5 轮稳定通过。该改动是纯观测增强，不重开 P6 验收，也不改变 P7 Gate 状态。

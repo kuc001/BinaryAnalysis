@@ -1,4 +1,5 @@
 """Memory object/location/version/SSE/taint contract records, not a heap engine."""
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
@@ -14,6 +15,8 @@ from .abstract_heap import HeapObject, HeapCell, ObjectCardinality
 
 @dataclass(frozen=True)
 class MemoryLocation(Record):
+    """Width/endian-qualified abstract location with explicit offset precision."""
+
     id: MemoryLocationId
     object_id: MemoryObjectId | None
     offset_lower: int | None
@@ -36,13 +39,17 @@ class MemoryLocation(Record):
             raise ValueError('Unknown object/offset cannot be a complete exact location')
 
     @property
-    def byte_interval(self):
+    def byte_interval(self) -> tuple[int, int] | None:
+        """Return the exact half-open byte range, or ``None`` if imprecise."""
+
         if self.offset_lower is None or self.offset_lower != self.offset_upper:
             return None
         return (self.offset_lower, self.offset_lower + self.width_bits // 8)
 
 
 class AliasKind(str, Enum):
+    """Four-way alias result; unknown is distinct from proven no-alias."""
+
     MUST = 'must_alias'
     MAY = 'may_alias'
     NO = 'no_alias'
@@ -51,6 +58,8 @@ class AliasKind(str, Enum):
 
 @dataclass(frozen=True)
 class AliasResult(Record):
+    """Alias classification together with evidence and precision assessment."""
+
     kind: AliasKind
     evidence: tuple[str, ...]
     assessment: Assessment
@@ -67,11 +76,17 @@ class AliasResult(Record):
 
 
 class UpdateKind(str, Enum):
+    """Strong replacement or conservative weak memory update."""
+
     STRONG = 'strong'
     WEAK = 'weak'
 
 
-def select_update_policy(alias, unique_target, exact_coverage):
+def select_update_policy(
+    alias: AliasResult, unique_target: bool, exact_coverage: bool
+) -> UpdateKind:
+    """Allow a strong update only for must-alias, unique, exact coverage."""
+
     if type(unique_target) is not bool or type(exact_coverage) is not bool or not isinstance(alias, AliasResult):
         raise TypeError('Explicit alias evidence and boolean update preconditions required')
     return (UpdateKind.STRONG if alias.kind == AliasKind.MUST and unique_target and exact_coverage
@@ -80,11 +95,15 @@ def select_update_policy(alias, unique_target, exact_coverage):
 
 @dataclass(frozen=True)
 class InitialMemory(Record):
+    """Root definition for a versioned memory graph."""
+
     origin: str
 
 
 @dataclass(frozen=True)
 class WriteMemory(Record):
+    """Guarded memory definition with explicit alias/update evidence."""
+
     parent: MemoryVersionId
     location: MemoryLocationId
     value: SymbolicExprId
@@ -105,6 +124,8 @@ class WriteMemory(Record):
 
 @dataclass(frozen=True)
 class JoinInput(Record):
+    """One predecessor memory version and its optional path guard."""
+
     version: MemoryVersionId
     guard: SymbolicExprId | None
 
@@ -115,6 +136,8 @@ class JoinInput(Record):
 
 @dataclass(frozen=True)
 class JoinMemory(Record):
+    """Phi-like merge of at least two scoped predecessor memory versions."""
+
     inputs: tuple[JoinInput, ...]
     origin: str
 
@@ -128,6 +151,8 @@ class JoinMemory(Record):
 
 @dataclass(frozen=True)
 class HavocMemory(Record):
+    """Explicit unknown external effect over declared memory regions."""
+
     parent: MemoryVersionId
     regions: tuple[str, ...]
     reason: str
@@ -148,6 +173,8 @@ MemoryDefinition = InitialMemory | WriteMemory | JoinMemory | HavocMemory
 
 @dataclass(frozen=True)
 class MemoryVersion(Record):
+    """Immutable memory-state identity and the definition that produced it."""
+
     id: MemoryVersionId
     definition: MemoryDefinition
 
@@ -158,7 +185,9 @@ class MemoryVersion(Record):
             raise ValueError('Memory version cannot define itself')
 
     @property
-    def parents(self):
+    def parents(self) -> tuple[MemoryVersionId, ...]:
+        """Return direct predecessor versions without traversing history."""
+
         if isinstance(self.definition, InitialMemory):
             return ()
         if isinstance(self.definition, JoinMemory):
@@ -168,6 +197,8 @@ class MemoryVersion(Record):
 
 @dataclass(frozen=True)
 class ReadMemory(Record):
+    """Explicit guarded read from a versioned location into an SSE value."""
+
     state: MemoryVersionId
     location: MemoryLocationId
     result: SymbolicExprId
@@ -181,6 +212,8 @@ class ReadMemory(Record):
 
 
 class SymbolicOp(str, Enum):
+    """Pure scalar operations plus explicit memory-read and unknown leaves."""
+
     SYMBOL = 'symbol'
     CONSTANT = 'constant'
     ADD = 'add'
@@ -205,6 +238,8 @@ class SymbolicOp(str, Enum):
 
 @dataclass(frozen=True)
 class SymbolicNode(Record):
+    """Typed, scoped SSE DAG node with no implicit memory operation."""
+
     id: SymbolicExprId
     type: ValueType
     op: SymbolicOp
@@ -236,6 +271,8 @@ class SymbolicNode(Record):
 
 @dataclass(frozen=True)
 class TaintFact(Record):
+    """Traceable taint fact tied to context, guard, path/APG, and memory state."""
+
     id: str
     root: AccessRoot
     path: AccessPathId | None
@@ -260,7 +297,10 @@ class TaintFact(Record):
             raise ValueError('Taint context/provenance is missing or inconsistent')
 
 
-def acyclic(dependencies):
+DefinitionId = SymbolicExprId | MemoryVersionId
+
+
+def acyclic(dependencies: Mapping[DefinitionId, set[DefinitionId]]) -> None:
     """Check descriptor definitions only; this is not dataflow convergence."""
     pending = {node: set(deps) for node, deps in dependencies.items()}
     if any(not deps <= pending.keys() for deps in pending.values()):
@@ -284,6 +324,8 @@ def acyclic(dependencies):
 
 @dataclass(frozen=True)
 class MemorySnapshot(Record):
+    """Validated wire snapshot of memory, SSE, alias, and taint descriptors."""
+
     scope: AnalysisScope
     architecture: Architecture
     origin_map: tuple[Origin, ...]

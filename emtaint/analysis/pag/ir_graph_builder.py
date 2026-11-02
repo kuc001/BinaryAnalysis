@@ -1,3 +1,5 @@
+"""Build a legacy program-assignment graph from lifted function IR."""
+
 import logging
 from .ir_graph import IRGraph
 from .var_edge import FlowEdge, EdgeKind

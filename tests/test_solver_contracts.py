@@ -33,6 +33,24 @@ class ProtocolTests(unittest.TestCase):
         q = SolverQuery((equals(symbol(), const()),), symbol(), "eval", origin="fixture:1")
         self.assertEqual(SolverQuery.from_dict(q.to_dict()), q)
 
+    def test_malformed_wire_payloads_fail_with_contract_errors(self):
+        """Untrusted process payloads fail explicitly before native solving."""
+
+        query = SolverQuery((equals(symbol(), const()),)).to_dict()
+        for payload in (None, [], {}, {**query, "unexpected": True}):
+            with self.subTest(query=payload), self.assertRaises(ValueError):
+                SolverQuery.from_dict(payload)
+        for payload in (
+            None,
+            [],
+            {},
+            {"status": "SAT", "values": "not-a-list"},
+            {"status": "SAT", "values": [True]},
+            {"status": "SAT", "unexpected": True},
+        ):
+            with self.subTest(result=payload), self.assertRaises(ValueError):
+                SolverResult.from_dict(payload)
+
     def test_memory_anywhere_is_unsupported(self):
         for op in ("Load", "Store", "MemoryRead", "Select", "ArrayStore"):
             with self.subTest(op=op), self.assertRaises(UnsupportedQuery):

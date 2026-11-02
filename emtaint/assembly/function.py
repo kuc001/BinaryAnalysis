@@ -1,3 +1,5 @@
+"""Model a legacy binary function and its owned basic blocks."""
+
 import logging
 
 l = logging.getLogger(name=__name__)
@@ -30,7 +32,6 @@ class Function:
 
         self._frontend_graph = frontend_graph   # the cfg graph is from the frontend engine (e.g., Angr, IDA, etc.)
         self.cfg = cfg
-
         self._returning = returning
 
         self._addr_to_block_node = {}  # map addresses to nodes. it's a cache of blocks. if a block is removed from the

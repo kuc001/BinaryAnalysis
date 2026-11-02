@@ -1,3 +1,5 @@
+"""Define visitor callbacks for legacy VEX expression and statement adapters."""
+
 from pyvex.stmt import IRStmt
 from pyvex.expr import IRExpr
 

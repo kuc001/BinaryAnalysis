@@ -1,3 +1,5 @@
+"""Build legacy block-level control-flow graphs from lifted functions."""
+
 import logging
 from typing import Optional
 from angr.knowledge_plugins.functions import Function as AngrFunction

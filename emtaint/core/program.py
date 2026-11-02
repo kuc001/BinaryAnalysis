@@ -8,18 +8,24 @@ from .identity import (BinaryId, FunctionId, BlockId, ProgramPoint, CallSiteId,
 
 
 class Completeness(str, Enum):
+    """Whether a model covers its declared analysis scope."""
+
     COMPLETE = 'complete'
     INCOMPLETE = 'incomplete'
     UNKNOWN = 'unknown'
 
 
 class Endian(str, Enum):
+    """Byte order used for architecture memory operations."""
+
     LITTLE = 'little'
     BIG = 'big'
 
 
 @dataclass(frozen=True)
 class Register:
+    """Architecture register name, width, and optional native offset."""
+
     name: str
     bits: int
     offset: int | None = None
@@ -33,6 +39,8 @@ class Register:
 
 @dataclass(frozen=True)
 class Architecture:
+    """Validated address, pointer, byte, endian, and register description."""
+
     name: str
     address_bits: int
     pointer_bits: int
@@ -55,6 +63,8 @@ class Architecture:
 
 @dataclass(frozen=True)
 class ABI:
+    """Calling-convention registers, stack properties, and save policy."""
+
     name: str
     argument_registers: tuple[str, ...] = ()
     return_registers: tuple[str, ...] = ()
@@ -81,6 +91,8 @@ class ABI:
 
 @dataclass(frozen=True)
 class BasicBlock:
+    """Non-empty block extent identified by an image-relative block ID."""
+
     id: BlockId
     size: int
 
@@ -91,6 +103,8 @@ class BasicBlock:
 
 @dataclass(frozen=True)
 class Function:
+    """Immutable function metadata and its validated block membership."""
+
     id: FunctionId
     name: str
     blocks: tuple[BasicBlock, ...] = ()
@@ -115,6 +129,8 @@ class Function:
 
 
 class CallKind(str, Enum):
+    """Origin classification for a declared call site."""
+
     DIRECT = 'direct'
     INDIRECT = 'indirect'
     EXTERNAL = 'external'
@@ -124,6 +140,8 @@ class CallKind(str, Enum):
 
 @dataclass(frozen=True)
 class CallSite:
+    """Call occurrence and its direct, indirect, external, or unknown kind."""
+
     id: CallSiteId
     kind: CallKind = CallKind.UNKNOWN
 
@@ -197,7 +215,9 @@ class Program:
             sites[site.id] = site
         object.__setattr__(self, '_callsites', MappingProxyType(sites))
 
-    def absolute_address(self, rva):
+    def absolute_address(self, rva: int) -> int:
+        """Translate an RVA to an absolute address within architecture width."""
+
         integer(self.image_base, 'image base')
         integer(rva, 'RVA')
         address = self.image_base + rva
@@ -205,26 +225,38 @@ class Program:
             raise ValueError('Address is outside architecture width')
         return address
 
-    def relative_address(self, address):
+    def relative_address(self, address: int) -> int:
+        """Translate an absolute mapped address to an image-relative address."""
+
         integer(address, 'absolute address')
         rva = address - self.image_base
         if rva < 0 or self.absolute_address(rva) != address:
             raise ValueError('Address precedes image base')
         return rva
 
-    def function(self, identity):
+    def function(self, identity: FunctionId) -> Function:
+        """Return a registered function or propagate ``KeyError``."""
+
         return self._functions[identity]
 
-    def function_at(self, address):
+    def function_at(self, address: int) -> Function | None:
+        """Return the function whose entry equals an absolute address."""
+
         return self._functions.get(FunctionId(self.binary, self.relative_address(address)))
 
-    def block(self, identity):
+    def block(self, identity: BlockId) -> BasicBlock:
+        """Return a registered basic block or propagate ``KeyError``."""
+
         return self._blocks[identity]
 
-    def callsite(self, identity):
+    def callsite(self, identity: CallSiteId) -> CallSite:
+        """Return a registered call site or propagate ``KeyError``."""
+
         return self._callsites[identity]
 
-    def validate_point(self, point):
+    def validate_point(self, point: ProgramPoint) -> None:
+        """Validate block registration and optional instruction RVA bounds."""
+
         typed(point, ProgramPoint, 'program point')
         if point.block not in self._blocks:
             raise ValueError('Point refers to an unregistered block')

@@ -1,4 +1,6 @@
 
+"""Convert native pyvex expressions and statements to legacy IR adapters."""
+
 from emtaint.assembly.function import Function
 from emtaint.assembly.block import Block
 

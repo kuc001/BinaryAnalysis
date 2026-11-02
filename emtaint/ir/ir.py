@@ -1,3 +1,5 @@
+"""Define the iterable interface implemented by legacy lifted IR bodies."""
+
 from abc import ABC, abstractmethod
 from typing import List, Optional, Iterator, Iterable
 from collections.abc import Iterable as IterableBase

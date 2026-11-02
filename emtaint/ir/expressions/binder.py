@@ -1,15 +1,18 @@
 
+"""Adapt a pyvex pattern binder to the legacy IR visitor interface."""
+
 from pyvex.expr import Binder
+
 from ..visitors import IRVisitor
 
+
 class Binder(Binder):
-    """
-    Used only in pattern matching within Vex. Should not be seen outside of Vex.
-    """
+    """Represent a VEX-only pattern binder in legacy visitor traversals."""
 
-    def __init__(self, binder):
-        super.__init__(binder)
+    def __init__(self, binder: int):
+        super().__init__(binder)
 
-    def accept(self, visitor: IRVisitor):
+    def accept(self, visitor: IRVisitor) -> object:
+        """Dispatch this expression to ``visitor.visit_binder``."""
+
         return visitor.visit_binder(self)
-    

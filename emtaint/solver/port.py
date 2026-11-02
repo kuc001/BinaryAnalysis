@@ -1,10 +1,14 @@
 """P1 solver boundary DTOs; these are not the P3 CIR or a memory model."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, Self
 
 
 class SolverStatus(str, Enum):
+    """Explicit solver outcomes; unknown and failure are never false UNSAT."""
+
     SAT = "SAT"
     UNSAT = "UNSAT"
     UNKNOWN = "UNKNOWN"
@@ -19,14 +23,18 @@ class Term:
     """Small pure-BV query protocol, deliberately independent of Claripy classes."""
     op: str
     width: int | None = None
-    args: tuple = ()
+    args: tuple[Term | str | int | bool, ...] = ()
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
+        """Serialize the pure value tree without native solver objects."""
+
         return {"op": self.op, "width": self.width,
                 "args": [a.to_dict() if isinstance(a, Term) else a for a in self.args]}
 
     @classmethod
-    def from_dict(cls, value, depth=0):
+    def from_dict(cls, value: object, depth: int = 0) -> Self:
+        """Decode a bounded value tree and reject malformed containers."""
+
         if depth > 64 or not isinstance(value, dict) or set(value) != {"op", "width", "args"}:
             raise ValueError("Malformed or over-deep solver term")
         if not isinstance(value["args"], list):
@@ -36,10 +44,10 @@ class Term:
 
 
 class UnsupportedQuery(ValueError):
-    pass
+    """The query is valid input but outside the supported pure-BV protocol."""
 
 
-def validate_term(term):
+def validate_term(term: Term) -> None:
     """Type-check before importing a solver; reject legacy memory markers everywhere."""
     stack = [(term, 0)]
     nodes = 0
@@ -105,6 +113,8 @@ def validate_term(term):
 
 @dataclass(frozen=True)
 class SolverQuery:
+    """Bounded, portable solver request with explicit operation and deadline."""
+
     constraints: tuple[Term, ...]
     expression: Term | None = None
     operation: str = "check"
@@ -112,7 +122,9 @@ class SolverQuery:
     limit: int = 1
     origin: str = ""
 
-    def validate(self):
+    def validate(self) -> None:
+        """Validate sorts, widths, resource bounds, and operation contracts."""
+
         if not isinstance(self.constraints, tuple) or not isinstance(self.origin, str):
             raise ValueError("Constraints must be a tuple; origin must be text")
         if self.operation not in ("check", "eval", "min", "max"):
@@ -143,7 +155,9 @@ class SolverQuery:
         if self.operation != "check" and (self.expression is None or self.expression.width is None):
             raise ValueError("BV expression required for eval/min/max")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
+        """Validate and serialize the complete solver request."""
+
         self.validate()
         return {"protocol": "p1-pure-bv-1", "constraints": [c.to_dict() for c in self.constraints],
                 "expression": self.expression.to_dict() if self.expression else None,
@@ -151,9 +165,21 @@ class SolverQuery:
                 "limit": self.limit, "origin": self.origin}
 
     @classmethod
-    def from_dict(cls, value):
+    def from_dict(cls, value: object) -> Self:
+        """Decode an exact request payload from an untrusted process boundary."""
+
+        expected = {
+            "protocol", "constraints", "expression", "operation",
+            "timeout_ms", "limit", "origin",
+        }
+        if type(value) is not dict or set(value) != expected:
+            raise ValueError("Malformed solver query payload")
         if value.get("protocol") != "p1-pure-bv-1":
             raise ValueError("Unknown solver protocol")
+        if type(value["constraints"]) is not list:
+            raise ValueError("Solver constraints must be a list")
+        if value["expression"] is not None and type(value["expression"]) is not dict:
+            raise ValueError("Solver expression must be a term object or null")
         query = cls(tuple(Term.from_dict(c) for c in value["constraints"]),
                     Term.from_dict(value["expression"]) if value["expression"] else None,
                     value["operation"], value["timeout_ms"], value["limit"], value["origin"])
@@ -163,6 +189,8 @@ class SolverQuery:
 
 @dataclass(frozen=True)
 class SolverResult:
+    """Portable solver outcome with explicit status, evidence, and exit code."""
+
     status: SolverStatus
     values: tuple[int, ...] = ()
     reason: str = ""
@@ -171,20 +199,41 @@ class SolverResult:
     evidence: str = ""
     exit_code: int | None = None
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         raise TypeError("SolverResult has no truth value; inspect its explicit status")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
+        """Serialize a result while preserving unknown/failure evidence."""
+
         return {"status": self.status.value, "values": list(self.values), "reason": self.reason,
                 "backend": self.backend, "origin": self.origin, "evidence": self.evidence,
                 "exit_code": self.exit_code}
 
     @classmethod
-    def from_dict(cls, value):
+    def from_dict(cls, value: object) -> Self:
+        """Decode a worker result and reject wrong container/value types."""
+
+        allowed = {"status", "values", "reason", "backend", "origin", "evidence", "exit_code"}
+        if type(value) is not dict or "status" not in value or not set(value) <= allowed:
+            raise ValueError("Malformed solver result payload")
+        values = value.get("values", [])
+        if type(values) is not list or any(type(item) is not int for item in values):
+            raise ValueError("Solver result values must be a list of integers")
+        for name in ("reason", "backend", "origin", "evidence"):
+            if type(value.get(name, "")) is not str:
+                raise ValueError("Solver result text fields must be strings")
+        exit_code = value.get("exit_code")
+        if exit_code is not None and type(exit_code) is not int:
+            raise ValueError("Solver result exit code must be an integer or null")
         return cls(SolverStatus(value["status"]), tuple(value.get("values", [])),
                    value.get("reason", ""), value.get("backend", "claripy"),
                    value.get("origin", ""), value.get("evidence", ""), value.get("exit_code"))
 
 
 class SolverPort(Protocol):
-    def solve(self, query: SolverQuery) -> SolverResult: ...
+    """Protocol implemented by in-process and isolated solver adapters."""
+
+    def solve(self, query: SolverQuery) -> SolverResult:
+        """Return one explicit solver outcome for a validated portable query."""
+
+        ...

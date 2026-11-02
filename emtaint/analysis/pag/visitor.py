@@ -1,3 +1,5 @@
+"""Translate legacy VEX expressions and statements into PAG def-use facts."""
+
 import logging
 import pyvex
 
@@ -15,6 +17,14 @@ from .var_edge import VarEdge, OpEdge, AssignEdge, FlowEdge, AddrEdge, EdgeKind
 
 
 l = logging.getLogger(name=__name__)
+
+_EXPRESSION_CONTRACT_ERRORS = (
+    AttributeError,
+    KeyError,
+    NotImplementedError,
+    TypeError,
+    ValueError,
+)
 
 
 class PAGVisitor(IRVisitor):
@@ -259,8 +269,10 @@ class PAGVisitor(IRVisitor):
             guard_name = guard_expr.get_name()
             use_name_iftrue = iftrue_expr.get_name()
             use_name_iffalse = iffalse_expr.get_name()  
-        except:
-            raise l.error("Some error occurred when processing the wr_ite statement %s.", wr_ite)
+        except _EXPRESSION_CONTRACT_ERRORS as error:
+            raise ValueError(
+                f"Cannot extract guard/alternatives from WrITE {wr_ite!r}"
+            ) from error
         
         if isinstance(guard_name, str):
             guard_node = self.get_tmp_node(guard_name, rd_tmp=guard_expr, kind=ValueKind.Condition)
@@ -269,7 +281,9 @@ class PAGVisitor(IRVisitor):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
             guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
-            raise l.error("The guard of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
+            raise ValueError(
+                f"WrITE guard is neither a temporary nor a constant: {wr_ite!r}"
+            )
          
         if isinstance(use_name_iftrue, str):
             use_node_iftrue = self.get_tmp_node(use_name_iftrue, rd_tmp=iftrue_expr)
@@ -279,7 +293,9 @@ class PAGVisitor(IRVisitor):
             use_value_iftrue = ConsValue(use_name_iftrue, None, ValueKind.Unknown, expr=iftrue_expr, loc=self._current_loc)
             use_node_iftrue = self.ir_graph.new_node(use_value_iftrue, 0)
         else:
-            raise l.error("The alt of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
+            raise ValueError(
+                f"WrITE true alternative is neither a temporary nor a constant: {wr_ite!r}"
+            )
         
         if isinstance(use_name_iffalse, str):
             use_node_iffalse = self.get_tmp_node(use_name_iffalse, rd_tmp=iffalse_expr)
@@ -289,7 +305,9 @@ class PAGVisitor(IRVisitor):
             use_value_iffalse = ConsValue(use_name_iffalse, None, ValueKind.Unknown, expr=iffalse_expr, loc=self._current_loc)
             use_node_iffalse = self.ir_graph.new_node(use_value_iffalse, 0)
         else:
-            raise l.error("The alt of the wr_ite statement %s is not a temporary or a constant.", wr_ite)
+            raise ValueError(
+                f"WrITE false alternative is neither a temporary nor a constant: {wr_ite!r}"
+            )
         
         def_node = self.get_tmp_node(def_name)
         
@@ -351,8 +369,10 @@ class PAGVisitor(IRVisitor):
             guard_name = guard_expr.get_name()
             use_name_in_guard = use_expr_in_guard.get_name()
             use_name_no_guard = use_expr_no_guard.get_name()
-        except:
-            raise l.error("Some error occurred when processing the loadg statement %s.", loadg)
+        except _EXPRESSION_CONTRACT_ERRORS as error:
+            raise ValueError(
+                f"Cannot extract guard/values from LoadG {loadg!r}"
+            ) from error
         
         if isinstance(guard_name, str):
             guard_node = self.get_tmp_node(guard_name, rd_tmp=guard_expr, kind=ValueKind.Condition)
@@ -360,7 +380,9 @@ class PAGVisitor(IRVisitor):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
             guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
-            raise l.error("The guard of the loadg statement %s is not a temporary or a constant.", loadg)
+            raise ValueError(
+                f"LoadG guard is neither a temporary nor a constant: {loadg!r}"
+            )
         
         if isinstance(use_name_in_guard, str):
             addr_node = self.get_tmp_node(use_name_in_guard, rd_tmp=use_expr_in_guard, kind=ValueKind.Pointer)
@@ -374,7 +396,9 @@ class PAGVisitor(IRVisitor):
             use_value_in_guard = MemValue(addr_value, None, ValueKind.MemAccess, "load", expr=use_expr_in_guard, loc=self._current_loc)
             use_node_in_guard = self.ir_graph.new_node(use_value_in_guard, 0)
         else:
-            raise l.error("The use of the loadg statement %s is not a temporary or a constant.", loadg)
+            raise ValueError(
+                f"LoadG address is neither a temporary nor a constant: {loadg!r}"
+            )
 
         if isinstance(use_name_no_guard, str):
             use_node_no_guard = self.get_tmp_node(use_name_no_guard, rd_tmp=use_expr_no_guard)
@@ -384,7 +408,9 @@ class PAGVisitor(IRVisitor):
             use_value_no_guard = ConsValue(use_name_no_guard, None, ValueKind.Unknown, expr=use_expr_no_guard, loc=self._current_loc)
             use_node_no_guard = self.ir_graph.new_node(use_value_no_guard, 0)
         else:
-            raise l.error("The alt of the loadg statement %s is not a temporary or a constant.", loadg)
+            raise ValueError(
+                f"LoadG fallback is neither a temporary nor a constant: {loadg!r}"
+            )
         
         def_node = self.get_tmp_node(def_name)
         
@@ -418,8 +444,10 @@ class PAGVisitor(IRVisitor):
             guard_name = guard_expr.get_name()
             def_name = def_expr.get_name()
             use_name = use_expr.get_name()
-        except:
-            raise l.error("Some error occurred when processing the storeg statement %s.", storeg)
+        except _EXPRESSION_CONTRACT_ERRORS as error:
+            raise ValueError(
+                f"Cannot extract guard/address/value from StoreG {storeg!r}"
+            ) from error
         
         if isinstance(guard_name, str):
             guard_node = self.get_tmp_node(guard_name, rd_tmp=guard_expr, kind=ValueKind.Condition)
@@ -428,7 +456,9 @@ class PAGVisitor(IRVisitor):
             guard_value = ConsValue(guard_name, None, ValueKind.Condition, expr=guard_expr, loc=self._current_loc)
             guard_node = self.ir_graph.new_node(guard_value, 0)
         else:
-            raise l.error("The guard of the storeg statement %s is not a temporary or a constant.", storeg)
+            raise ValueError(
+                f"StoreG guard is neither a temporary nor a constant: {storeg!r}"
+            )
         
         if isinstance(use_name, str):
             use_node = self.get_tmp_node(use_name, rd_tmp=use_expr)
@@ -437,7 +467,9 @@ class PAGVisitor(IRVisitor):
             use_value = ConsValue(use_name, None, ValueKind.Unknown, expr=use_expr, loc=self._current_loc)
             use_node = self.ir_graph.new_node(use_value, 0)
         else:
-            raise l.error("The use of the storeg statement %s is not a temporary or a constant.", storeg)
+            raise ValueError(
+                f"StoreG value is neither a temporary nor a constant: {storeg!r}"
+            )
         
         if isinstance(def_name, str):
             addr_node = self.get_tmp_node(def_name, rd_tmp=def_expr, kind=ValueKind.Pointer)
@@ -451,7 +483,9 @@ class PAGVisitor(IRVisitor):
             def_value = MemValue(addr_node.var, None, ValueKind.MemAccess, "store", expr=def_expr, loc=self._current_loc)
             def_node = self.ir_graph.new_node(def_value, 1)
         else:
-            raise l.error("The def of the storeg statement %s is not a temporary or a constant.", storeg)
+            raise ValueError(
+                f"StoreG address is neither a temporary nor a constant: {storeg!r}"
+            )
         
         edge = AssignEdge(use_node, def_node, kind=EdgeKind.StoreAssign, guard=guard_node, stmt=storeg)
         self.ir_graph.add_edge(edge)
@@ -547,7 +581,7 @@ class PAGVisitor(IRVisitor):
         target_value = ConsValue(target_addr, size, ValueKind.CodePtr, expr=ext.dst, loc=self._current_loc)
 
         if ext.jk != "Ijk_Boring":
-            raise l.warning("The exit statement %s is not a boring exit.", ext)
+            raise NotImplementedError(f"Non-boring exit is unsupported: {ext!r}")
 
         guard_node = self.get_tmp_node(guard_name, rd_tmp=ext.guard, kind=ValueKind.Condition)
         target_node = self.ir_graph.new_node(target_value, 0)
@@ -569,8 +603,11 @@ class PAGVisitor(IRVisitor):
                 node = arg.accept(self)
                 node.set_size(size)
                 args_node.append(node)
-            except:
-                raise l.error("The argument %s of the binop statement %s is not a temporary or a constant.", arg, binop)
+            except _EXPRESSION_CONTRACT_ERRORS as error:
+                raise ValueError(
+                    f"Binop argument is neither a temporary nor a constant: "
+                    f"argument={arg!r}, expression={binop!r}"
+                ) from error
         return args_node
     
     def visit_unop(self, unop):
@@ -581,13 +618,16 @@ class PAGVisitor(IRVisitor):
                 node = arg.accept(self)
                 node.set_size(size)
                 args_node.append(node)
-            except:
-                raise l.error("The argument %s of the unop statement %s is not a temporary or a constant.", arg, unop)
+            except _EXPRESSION_CONTRACT_ERRORS as error:
+                raise ValueError(
+                    f"Unop argument is neither a temporary nor a constant: "
+                    f"argument={arg!r}, expression={unop!r}"
+                ) from error
         return args_node
 
     def visit_rdtmp(self, rdtmp):
         return self.get_tmp_node(rdtmp.get_name(), rd_tmp=rdtmp, kind=ValueKind.Unknown)
-    
+
     def visit_const(self, const):
         return self.ir_graph.new_node(ConsValue(const.get_name(), None, ValueKind.Const, expr=const, loc=self._current_loc), 0)
-        
+

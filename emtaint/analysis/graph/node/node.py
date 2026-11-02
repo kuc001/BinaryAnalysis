@@ -1,16 +1,48 @@
+"""Define graph-owned address nodes for the legacy CFG implementation."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Protocol
 import weakref
+
 from emtaint.assembly.block import Block
 
-def repr_addr(addr):
+
+class _GraphView(Protocol):
+    """Minimal graph navigation used by a legacy node."""
+
+    def successors(self, node: Node) -> Iterable[Node]:
+        """Iterate nodes reached by outgoing edges."""
+
+        ...
+
+    def predecessors(self, node: Node) -> Iterable[Node]:
+        """Iterate nodes reached by incoming edges."""
+
+        ...
+
+
+def repr_addr(addr: object) -> str:
+    """Format integer addresses as hexadecimal and other identities by repr."""
+
     if isinstance(addr, int):
         return hex(addr)
     return repr(addr)
 
 
 class Node:
+    """Represent one graph-owned code range and its instruction-set mode."""
+
     __slots__ = ["_graph", "_hash", "addr", "size", "thumb"]
 
-    def __init__(self, addr: int, size: int, graph=None, thumb=False):
+    def __init__(
+        self,
+        addr: int,
+        size: int,
+        graph: _GraphView | None = None,
+        thumb: bool = False,
+    ) -> None:
         self.addr: int = addr
         self.size: int = size
         self.thumb = thumb
@@ -42,15 +74,21 @@ class Node:
             self._hash = hash((self.addr, self.size))
         return self._hash
 
-    def set_graph(self, graph):
+    def set_graph(self, graph: _GraphView) -> None:
+        """Attach the node to the graph that owns its navigation queries."""
+
         self._graph = weakref.proxy(graph)
 
-    def successors(self):
+    def successors(self) -> list[Node]:
+        """Return immediate successors from the owning graph."""
+
         if self._graph is None:
             raise ValueError("Cannot calculate successors for graphless node")
         return list(self._graph.successors(self))
     
-    def predecessors(self):
+    def predecessors(self) -> list[Node]:
+        """Return immediate predecessors from the owning graph."""
+
         if self._graph is None:
             raise ValueError("Cannot calculate predecessors for graphless node")
         return list(self._graph.predecessors(self))

@@ -1,16 +1,31 @@
-"""Read-only bounded input descriptions and ELF byte mapping (no native imports)."""
+"""Validate bounded frontend inputs and map executable bytes from ELF images."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 import hashlib
 import json
+from os import PathLike
 from pathlib import Path
 import struct
+from typing import TypeAlias
+
+
+Address: TypeAlias = int
+Segment: TypeAlias = tuple[Address, int, int, int, int]
 
 
 class InputError(ValueError):
-    pass
+    """Report invalid or unsupported data at a binary frontend boundary."""
 
 
-def address(value):
+def address(value: object) -> Address:
+    """Validate and return a 64-bit unsigned binary address.
+
+    ``bool`` is intentionally rejected even though it is an ``int`` subclass:
+    JSON booleans must never be reinterpreted as binary addresses.
+    """
+
     if type(value) is not int or value < 0 or value >= 1 << 64:
         raise InputError('Expected an unsigned address')
     return value
@@ -18,12 +33,14 @@ def address(value):
 
 @dataclass(frozen=True)
 class InputBlock:
+    """Describe one immutable half-open instruction range from an input source."""
+
     start: int
     end: int
     mode: str = 'default'
     boundary: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         address(self.start)
         address(self.end)
         if (type(self.boundary) is not bool or self.end < self.start
@@ -33,11 +50,13 @@ class InputBlock:
 
 @dataclass(frozen=True)
 class CallHint:
+    """Describe an input-provided callsite and its address or external name."""
+
     block: int
     instruction: int
     target: int | str
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         address(self.block)
         address(self.instruction)
         if type(self.target) is int:
@@ -48,13 +67,15 @@ class CallHint:
 
 @dataclass(frozen=True)
 class FunctionInput:
+    """Describe the immutable blocks, edges, and calls selected for a function."""
+
     address: int
     name: str
     blocks: tuple[InputBlock, ...]
     edges: tuple[tuple[int, int], ...] = ()
     calls: tuple[CallHint, ...] = ()
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         address(self.address)
         if type(self.name) is not str or type(self.blocks) is not tuple or not self.blocks:
             raise InputError('Function needs explicit immutable block bounds and name')
@@ -82,7 +103,20 @@ class FunctionInput:
                 address(call.target)
 
 
-def parse_ida_cfg(document, *, mode='default'):
+def parse_ida_cfg(document: object, *, mode: str = 'default') -> tuple[FunctionInput, ...]:
+    """Parse and validate the supported bounded IDA CFG JSON shape.
+
+    Args:
+        document: Decoded JSON object keyed by hexadecimal function address.
+        mode: Instruction mode applied to every declared input block.
+
+    Returns:
+        Function descriptions sorted by unsigned entry address.
+
+    Raises:
+        InputError: If any field is missing, malformed, dangling, or ambiguous.
+    """
+
     if type(document) is not dict or not document:
         raise InputError('IDA CFG must be a nonempty function-address mapping')
     result = []
@@ -110,9 +144,13 @@ def parse_ida_cfg(document, *, mode='default'):
     return tuple(sorted(result, key=lambda f: f.address))
 
 
-def read_ida_cfg(path, *, mode='default'):
-    def pairs(items):
-        values = {}
+def read_ida_cfg(
+    path: str | PathLike[str], *, mode: str = 'default'
+) -> tuple[FunctionInput, ...]:
+    """Read an IDA CFG JSON file while rejecting duplicate object keys."""
+
+    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
+        values: dict[str, object] = {}
         for key, value in items:
             if key in values:
                 raise InputError('Duplicate IDA JSON key')
@@ -122,8 +160,23 @@ def read_ida_cfg(path, *, mode='default'):
 
 
 class ELFImage:
-    """ELF ET_EXEC link-time virtual addresses; no guessed PIE relocation base."""
-    def __init__(self, data):
+    """Map file-backed executable bytes by ELF ET_EXEC virtual address.
+
+    The image retains link-time addresses exactly. PIE relocation is deliberately
+    unsupported because guessing a load base would change address semantics.
+    """
+
+    data: bytes
+    sha256: str
+    elf_class: int
+    encoding: int
+    endian: str
+    elf_type: int
+    machine: int
+    segments: list[Segment]
+    image_base: Address
+
+    def __init__(self, data: bytes) -> None:
         if type(data) is not bytes or data[:4] != b'\x7fELF' or len(data) < 52:
             raise InputError('Invalid ELF bytes')
         self.data = data
@@ -165,10 +218,18 @@ class ELFImage:
         self.image_base = min(s[0] for s in self.segments)
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path: str | PathLike[str]) -> ELFImage:
+        """Create an image from the exact bytes stored at ``path``."""
+
         return cls(Path(path).read_bytes())
 
-    def read(self, start, size):
+    def read(self, start: Address, size: int) -> bytes:
+        """Read bytes from one file-backed executable load segment.
+
+        The requested half-open range must fit wholly within one executable
+        segment. Zero-filled memory tails are not synthesized.
+        """
+
         address(start)
         if type(size) is not int or size <= 0:
             raise InputError('Read size must be positive')

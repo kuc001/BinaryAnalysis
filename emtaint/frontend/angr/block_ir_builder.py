@@ -1,3 +1,5 @@
+"""Convert one angr block into the legacy VEX IR wrapper hierarchy."""
+
 import pyvex
 import logging
 from angr.block import Block as AngrBlock

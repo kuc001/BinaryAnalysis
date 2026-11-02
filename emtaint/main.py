@@ -1,4 +1,6 @@
 
+"""Provide the legacy in-process BinaryAnalysis entry facade."""
+
 from emtaint.program_builder import EmProgram
 from emtaint.analysis.pag.ir_graph_builder import IRGraphBuilder
 

@@ -1,10 +1,36 @@
 """FastSearch._add_taint_constraint policy; a filter is not an SMT proof."""
+
 from dataclasses import dataclass
+from typing import Protocol
+
 from emtaint.core.contracts import Constant, ValueRef
 from emtaint.ir.canonical import Compute, ValueOp
 
 
-def unit_product_arguments(recipe: object) -> tuple[int, int] | None:
+class _BitType(Protocol):
+    """Expose the bit width required from a recipe value type."""
+
+    bits: int
+
+
+class _RecipeNode(Protocol):
+    """Structural view of the recipe nodes consumed by the legacy policy."""
+
+    type: _BitType
+    op: str
+    operands: tuple[int, ...]
+    value: object
+
+
+class _Recipe(Protocol):
+    """Structural view of a bounded scalar recipe used for guard recognition."""
+
+    nodes: tuple[_RecipeNode, ...]
+    returns: tuple[int, ...]
+    argument_uses: tuple[int, ...]
+
+
+def unit_product_arguments(recipe: _Recipe) -> tuple[int, int] | None:
     """Identify a 32-bit ``1 * arg * arg`` length without evaluating it.
 
     Other arithmetic, casts, widths, or additional factors cannot inherit a
@@ -58,18 +84,31 @@ def unit_product_arguments(recipe: object) -> tuple[int, int] | None:
 
 @dataclass(frozen=True)
 class ConstraintDecision:
-    kill:bool=False
-    constraints:tuple=()
-    classification:str='legacy-constraint-heuristic'
+    """Describe whether a legacy branch kills taint or adds scalar bounds."""
+
+    kill: bool = False
+    constraints: tuple[int, ...] = ()
+    classification: str = 'legacy-constraint-heuristic'
 
 
-def legacy_constraint(kind,operation,bound,*,pointer=True,symbol=True):
-    if kind in (4,5) and operation in ('eq','le','lt') and bound!=0xffffffff:
+def legacy_constraint(
+    kind: int,
+    operation: str,
+    bound: int,
+    *,
+    pointer: bool = True,
+    symbol: bool = True,
+) -> ConstraintDecision:
+    """Apply the preserved legacy scalar constraint classification policy."""
+
+    if kind in (4, 5) and operation in ('eq', 'le', 'lt') and bound != 0xffffffff:
         return ConstraintDecision(constraints=(bound,))
-    kill=((kind==2 and operation=='eq' and bound==0) or
-          (kind==1 and operation!='eq' and bound==0) or
-          (kind==6 and operation=='eq' and bound==0 and not pointer) or
-          (kind==0 and operation=='eq' and bound==0 and symbol))
+    kill = (
+        (kind == 2 and operation == 'eq' and bound == 0)
+        or (kind == 1 and operation != 'eq' and bound == 0)
+        or (kind == 6 and operation == 'eq' and bound == 0 and not pointer)
+        or (kind == 0 and operation == 'eq' and bound == 0 and symbol)
+    )
     return ConstraintDecision(kill=kill)
 
 
@@ -81,7 +120,7 @@ class UnsignedHiGuard:
     right: ValueRef | Constant
     bits: int
 
-    def relation(self,true_edge: bool) -> str:
+    def relation(self, true_edge: bool) -> str:
         """Return the exact unsigned relation for the selected CFG edge."""
         return 'ugt' if true_edge else 'ule'
 
@@ -94,7 +133,9 @@ class EqualityGuard:
     right: ValueRef | Constant
     bits: int
 
-    def relation(self,true_edge: bool) -> str:
+    def relation(self, true_edge: bool) -> str:
+        """Return equality or inequality for the selected CFG edge."""
+
         return 'eq' if true_edge else 'ne'
 
 

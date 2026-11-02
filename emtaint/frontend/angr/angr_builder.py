@@ -1,4 +1,6 @@
 
+"""Construct the legacy program facade from an angr project."""
+
 import logging
 from angr import Project
 from .converter import Converter

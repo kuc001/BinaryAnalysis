@@ -1,16 +1,18 @@
+"""Classify a legacy SSA assignment produced by a register read."""
+
 from pyvex.expr import IRExpr
+
 from .wr_tmp import WrTmp
 from ..visitors import IRVisitor
 
-class WrGet(WrTmp):
-    """
-    Assign a value to a temporary.  Note that SSA rules require each tmp is only assigned to once.  IR sanity checking
-    will reject any block containing a temporary which is not assigned to exactly once.
-    """
 
-    def __init__(self, tmp, data: IRExpr):
+class WrGet(WrTmp):
+    """Assign a guest-register read to one VEX SSA temporary."""
+
+    def __init__(self, tmp: int, data: IRExpr) -> None:
         super().__init__(tmp, data)
 
-    def accept(self, visitor: IRVisitor):
+    def accept(self, visitor: IRVisitor) -> object:
+        """Dispatch this assignment to the register-read visitor."""
+
         return visitor.visit_wr_get(self)
-    

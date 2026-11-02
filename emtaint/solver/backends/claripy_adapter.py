@@ -1,10 +1,16 @@
 """Explicit native Claripy boundary. Memory effects remain unsupported until P5."""
-from emtaint.compat.legacy_memory import describe_marker
+from collections.abc import Callable, Iterator
+from types import ModuleType
+from typing import Any
+
+from emtaint.compat.legacy_memory import LegacyMemoryMarker, describe_marker
 from emtaint.solver.port import (SolverQuery, SolverResult, SolverStatus, Term, UnsupportedQuery)
 from . import ast_tools
 
 
-def load_claripy():
+def load_claripy() -> ModuleType:
+    """Load the pinned target Claripy only from the target virtual environment."""
+
     import importlib.metadata
     from pathlib import Path
     import sys
@@ -19,13 +25,17 @@ def load_claripy():
     return claripy
 
 
-def native_status(solver):
+def native_status(solver: Any) -> str:
+    """Read the pinned backend's verified two-way SAT/UNSAT result."""
+
     # Pinned 9.3.4 backend_z3.z3_solver_sat raises on UNKNOWN; False is UNSAT.
     # This is deliberately not enabled for arbitrary injected modules.
     return "SAT" if solver.satisfiable() else "UNSAT"
 
 
-def exception_status(module, error):
+def exception_status(module: Any, error: BaseException) -> SolverStatus:
+    """Classify a native exception chain without converting UNKNOWN to UNSAT."""
+
     seen = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
@@ -41,41 +51,67 @@ def exception_status(module, error):
 
 
 class ClaripyAdapter:
-    def __init__(self, module=None, exact_status_reader=None):
+    """Translate portable terms to one pinned Claripy backend instance.
+
+    ``Any`` annotations are confined to native Claripy objects because the
+    third-party API has no stable type surface in the supported environment.
+    """
+
+    def __init__(
+        self,
+        module: Any = None,
+        exact_status_reader: Callable[[Any], object] | None = None,
+    ) -> None:
         self.c = module if module is not None else load_claripy()
         # Presence of check_satisfiability() is insufficient: the old base
         # implementation folds UNKNOWN into UNSAT. A reader needs its own proof.
         self.exact_status_reader = (native_status if module is None and exact_status_reader is None
                                     else exact_status_reader)
 
-    def children(self, root, unique=False, max_visits=10000):
+    def children(
+        self, root: Any, unique: bool = False, max_visits: int = 10000
+    ) -> Iterator[Any]:
+        """Iterate native descendants using the bounded portable traversal."""
+
         return ast_tools.children(self.c, root, unique, max_visits)
 
-    def leaves(self, root):
+    def leaves(self, root: Any) -> Iterator[Any]:
+        """Iterate unique native leaves in legacy-compatible order."""
+
         return ast_tools.leaves(self.c, root)
 
-    def structural_key(self, root):
+    def structural_key(self, root: Any) -> str:
+        """Return a portable semantic digest for a native AST."""
+
         return ast_tools.structural_key(self.c, root)
 
-    def replace(self, root, old, new):
+    def replace(self, root: Any, old: Any, new: Any) -> Any:
+        """Replace equal-sort native ASTs without implicit width conversion."""
+
         return ast_tools.replace(self.c, root, old, new)
 
-    def simplify(self, root):
+    def simplify(self, root: Any) -> Any:
+        """Delegate simplification while keeping the result inside the boundary."""
+
         return self.c.simplify(root)
 
-    def export(self, root):
+    def export(self, root: Any) -> Term:
+        """Export and validate a portable pure-BV term."""
+
         value = Term.from_dict(ast_tools.export(self.c, root))
         from emtaint.solver.port import validate_term
         validate_term(value)
         return value
 
-    def extract_legacy_marker(self, root):
+    def extract_legacy_marker(self, root: Any) -> LegacyMemoryMarker:
+        """Describe, but never execute, a recognized legacy memory marker."""
+
         if root.op not in ("Load", "Store") or len(root.args) != 1:
             raise ValueError("Not a recognized local legacy memory marker")
         address = Term.from_dict(ast_tools.export(self.c, root.args[0], allow_legacy_memory=True))
         return describe_marker(root.op, address, root.size())
 
-    def _lower_pure_bv(self, term):
+    def _lower_pure_bv(self, term: Term) -> Any:
         c = self.c
         args = [self._lower_pure_bv(a) if isinstance(a, Term) else a for a in term.args]
         if term.op == "BVS":
@@ -93,6 +129,8 @@ class ClaripyAdapter:
         return getattr(c, term.op)(*args)
 
     def solve(self, query: SolverQuery) -> SolverResult:
+        """Solve a portable request without collapsing unknown or failures."""
+
         try:
             query.validate()
             constraints = [self._lower_pure_bv(c) for c in query.constraints]
@@ -119,5 +157,8 @@ class ClaripyAdapter:
         except (UnsupportedQuery, ast_tools.UnsupportedAST) as error:
             return SolverResult(SolverStatus.UNSUPPORTED, reason=str(error), origin=query.origin)
         except Exception as error:
+            # Native libraries expose version-specific exception classes. This
+            # is the outer backend boundary: preserve the class/message and map
+            # the verified chain to UNKNOWN/TIMEOUT/ERROR instead of hiding it.
             status = exception_status(self.c, error)
             return SolverResult(status, reason=type(error).__name__ + ": " + str(error), origin=query.origin)

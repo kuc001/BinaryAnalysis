@@ -1,4 +1,5 @@
 """Typed non-SSA CIR effects, kept separate from the legacy VEX class hierarchy."""
+from collections.abc import Iterator
 from dataclasses import dataclass, fields
 from enum import Enum
 
@@ -11,6 +12,8 @@ from emtaint.memory.state import MemorySnapshot
 
 
 class ValueOp(str, Enum):
+    """Canonical scalar operations with explicit signedness and width behavior."""
+
     COPY = 'copy'
     ADD = 'add'
     SUB = 'sub'
@@ -31,6 +34,8 @@ class ValueOp(str, Enum):
 
 @dataclass(frozen=True)
 class Compute(Record):
+    """Compute one typed CIR value without mutating architectural state."""
+
     origin: str
     result: ValueRef
     op: ValueOp
@@ -43,7 +48,16 @@ class Compute(Record):
         validate_value_operation(self.op.value, self.result.type, [arg.type for arg in self.args], self.params)
 
 
-def memory_access(address, width, endian, guard, address_space, alignment):
+def memory_access(
+    address: Operand,
+    width: int,
+    endian: Endian,
+    guard: Operand,
+    address_space: str,
+    alignment: int | None,
+) -> None:
+    """Validate shared load/store width, guard, space, and alignment contracts."""
+
     if address.type.kind != TypeKind.POINTER or address.type.address_space != address_space:
         raise ValueError('Memory address needs a matching pointer address space')
     bits(width, byte_access=True)
@@ -56,6 +70,8 @@ def memory_access(address, width, endian, guard, address_space, alignment):
 
 @dataclass(frozen=True)
 class LoadEffect(Record):
+    """Read an explicitly sized and ordered memory value when ``guard`` is true."""
+
     origin: str
     result: ValueRef
     address: Operand
@@ -76,6 +92,8 @@ class LoadEffect(Record):
 
 @dataclass(frozen=True)
 class StoreEffect(Record):
+    """Write an explicitly sized and ordered memory value when ``guard`` is true."""
+
     origin: str
     address: Operand
     value: Operand
@@ -96,6 +114,8 @@ class StoreEffect(Record):
 
 @dataclass(frozen=True)
 class RegisterSlice(Record):
+    """Identify a bounded bit slice within one architectural register."""
+
     register: str
     bit_offset: int
     width_bits: int
@@ -112,6 +132,8 @@ class RegisterSlice(Record):
 
 
 class RegisterWritePolicy(str, Enum):
+    """Describe how a slice write affects bits outside the written slice."""
+
     FULL = 'full'
     PRESERVE_OTHERS = 'preserve_others'
     ZERO_UPPER = 'zero_upper'
@@ -119,6 +141,8 @@ class RegisterWritePolicy(str, Enum):
 
 @dataclass(frozen=True)
 class ReadRegister(Record):
+    """Read a declared register slice into a width-matched CIR value."""
+
     origin: str
     result: ValueRef
     source: RegisterSlice
@@ -132,6 +156,8 @@ class ReadRegister(Record):
 
 @dataclass(frozen=True)
 class WriteRegister(Record):
+    """Conditionally update a register slice under an explicit write policy."""
+
     origin: str
     target: RegisterSlice
     value: Operand
@@ -152,11 +178,15 @@ class WriteRegister(Record):
 
 @dataclass(frozen=True)
 class DirectTarget(Record):
+    """Name a statically proven internal call target."""
+
     function: FunctionId
 
 
 @dataclass(frozen=True)
 class IndirectTarget(Record):
+    """Represent a runtime call target computed as a pointer value."""
+
     address: Operand
 
     def __post_init__(self):
@@ -167,6 +197,8 @@ class IndirectTarget(Record):
 
 @dataclass(frozen=True)
 class ExternalTarget(Record):
+    """Name a proven external symbol target."""
+
     symbol: str
 
     def __post_init__(self):
@@ -176,6 +208,8 @@ class ExternalTarget(Record):
 
 @dataclass(frozen=True)
 class UnknownTarget(Record):
+    """Retain the reason a call target could not be classified."""
+
     reason: str
 
     def __post_init__(self):
@@ -185,6 +219,8 @@ class UnknownTarget(Record):
 
 @dataclass(frozen=True)
 class CallFootprint(Record):
+    """Conservatively describe memory and register effects of a call."""
+
     read_regions: tuple[str, ...] = ('*',)
     write_regions: tuple[str, ...] = ('*',)
     clobbered_registers: tuple[str, ...] = ('*',)
@@ -202,6 +238,8 @@ class CallFootprint(Record):
 
 @dataclass(frozen=True)
 class CallEffect(Record):
+    """Model a guarded call, its ABI, results, and conservative footprint."""
+
     origin: str
     site: CallSiteId
     target: DirectTarget | IndirectTarget | ExternalTarget | UnknownTarget
@@ -219,6 +257,8 @@ class CallEffect(Record):
 
 @dataclass(frozen=True)
 class BranchEffect(Record):
+    """Terminate a block with a boolean choice between two declared blocks."""
+
     origin: str
     condition: Operand
     if_true: BlockId
@@ -232,6 +272,8 @@ class BranchEffect(Record):
 
 @dataclass(frozen=True)
 class JumpEffect(Record):
+    """Terminate a block with a declared block or computed pointer target."""
+
     origin: str
     target: BlockId | Operand
 
@@ -244,6 +286,8 @@ class JumpEffect(Record):
 
 @dataclass(frozen=True)
 class ReturnEffect(Record):
+    """Return typed values from a function when the guard is true."""
+
     origin: str
     values: tuple[Operand, ...]
     guard: Operand
@@ -256,6 +300,8 @@ class ReturnEffect(Record):
 
 @dataclass(frozen=True)
 class HavocEffect(Record):
+    """Explicitly invalidate named state when exact effects are unavailable."""
+
     origin: str
     regions: tuple[str, ...]
     registers: tuple[str, ...]
@@ -273,6 +319,8 @@ class HavocEffect(Record):
 
 @dataclass(frozen=True)
 class UnknownEffect(Record):
+    """Preserve an unsupported source effect as a conservative state change."""
+
     origin: str
     source_opcode: str
     reason: str
@@ -297,6 +345,8 @@ Effect = (Compute | LoadEffect | StoreEffect | ReadRegister | WriteRegister | Ca
 
 @dataclass(frozen=True)
 class CIRBlock(Record):
+    """Hold ordered effects for one canonical block and its optional byte extent."""
+
     id: BlockId
     effects: tuple[Effect, ...]
     size_bytes: int | None = None
@@ -310,7 +360,7 @@ class CIRBlock(Record):
             raise ValueError('Control terminator must be the last effect in a block')
 
 
-def operands(record):
+def operands(record: object) -> Iterator[ValueRef | Constant]:
     """Inspect only declared CIR fields; no arbitrary frontend object traversal."""
     if isinstance(record, (ValueRef, Constant)):
         yield record
@@ -324,6 +374,8 @@ def operands(record):
 
 @dataclass(frozen=True)
 class CIRFunction(Record):
+    """Contain a closed, typed block/value graph for one binary function."""
+
     function_id: FunctionId
     values: tuple[ValueRef, ...]
     blocks: tuple[CIRBlock, ...]
@@ -356,6 +408,13 @@ CAPABILITIES = frozenset(('typed-effects', 'memory-descriptors', 'access-graph-d
 
 @dataclass(frozen=True)
 class CIRModule(Record):
+    """Bind canonical functions and memory facts to one architecture and binary.
+
+    Construction validates address widths, byte endianness, provenance,
+    capabilities, branch targets, register slices, and conservative unsupported
+    effects. These checks are part of the persistent CIR wire contract.
+    """
+
     producer: Producer
     architecture: Architecture
     endian: Endian

@@ -1,3 +1,5 @@
+"""Define typed def-use, operand, address, and flow edges for the legacy PAG."""
+
 from enum import IntEnum
 from .var_node import VarNode
 
@@ -76,7 +78,6 @@ class AssignEdge(VarEdge):
     tag = "Assign"
     def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
         super().__init__(src, dst, kind, guard, stmt)
-
 class FlowEdge(VarEdge):
     """
     控制流边类，表示程序中的控制流边。
@@ -85,7 +86,6 @@ class FlowEdge(VarEdge):
     tag = "Flow"
     def __init__(self, src: VarNode, dst: VarNode, kind = None, guard = None, stmt = None):
         super().__init__(src, dst, kind, guard, stmt)
-
 class OpEdge(VarEdge):
     """
     操作数边类，表示程序中的操作数边。

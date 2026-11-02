@@ -5,8 +5,13 @@ an explicit frontier and one retry after other demands have made progress.
 """
 from collections import deque
 from dataclasses import dataclass,replace
+import logging
 import time
 from emtaint.analysis.dataflow.legacy_demand import DemandLimit
+from emtaint.debugging import log_event
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,8 @@ def run_queries(owner,queries,max_attempts=2):
                 'scalar_steps':owner.demand.steps-scalar_start,
                 'memory_work':owner.port.engine.accounting.counts['worklist_iterations']-memory_start,
                 'seconds':time.monotonic()-started}
+        log_event(LOGGER,'taint.query.started',query_id=query.id,kind=query.kind,
+            origin=query.effect.origin,attempt=attempt,remaining=len(todo))
         try:
             owner.tick();owner.queries_remaining=len(todo)+1;owner.begin_query(query)
             owner.execute_query(query)
@@ -120,12 +127,15 @@ def run_queries(owner,queries,max_attempts=2):
             for index in partials.get(query.id,()):owner.completed_sinks[index]=None
             owner.query_pending.pop(query.id,None)
             if attempt>1:owner.query_history.append({'id':query.id,'attempt':attempt,'status':'completed-after-retry',**cost()})
+            log_event(LOGGER,'taint.query.completed',query_id=query.id,attempt=attempt,**cost())
             handled=True
         except DemandLimit as error:
             if error.dimension not in ('query','alternatives','depth'):raise
             note=type(error).__name__+': '+str(error)
             owner.query_pending[query.id]=(query.effect.origin,note)
             owner.query_history.append({'id':query.id,'attempt':attempt,'status':'incomplete','reason':note,**cost()})
+            log_event(LOGGER,'taint.query.incomplete',level=logging.WARNING,query_id=query.id,
+                attempt=attempt,reason=note,**cost())
             known=set(sources.get(query.id,()))|owner.partial_sources|owner.query_sources
             sources[query.id]=tuple(sorted(known,key=dependency_order))
             unknown=TaintDependency('unknown','Unresolved query '+query.id+': '+str(error),uncertain=True)

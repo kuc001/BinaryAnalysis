@@ -1,13 +1,22 @@
 """Native lifting utilities shared by the two bounded byte inputs."""
+
+from __future__ import annotations
+
 import hashlib
 import importlib.metadata
 from pathlib import Path
 import sys
+from typing import Any, Callable, Iterable, TYPE_CHECKING
 
-from .inputs import InputError, FunctionInput, InputBlock
+from .inputs import ELFImage, FunctionInput, InputBlock, InputError
+
+if TYPE_CHECKING:
+    from .vex_lowering import NativeChunk
 
 
-def check_runtime():
+def check_runtime() -> None:
+    """Require the repository target environment and pinned native packages."""
+
     expected = Path(__file__).resolve().parents[2] / '.venv'
     if Path(sys.prefix).resolve() != expected.resolve():
         raise InputError('Use the explicit target .venv interpreter')
@@ -16,7 +25,13 @@ def check_runtime():
             raise InputError('P4 frontend is pinned to ' + package + ' 9.3.4')
 
 
-def native_arch(image):
+def native_arch(image: ELFImage) -> Any:
+    """Create the archinfo architecture matching a validated ELF header.
+
+    ``Any`` is restricted to this third-party boundary because archinfo exposes
+    architecture-specific runtime classes without a common typed protocol.
+    """
+
     import archinfo
     constructors = {3: archinfo.ArchX86, 62: archinfo.ArchAMD64, 40: archinfo.ArchARM,
                     8: archinfo.ArchMIPS32 if image.elf_class == 1 else archinfo.ArchMIPS64,
@@ -26,7 +41,19 @@ def native_arch(image):
     return constructors[image.machine](endness='Iend_LE' if image.endian == 'little' else 'Iend_BE')
 
 
-def collect_chunks(image, specifications, arch, lift):
+def collect_chunks(
+    image: ELFImage,
+    specifications: tuple[FunctionInput, ...],
+    arch: Any,
+    lift: Callable[[int, bytes, str], Any],
+) -> list[NativeChunk]:
+    """Lift selected blocks into bounded native chunks without skipping gaps.
+
+    Decode failures become explicit failed chunks; they are not mistaken for
+    successfully translated instructions. ``Any`` values are confined to the
+    pyvex/archinfo call boundary.
+    """
+
     import pyvex
     from .vex_lowering import NativeChunk
     if type(specifications) is not tuple or not specifications:
@@ -72,7 +99,16 @@ def collect_chunks(image, specifications, arch, lift):
     return chunks
 
 
-def discover_inputs(project, addresses=None):
+def discover_inputs(
+    project: Any, addresses: Iterable[int] | None = None
+) -> tuple[FunctionInput, ...]:
+    """Discover explicitly selected function bounds through angr CFGFast.
+
+    ``project`` is an angr runtime object and is intentionally typed only at the
+    external-library boundary. Recovered extents are converted immediately to
+    validated immutable frontend records.
+    """
+
     wanted = tuple(addresses) if addresses is not None else (project.entry,)
     if not wanted or any(type(a) is not int for a in wanted):
         raise InputError('Explicit function addresses required')

@@ -1,3 +1,5 @@
+"""Own legacy program-assignment graph nodes, edges, and traversal state."""
+
 import logging
 from uuid import uuid4
 from .var_node import VarNode
