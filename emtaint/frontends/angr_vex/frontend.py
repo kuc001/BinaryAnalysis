@@ -9,8 +9,9 @@ class AngrVexFrontend:
         check_runtime()
         import angr
         self.path = Path(binary).resolve()
-        self.image = ELFImage.from_path(self.path)
         self.project = angr.Project(str(self.path), auto_load_libs=False)
+        mapped_base = self.project.loader.main_object.mapped_base
+        self.image = ELFImage.from_path(self.path, load_base=mapped_base)
         if self.project.loader.main_object.mapped_base != self.image.image_base:
             raise InputError('angr and ELF virtual-address mappings differ; relocation must be explicit')
 

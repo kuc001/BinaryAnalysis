@@ -3,8 +3,69 @@
 All byte queries use MemoryQueryPort and the explicitly chosen initial loader
 snapshot. These are legacy heuristic candidates, never concrete witnesses.
 """
-from emtaint.core.contracts import ValueType, TypeKind
+
+from dataclasses import dataclass
+
+from emtaint.core.contracts import Record, TypeKind, ValueType
 from emtaint.memory import SymbolicOp
+
+
+@dataclass(frozen=True)
+class LegacyTableEvidence(Record):
+    """One immutable legacy table-enumeration evidence record.
+
+    Attributes:
+        rule: Legacy collector rule that produced the candidates.
+        read_type: Whether the table read is interpreted as data or code.
+        expression: Stable SSE expression identity evaluated by the collector.
+        loader_version: Initial loader-backed MemoryVersion identity.
+        indices_examined: Number of table indices evaluated.
+        targets: Candidate addresses found by this enumeration.
+        unknown_remainder: Whether unenumerated values may remain.
+        maximum_address: Optional firmware-specific enumeration bound.
+        nested_substitutions: Number of explicitly substituted nested reads.
+        provenance: Human-readable explanation of the evidence boundary.
+    """
+
+    rule: str
+    read_type: str
+    expression: str
+    loader_version: str
+    indices_examined: int
+    targets: tuple[int, ...]
+    unknown_remainder: bool
+    maximum_address: int | None
+    nested_substitutions: int
+    provenance: str
+
+    def __post_init__(self) -> None:
+        """Reject malformed or non-deterministically ordered evidence."""
+
+        super().__post_init__()
+        if self.read_type not in ("data", "func"):
+            raise ValueError("Legacy table read type must be data or func")
+        if self.indices_examined < 1 or self.nested_substitutions < 0:
+            raise ValueError("Legacy table evidence counters are invalid")
+        if self.maximum_address is not None and self.maximum_address < 0:
+            raise ValueError("Legacy table maximum address cannot be negative")
+        if self.targets != tuple(sorted(set(self.targets))):
+            raise ValueError("Legacy table targets must be sorted and unique")
+
+    def to_legacy_dict(self) -> dict[str, object]:
+        """Return the pre-DTO JSON shape used by frozen P6 artifacts."""
+
+        return {
+            "rule": self.rule,
+            "read_type": self.read_type,
+            "expression": self.expression,
+            "loader_version": self.loader_version,
+            "indices_examined": self.indices_examined,
+            "targets": list(self.targets),
+            "unknown_remainder": self.unknown_remainder,
+            "maximum_address": self.maximum_address,
+            "nested_substitutions": self.nested_substitutions,
+            "provenance": self.provenance,
+        }
 
 
 class LegacyTableCollector:
@@ -13,7 +74,7 @@ class LegacyTableCollector:
         self.port=demand.port
         self.is_code, self.is_data=is_code, is_data
         self.max_index=max_index
-        self.evidence=[]
+        self.evidence: list[LegacyTableEvidence] = []
         self.unknown=False
         self.queries=0
         self.partial_targets=set()
@@ -153,9 +214,25 @@ class LegacyTableCollector:
             elif value==end_flag:break
         else:
             if indexed:self.unknown=True
-        self.evidence.append({'rule':'Collector.read_recursive_data' if indexed else 'Collector.calculate_icall_targets', 'read_type':read_type,
-            'expression':root.key, 'loader_version':self.demand.initial.memory.key, 'indices_examined':index+1,
-            'targets':sorted(values), 'unknown_remainder':self.unknown,
-            'maximum_address':maximum_address, 'nested_substitutions':len(overrides),
-            'provenance':'Candidate from versioned initial loader bytes; writable runtime state can differ'})
+        self.evidence.append(
+            LegacyTableEvidence(
+                rule=(
+                    "Collector.read_recursive_data"
+                    if indexed
+                    else "Collector.calculate_icall_targets"
+                ),
+                read_type=read_type,
+                expression=root.key,
+                loader_version=self.demand.initial.memory.key,
+                indices_examined=index + 1,
+                targets=tuple(sorted(values)),
+                unknown_remainder=self.unknown,
+                maximum_address=maximum_address,
+                nested_substitutions=len(overrides),
+                provenance=(
+                    "Candidate from versioned initial loader bytes; "
+                    "writable runtime state can differ"
+                ),
+            )
+        )
         return tuple(sorted(values))

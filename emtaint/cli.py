@@ -15,7 +15,12 @@ import tempfile
 import time
 import uuid
 
-from emtaint.debugging import configure_logging, log_event, progress_heartbeat
+from emtaint.debugging import (
+    configure_logging,
+    function_address_fields,
+    log_event,
+    progress_heartbeat,
+)
 from emtaint.frontends.function_store import FunctionStore
 from emtaint.frontends.inputs import read_ida_cfg
 from emtaint.frontends.program_index import build_program_index
@@ -150,7 +155,11 @@ def run_icall(
         log_event(
             LOGGER,
             "icall.function.loading",
-            function=hex(address),
+            **function_address_fields(
+                address - store.base,
+                store.base,
+                legacy_field="va",
+            ),
             loaded=len(modules),
             total=len(selected),
         )
@@ -161,7 +170,11 @@ def run_icall(
         log_event(
             LOGGER,
             "icall.function.loaded",
-            function=hex(address),
+            **function_address_fields(
+                address - store.base,
+                store.base,
+                legacy_field="va",
+            ),
             cir_sha256=digest,
             blocks=len(cfg.nodes),
             loaded=len(modules),
@@ -231,13 +244,22 @@ def run_icall(
         log_event(
             LOGGER,
             "icall.function.result",
-            function=hex(function_address),
+            **function_address_fields(
+                function_id.rva,
+                store.base,
+                legacy_field="va",
+            ),
             sites=len(outcome.sites),
             target_facts=len(outcome.targets),
             pending=len(outcome.pending),
         )
         for row in outcome.sites:
-            coverage.append({"function": function_address, **row})
+            coverage.append(
+                {
+                    "function": function_address,
+                    **row.to_legacy_dict(),
+                }
+            )
         for fact in outcome.targets:
             site_address = fact.site.point.instruction_rva + store.base
             targets.setdefault(str(function_address), {})[str(site_address)] = list(
@@ -258,8 +280,14 @@ def run_icall(
             log_event(
                 LOGGER,
                 "icall.site.resolved",
-                function=hex(function_address),
+                **function_address_fields(
+                    function_id.rva,
+                    store.base,
+                    legacy_field="va",
+                ),
                 site=hex(site_address),
+                site_rva=hex(fact.site.point.instruction_rva),
+                site_va=hex(site_address),
                 targets=len(fact.targets),
                 certainty=fact.certainty,
                 exhaustive=fact.exhaustive,

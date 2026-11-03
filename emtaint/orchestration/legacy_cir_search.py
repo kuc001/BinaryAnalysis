@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import logging
 import time
 
-from emtaint.analysis.controlflow.legacy_tables import LegacyTableCollector
+from emtaint.analysis.controlflow.legacy_tables import (
+    LegacyTableCollector,
+    LegacyTableEvidence,
+)
 from emtaint.analysis.dataflow.accurate import CIRAccurateDataFlow
 from emtaint.analysis.dataflow.entry import legacy_entry
 from emtaint.analysis.dataflow.legacy_demand import (
@@ -23,8 +26,8 @@ from emtaint.analysis.dataflow.legacy_demand import (
 from emtaint.analysis.framework.state import TargetFact
 from emtaint.analysis.framework.summaries import compile_recipe
 from emtaint.core import BlockId, CallSiteId, Completeness, FunctionId
-from emtaint.core.contracts import Origin
-from emtaint.debugging import log_event
+from emtaint.core.contracts import Assessment, Origin, Record
+from emtaint.debugging import function_address_fields, log_event
 from emtaint.graph import CallGraph, ControlFlowGraph
 from emtaint.ir.canonical import (
     CIRFunction,
@@ -42,15 +45,108 @@ LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class CallSiteAnalysisResult(Record):
+    """Typed result and evidence boundary for one requested iCall site.
+
+    ``site`` is the absolute virtual address used by IDA metadata. The core
+    fields retain the target candidates, evidence, incomplete remainder and
+    per-site assessment needed by later evidence-chain validation. Additional
+    fields preserve existing P6 coverage and diagnostic information.
+    """
+
+    site: int
+    origin: str
+    targets: tuple[int, ...]
+    evidence: tuple[LegacyTableEvidence, ...]
+    unknown_remainder: bool
+    assessment: Assessment
+    demand_steps: int
+    cfg_reachable: bool
+    classification: str | None = None
+    expressions: tuple[str, ...] = ()
+    rule_ids: tuple[str, ...] = ()
+    memory_version: str | None = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate stable address, target ordering and variant invariants."""
+
+        super().__post_init__()
+        if self.site < 0 or self.demand_steps < 0:
+            raise ValueError("Site address and demand steps must be non-negative")
+        if self.targets != tuple(sorted(set(self.targets))):
+            raise ValueError("Call-site targets must be sorted and unique")
+        if self.classification is not None and self.error is not None:
+            raise ValueError("A classified site cannot also be an analysis error")
+        if (
+            self.classification is None
+            and self.error is None
+            and self.memory_version is None
+        ):
+            raise ValueError("Analyzed call site requires a MemoryVersion")
+
+    def to_legacy_dict(self) -> dict[str, object]:
+        """Return the exact pre-DTO site-coverage shape for P6 compatibility."""
+
+        if self.classification is not None:
+            return {
+                "site": self.site,
+                "classification": self.classification,
+                "origin": self.origin,
+                "cfg_reachable": self.cfg_reachable,
+                "targets": list(self.targets),
+            }
+        row: dict[str, object] = {
+            "site": self.site,
+            "origin": self.origin,
+            "cfg_reachable": self.cfg_reachable,
+            "targets": list(self.targets),
+        }
+        if self.error is not None:
+            row.update(
+                error=self.error,
+                unknown_remainder=self.unknown_remainder,
+            )
+            return row
+        row.update(
+            expressions=list(self.expressions),
+            evidence=[item.to_legacy_dict() for item in self.evidence],
+            unknown_remainder=self.unknown_remainder,
+            rule_ids=list(self.rule_ids),
+            memory_version=self.memory_version,
+        )
+        return row
+
+    def to_evidence_dict(self) -> dict[str, object]:
+        """Return the normalized typed shape for future evidence-chain output."""
+
+        return {
+            "site": self.site,
+            "origin": self.origin,
+            "targets": list(self.targets),
+            "evidence": [item.to_legacy_dict() for item in self.evidence],
+            "unknown_remainder": self.unknown_remainder,
+            "assessment": asdict(self.assessment),
+            "demand_steps": self.demand_steps,
+            "cfg_reachable": self.cfg_reachable,
+            "classification": self.classification,
+            "expressions": list(self.expressions),
+            "rule_ids": list(self.rule_ids),
+            "memory_version": self.memory_version,
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
 class LegacyFunctionResult:
     """Detached result of one function-local CIR demand search."""
 
     targets: tuple[TargetFact, ...]
     pending: tuple[object, ...]
-    assessment: object
+    assessment: Assessment
     steps: int
     visited_blocks: tuple[BlockId, ...]
-    sites: tuple[dict[str, object], ...]
+    sites: tuple[CallSiteAnalysisResult, ...]
     recipe: object | None
     snapshot: object
     metrics: object
@@ -111,11 +207,15 @@ class CIRLegacySearch:
         """Execute backward demand, table collection and recipe compilation."""
 
         started = time.monotonic()
-        function_address = self.image_base + self.function.function_id.rva
+        function_fields = function_address_fields(
+            self.function.function_id.rva,
+            self.image_base,
+            legacy_field="va",
+        )
         log_event(
             LOGGER,
             "icall.cir_search.started",
-            function=hex(function_address),
+            **function_fields,
             blocks=len(self.function.blocks),
             input_sites=len(self.input_sites),
             make_recipe=self.make_recipe,
@@ -132,7 +232,7 @@ class CIRLegacySearch:
             summaries=self.summaries,
         )
         facts: list[TargetFact] = []
-        rows: list[dict[str, object]] = []
+        rows: list[CallSiteAnalysisResult] = []
         pending: list[object] = []
         notes = []
         recipe = None
@@ -150,7 +250,7 @@ class CIRLegacySearch:
         log_event(
             LOGGER,
             "icall.cir_search.reachability.completed",
-            function=hex(function_address),
+            **function_fields,
             cfg_nodes=len(self.cfg.nodes),
             cfg_edges=len(self.cfg.edges),
             reachable_blocks=len(reachable),
@@ -170,19 +270,27 @@ class CIRLegacySearch:
                     continue
                 if isinstance(effect, ReturnEffect):
                     rows.append(
-                        {
-                            "site": site_address,
-                            "classification": "IDA annotation / CIR native return",
-                            "origin": effect.origin,
-                            "cfg_reachable": block.id in reachable,
-                            "targets": [],
-                        }
+                        CallSiteAnalysisResult(
+                            site=site_address,
+                            origin=effect.origin,
+                            targets=(),
+                            evidence=(),
+                            unknown_remainder=False,
+                            assessment=Assessment.complete(),
+                            demand_steps=demand.steps,
+                            cfg_reachable=block.id in reachable,
+                            classification=(
+                                "IDA annotation / CIR native return"
+                            ),
+                        )
                     )
                     log_event(
                         LOGGER,
                         "icall.cir_search.site.return",
-                        function=hex(function_address),
+                        **function_fields,
                         site=hex(site_address),
+                        site_rva=hex(point.instruction_rva),
+                        site_va=hex(site_address),
                         origin=effect.origin,
                         cfg_reachable=block.id in reachable,
                     )
@@ -196,18 +304,17 @@ class CIRLegacySearch:
                     if isinstance(effect, CallEffect)
                     else CallSiteId(point)
                 )
-                row: dict[str, object] = {
-                    "site": site_address,
-                    "origin": effect.origin,
-                    "cfg_reachable": block.id in reachable,
-                }
                 collector = None
+                roots = ()
+                error_message = None
                 site_started = time.monotonic()
                 log_event(
                     LOGGER,
                     "icall.cir_search.site.started",
-                    function=hex(function_address),
+                    **function_fields,
                     site=hex(site_address),
+                    site_rva=hex(point.instruction_rva),
+                    site_va=hex(site_address),
                     origin=effect.origin,
                     cfg_reachable=block.id in reachable,
                     maximum_address=self.bounds.get(site_address),
@@ -249,19 +356,13 @@ class CIRLegacySearch:
                         "bytes; runtime feasibility/memory remainder retained",
                         True,
                     )
-                    row.update(
-                        targets=list(values),
-                        expressions=[root.key for root in roots],
-                        evidence=collector.evidence,
-                        unknown_remainder=True,
-                        rule_ids=sorted(demand.rules),
-                        memory_version=initial.memory.key,
-                    )
                     log_event(
                         LOGGER,
                         "icall.cir_search.site.completed",
-                        function=hex(function_address),
+                        **function_fields,
                         site=hex(site_address),
+                        site_rva=hex(point.instruction_rva),
+                        site_va=hex(site_address),
                         roots=len(roots),
                         targets=len(values),
                         demand_steps=demand.steps,
@@ -279,17 +380,15 @@ class CIRLegacySearch:
                         True,
                     )
                     pending.append((site, assessment.diagnostics))
-                    row.update(
-                        targets=list(values),
-                        error=str(error),
-                        unknown_remainder=True,
-                    )
+                    error_message = str(error)
                     log_event(
                         LOGGER,
                         "icall.cir_search.site.incomplete",
                         level=logging.WARNING,
-                        function=hex(function_address),
+                        **function_fields,
                         site=hex(site_address),
+                        site_rva=hex(point.instruction_rva),
+                        site_va=hex(site_address),
                         error_type=type(error).__name__,
                         error_message=str(error),
                         partial_targets=len(values),
@@ -312,13 +411,32 @@ class CIRLegacySearch:
                     )
                 )
                 notes.append(assessment)
-                rows.append(row)
+                rows.append(
+                    CallSiteAnalysisResult(
+                        site=site_address,
+                        origin=effect.origin,
+                        targets=values,
+                        evidence=(
+                            ()
+                            if collector is None
+                            else tuple(collector.evidence)
+                        ),
+                        unknown_remainder=True,
+                        assessment=assessment,
+                        demand_steps=demand.steps,
+                        cfg_reachable=block.id in reachable,
+                        expressions=tuple(root.key for root in roots),
+                        rule_ids=tuple(sorted(demand.rules)),
+                        memory_version=initial.memory.key,
+                        error=error_message,
+                    )
+                )
 
         if skipped_effects:
             log_event(
                 LOGGER,
                 "icall.cir_search.non_target_effects.skipped",
-                function=hex(function_address),
+                **function_fields,
                 total=sum(skipped_effects.values()),
                 by_type=dict(sorted(skipped_effects.items())),
             )
@@ -326,21 +444,20 @@ class CIRLegacySearch:
         if self.make_recipe:
             recipe = self._compile_recipe(
                 demand,
-                function_address,
                 notes,
                 pending,
             )
         if demand.notes:
             notes.append(over("; ".join(sorted(set(demand.notes))), True))
         if len(rows) < len(self.input_sites):
-            missing = self.input_sites - {row["site"] for row in rows}
+            missing = self.input_sites - {row.site for row in rows}
             pending.extend(("missing-site", site) for site in sorted(missing))
             notes.append(over("Input sites lack a CIR call/return terminal", True))
             log_event(
                 LOGGER,
                 "icall.cir_search.sites.missing",
                 level=logging.WARNING,
-                function=hex(function_address),
+                **function_fields,
                 sites=[hex(site) for site in sorted(missing)],
             )
         snapshot = port.engine.snapshot()
@@ -350,21 +467,23 @@ class CIRLegacySearch:
                 over("Source CFG coverage/guard feasibility remains incomplete", True)
             )
         result = LegacyFunctionResult(
-            tuple(facts),
-            tuple(pending),
-            combine(notes),
-            demand.steps,
-            tuple(sorted(reachable, key=lambda block: block.token)),
-            tuple(rows),
-            recipe,
-            snapshot,
-            port.metrics(),
-            tuple(reference_recipes),
+            targets=tuple(facts),
+            pending=tuple(pending),
+            assessment=combine(notes),
+            steps=demand.steps,
+            visited_blocks=tuple(
+                sorted(reachable, key=lambda block: block.token)
+            ),
+            sites=tuple(rows),
+            recipe=recipe,
+            snapshot=snapshot,
+            metrics=port.metrics(),
+            reference_recipes=tuple(reference_recipes),
         )
         log_event(
             LOGGER,
             "icall.cir_search.completed",
-            function=hex(function_address),
+            **function_fields,
             visited_blocks=len(result.visited_blocks),
             target_facts=len(result.targets),
             pending=len(result.pending),
@@ -390,7 +509,6 @@ class CIRLegacySearch:
     def _compile_recipe(
         self,
         demand: LegacyDemand,
-        function_address: int,
         notes: list[object],
         pending: list[object],
     ) -> object | None:
@@ -398,10 +516,15 @@ class CIRLegacySearch:
 
         roots = []
         stores = []
+        function_fields = function_address_fields(
+            self.function.function_id.rva,
+            self.image_base,
+            legacy_field="va",
+        )
         log_event(
             LOGGER,
             "icall.cir_search.recipe.started",
-            function=hex(function_address),
+            **function_fields,
         )
         try:
             for block in self.function.blocks:
@@ -437,7 +560,7 @@ class CIRLegacySearch:
             log_event(
                 LOGGER,
                 "icall.cir_search.recipe.completed",
-                function=hex(function_address),
+                **function_fields,
                 return_roots=len(roots),
                 stores=len(stores),
                 recipe_nodes=0 if recipe is None else len(recipe.nodes),
@@ -451,7 +574,7 @@ class CIRLegacySearch:
                 LOGGER,
                 "icall.cir_search.recipe.incomplete",
                 level=logging.WARNING,
-                function=hex(function_address),
+                **function_fields,
                 error_type=type(error).__name__,
                 error_message=str(error),
                 demand_steps=demand.steps,

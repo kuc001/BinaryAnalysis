@@ -109,6 +109,12 @@ class VEXLowerer(ARMScalarLowering):
             self.abi = ABI('AAPCS32:ELF', ('r0', 'r1', 'r2', 'r3'), ('r0',), 'sp', 8,
                 ('r0', 'r1', 'r2', 'r3', 'r12', 'lr', 'cc_op', 'cc_dep1', 'cc_dep2', 'cc_ndep'),
                 ('r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'sp'))
+        elif native_arch.name == 'AMD64':
+            self.abi = ABI('SystemV:AMD64',
+                ('rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9'), ('rax',), 'rsp', 16,
+                ('rax', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11',
+                 'cc_op', 'cc_dep1', 'cc_dep2', 'cc_ndep'),
+                ('rbx', 'rbp', 'r12', 'r13', 'r14', 'r15', 'rsp'))
         self.origins, self.coverage, self.mappings = [], [], []
         self.unsupported = set()
         self.expression_histogram = Counter()
@@ -345,7 +351,8 @@ class VEXLowerer(ARMScalarLowering):
         return self.external_stubs[normalized][0]
 
     def statement(self, statement):
-        if isinstance(statement, (pyvex.stmt.IMark, pyvex.stmt.NoOp)):
+        if isinstance(statement, (pyvex.stmt.IMark, pyvex.stmt.NoOp,
+                                  pyvex.stmt.AbiHint)):
             return 'metadata'
         if isinstance(statement, pyvex.stmt.WrTmp):
             value = self.expr(statement.data)

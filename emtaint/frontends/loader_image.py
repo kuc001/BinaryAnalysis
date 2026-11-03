@@ -13,14 +13,17 @@ def relocated_image(
 ) -> tuple[tuple[tuple[int, bytes, int, int], ...], dict[str, object]]:
     """Load an executable with CLE and return immutable mapped segment bytes.
 
-    The loader base must equal the ET_EXEC link-time image base. This prevents a
-    silent relocation policy change at the frontend boundary.
+    ET_EXEC retains its link-time base. ET_DYN uses CLE's explicit mapped base;
+    the frontend never guesses a PIE relocation independently.
     """
 
     import angr
 
-    image = ELFImage.from_path(binary)
     project = angr.Project(str(binary), auto_load_libs=False)
+    image = ELFImage.from_path(
+        binary,
+        load_base=project.loader.main_object.mapped_base,
+    )
     if project.loader.main_object.mapped_base != image.image_base:
         raise InputError('Relocated loader mapping differs from declared CIR image base')
     segments = tuple(
@@ -29,7 +32,7 @@ def relocated_image(
     )
     provenance: dict[str, object] = {
         'binary_sha256': image.sha256,
-        'policy': 'CLE relocated loader snapshot; auto_load_libs=False',
+        'policy': 'CLE explicit-base relocated loader snapshot; auto_load_libs=False',
         'image_base': image.image_base,
         'segments': [
             {

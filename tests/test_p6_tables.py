@@ -42,8 +42,8 @@ class TableTests(unittest.TestCase):
         d,inner,outer=self.nested()
         collector=LegacyTableCollector(d,lambda x:0x2000<=x<0x2100,lambda x:0x1000<=x<0x1100)
         self.assertEqual(collector.collect(outer),(0x2000,0x2004,0x2008,0x200c))
-        self.assertTrue(any(x['read_type']=='data' for x in collector.evidence))
-        self.assertTrue(any(x['nested_substitutions'] for x in collector.evidence))
+        self.assertTrue(any(x.read_type=='data' for x in collector.evidence))
+        self.assertTrue(any(x.nested_substitutions for x in collector.evidence))
 
     def test_bound_applies_through_pointer_cast_wrappers(self):
         d,inner,outer=self.nested();p=d.port

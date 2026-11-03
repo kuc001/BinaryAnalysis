@@ -100,6 +100,18 @@ cli.completed
 `--log-console-level DEBUG`；`manual_debug.ps1` 默认使用 `INFO`。日志文件沿用
 `.jsonl` 文件名以兼容既有命令，但内容是可直接阅读和解析的缩进 JSON 数组。每个事件的
 `source_file`、`source_line`、`source_function` 字段可直接跳转到首次产生日志的源码。
+涉及函数地址的 iCall/CFG/CG/Memory 事件同时写入 `function_rva` 与 `function_va`：前者是
+相对镜像基址的地址，后者是可直接在 IDA Pro 跳转的虚拟地址。兼容字段 `function` 保留
+各事件原有语义，人工检索应优先使用两个显式字段。例如镜像基址为 `0x8000` 时：
+
+```json
+{
+  "event": "icall.search.function.dispatched",
+  "function": "0x8ee0",
+  "function_rva": "0x8ee0",
+  "function_va": "0x10ee0"
+}
+```
 
 核心事件按实现层划分：
 
@@ -129,7 +141,7 @@ $Events = @(Get-Content -LiteralPath $Log -Raw | ConvertFrom-Json)
 $Events |
   Where-Object event -eq 'icall.analysis.completed' |
   Sort-Object wall_seconds -Descending |
-  Select-Object function,sites,target_values,steps,wall_seconds,metrics |
+  Select-Object function_rva,function_va,sites,target_values,steps,wall_seconds,metrics |
   Format-Table -AutoSize
 
 # 每轮新增事实、失效和下一轮重算规模
@@ -140,12 +152,12 @@ $Events |
 # 17 个站点的结果
 $Events |
   Where-Object event -eq 'icall.site.resolved' |
-  Format-Table function,site,targets,certainty,exhaustive -AutoSize
+  Format-Table function_rva,function_va,site_rva,site_va,targets,certainty,exhaustive -AutoSize
 
 # 异常、ERROR 或尚未结束的 started/heartbeat
 $Events |
   Where-Object { $_.level -eq 'ERROR' -or $_.event -like '*.heartbeat' } |
-  Format-Table timestamp,event,function,elapsed_seconds -AutoSize
+  Format-Table timestamp,event,function_rva,function_va,elapsed_seconds -AutoSize
 
 # 直接定位事件源码
 $Events |
@@ -156,7 +168,7 @@ $Events |
 $Events | Where-Object {
   $_.event -like 'sse.*' -or $_.event -like 'memory.*' -or
   $_.event -like 'alias.*' -or $_.event -like 'apg.*'
-} | Select-Object event,event_sequence,function,origin,state,location,expression |
+} | Select-Object event,event_sequence,function_rva,function_va,origin,state,location,expression |
   Format-Table -AutoSize
 ```
 

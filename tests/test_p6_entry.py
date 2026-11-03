@@ -43,5 +43,14 @@ class EntryTests(unittest.TestCase):
         a,b=(dict(state.addresses)['reg:'+name][0] for name in ('r0','r1'))
         self.assertFalse(e._disjoint(a.object_id,b.object_id))
 
+    def test_native_abi_can_separate_arguments_from_new_callee_frame(self):
+        e=self.image('legacy-loader-snapshot');p=MemoryRuntimePort(e)
+        state=legacy_entry(CIRAccurateDataFlow(p), arguments_outside_frame=True)
+        stack=dict(state.addresses)['reg:sp'][0]
+        a,b=(dict(state.addresses)['reg:'+name][0] for name in ('r0','r1'))
+        self.assertTrue(e._disjoint(stack.object_id,a.object_id))
+        self.assertTrue(e._disjoint(stack.object_id,b.object_id))
+        self.assertFalse(e._disjoint(a.object_id,b.object_id))
+
 
 if __name__=='__main__':unittest.main()

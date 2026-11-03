@@ -514,3 +514,85 @@ MemoryVersion 成本、target fact/value、recipe、CG/CFG 失效、下一轮重
 P6 discover 47 tests、完整回归 **469 tests** 均通过。heartbeat 初版 35ms 固定睡眠在一次
 全量回归中只调度出 1 条事件；测试改为在 0.5 秒硬上限内等待 2 条，未降低断言，随后连续
 5 轮稳定通过。该改动是纯观测增强，不重开 P6 验收，也不改变 P7 Gate 状态。
+
+### 2026-11-02：日志地址同时标注 RVA 与 VA
+
+人工对照 IDA 时，`icall.search.function.dispatched` 等底层事件原先只记录 FunctionId
+的 RVA。现统一通过实际 `Program.image_base`/loader base 生成 `function_rva` 和
+`function_va`；调用点事件同时生成 `site_rva` 和 `site_va`。兼容字段 `function` 保留
+各事件原有 RVA 或 VA 语义，固定点轮次中的原 `functions` 列表也保持不变。改动覆盖 CLI、
+固定点调度、函数内 CIR search、AnalysisRuntime、MemoryRuntimePort 及 taint 函数事件，
+未修改 target/CG/summary/Finding 计算，也未改变现有分析产物 Schema。
+
+验证结果：日志专项 **9 tests**、P6 **47 tests**、P7 **219 tests**、完整回归
+**476 tests OK**；生产模块 compile check 通过，AST safety audit exit 0（0 个 safety
+finding）。`docs/manual-debugging.md` 已改用显式 RVA/VA 字段给出 IDA 检索命令。
+
+### 2026-11-02：iCall 站点结果与表候选证据类型化
+
+`LegacyFunctionResult.sites` 从无约束的 `tuple[dict[str, object], ...]` 收紧为
+`tuple[CallSiteAnalysisResult, ...]`。新记录明确保存 site、origin、targets、evidence、
+unknown remainder、Assessment、累计 demand steps，并继续类型化 CFG 可达性、表达式、规则、
+MemoryVersion、错误和 Return 分类。`LegacyTableCollector.evidence` 同步改为不可变且带构造校验的
+`LegacyTableEvidence`，避免证据内部继续依赖任意字典键。
+
+为遵守 P6 冻结规则，CLI 和诊断 probe 通过 `to_legacy_dict()` 输出与改造前相同的
+`site-coverage`/表证据 JSON 形状；新增 `to_evidence_dict()` 仅作为后续可验证证据链接口，
+本轮未修改产物 Schema 或 Golden。新增 DTO、序列化兼容、非法 target 顺序和真实
+`CIRLegacySearch` 返回类型回归。P6 **51 tests OK**，完整回归 **480 tests OK**，AST
+safety audit exit 0。
+
+### 2026-11-03：LegacyDemand 安全组件化检查点
+
+新增 `docs/migration/LEGACY_DEMAND_OPTIMIZATION_PLAN.md`，明确把 P6
+`LegacyDemand` 保留为冻结兼容参考，不在原类中叠加 P7 精度规则。P7
+`ProcedureDemand` 新增只读 `FunctionDemandIndex`，索引 value definitions、register
+write/clobber、Store、Call 和 CFG predecessor；`definition_cutoff/reaching` 改为索引查询，
+逐 effect 旧扫描仍由等价测试直接对照。Entry 带回边、显式寄存器 clobber、`*` clobber
+和查询步数均已覆盖。
+
+新增 `DemandQueryResult/Runner`，为新调用方显式区分 complete 与 incomplete；预算耗尽
+返回 `INCOMPLETE + Unknown`，不把空集合解释为无值。顶层查询的 cycle placeholder 不跨
+查询泄漏，并记录 scalar steps、memory work 和 wall time。旧 tuple-valued `value()` API
+保持不变，现有 P7 调用路径尚未强制切换到新接口。
+
+将 P7 已有的精确入口栈地址、部分寄存器和旧 DDG 循环逻辑分别抽取为
+`DemandAddressNormalizer`、`RegisterSliceResolver` 和 `LegacyLoopSummarizer`，原公开方法
+保留 facade。地址组件返回 root/offset provenance，但没有放宽 MustAlias：offset 未知、
+多 reaching definition 或条件 full-register write 仍为 Unknown/MAY。循环组件逐句保留旧
+single-stride `base+i*stride` 算法和规则标签，本轮不新增循环边界或具体迭代猜测。
+
+验证：新增架构专项 **8 tests OK**；P6 **51 tests OK**；P7 **219 tests OK**；最终完整
+回归 **488 tests OK，exit 0**。`quality_audit.py --fail-on safety` 为 0 safety finding，
+新增模块和测试 `py_compile` exit 0，`git diff --check` 仅有既有换行提示。P6
+`legacy_demand.py`、iCall/CG、Golden、旧仓库和历史结果未修改；本轮没有执行新的真实
+17-site 回放，也没有改变默认引擎。
+
+阶段判定：LD0–LD2 通过；LD3–LD4 仅完成无语义变化的安全子集；LD6 已开始组合化但仍
+保留继承。通用 AbstractAddress、显式 runtime/function epoch 缓存协议、循环/path 新语义、
+彻底去继承和 LD7 真实差分尚未完成。进入这些步骤前必须先建立真实目标差分快照，不能仅
+凭单元测试修改 `base+i*stride`、Alias 或 Guard 语义。P7-A/B/C/D 状态不变，仍为
+**NOT_PASSED**。
+
+### 2026-11-03：Test-Suite `strong_update` 别名识别首个样例
+
+新增 `analysis.aliasing` 原生二进制入口和 `scripts/alias_benchmark.py`，源码中的
+`NOALIAS/MAYALIAS/MUSTALIAS` 只作为期望与行号读取，不参与求值；真实查询点和两个指针值
+来自二进制 marker call。为加载该套件的 AMD64 PIE，前端新增显式 CLE base 的 ET_DYN
+映射、System V AMD64 参数/返回/保存寄存器描述，并把 VEX `AbiHint` 作为无状态元数据处理。
+ET_EXEC 原地址策略保持不变，ET_DYN 没有显式 loader base 时继续拒绝。
+
+样例 `fs_tests/strong_update.c` 的源码实际没有 MAYALIAS，而是第 14 行
+`NOALIAS(p,&p1)` 和第 15 行 `MUSTALIAS(p,&q1)`。分析从 `main` 反向恢复栈对象，编译
+`bar(int*** k,int*** s)` 的 detached Store recipe，并在 `bar(&p,&q)` 处实例化
+`*k=*s`。System V 入口策略显式证明“新建 callee frame”与调用前已经形成的 argument
+pointee 分离，但不证明不同 argument roots 互斥；AMD64 栈地址恢复仅在本别名客户端中
+启用，P6 `LegacyDemand` 默认路径未改。最终二进制站点 `0x4009d0` 证明 `p` 与 `&p1`
+是同一 singleton frame 内不相交区间，输出 NOALIAS；`0x4009e3` 证明两者为同一对象、
+同一精确区间，输出 MUSTALIAS。两条均 complete，2/2 与源码期望一致。
+
+新增 3 条 benchmark 回归和 1 条 opt-in entry-frame 分离回归；alias、entry、P7 memory
+frontier、P6 summary 专项均通过，最终完整回归 **493 tests OK，exit 0**。这只是四个目标
+目录的首个端到端样例，不代表 `basic_c_tests/basic_cpp_tests/cs_tests/fs_tests` 已全部通过；
+数组/字段、分支 join、堆对象、函数指针和 C++ 虚调用仍需按目录建立清单与差异回归。
+P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。

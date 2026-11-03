@@ -129,7 +129,8 @@ def main():
                         refs=demand.value(operand);collector=LegacyTableCollector(demand,is_code,is_data)
                         maximum=legacy_maximum_address(image.sha256,site)
                         targets=sorted({target for ref in refs for target in collector.collect(ref,maximum_address=maximum)})
-                        row.update(targets=targets,expressions=[r.key for r in refs],evidence=collector.evidence,
+                        row.update(targets=targets,expressions=[r.key for r in refs],
+                            evidence=[item.to_legacy_dict() for item in collector.evidence],
                             notes=sorted(set(demand.notes)),rules=sorted(demand.rules),steps=demand.steps,metrics=port.metrics())
                     except (DemandLimit,RecursionError,ValueError) as error:
                         row.update(targets=[],error=type(error).__name__+': '+str(error),steps=demand.steps)

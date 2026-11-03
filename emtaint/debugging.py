@@ -23,6 +23,38 @@ _HANDLER_MARKER = "_emtaint_debug_handler"
 logging.getLogger(LOGGER_NAME).addHandler(logging.NullHandler())
 
 
+def function_address_fields(
+    function_rva: int,
+    image_base: int,
+    *,
+    legacy_field: str = "rva",
+) -> dict[str, str]:
+    """Build unambiguous RVA/VA fields for one function log event.
+
+    Args:
+        function_rva: Function address relative to the loaded image base.
+        image_base: Absolute image load base used by IDA and the loader.
+        legacy_field: Whether the compatibility ``function`` field retains its
+            historical ``rva`` or ``va`` value.
+
+    Returns:
+        Hexadecimal ``function``, ``function_rva`` and ``function_va`` fields.
+    """
+
+    if type(function_rva) is not int or function_rva < 0:
+        raise ValueError("Function RVA must be a non-negative integer")
+    if type(image_base) is not int or image_base < 0:
+        raise ValueError("Image base must be a non-negative integer")
+    if legacy_field not in ("rva", "va"):
+        raise ValueError("Legacy function field must be rva or va")
+    function_va = image_base + function_rva
+    return {
+        "function": hex(function_rva if legacy_field == "rva" else function_va),
+        "function_rva": hex(function_rva),
+        "function_va": hex(function_va),
+    }
+
+
 def _source_name(record: logging.LogRecord) -> str:
     """Return only the source basename selected for a logging record."""
 

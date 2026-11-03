@@ -17,6 +17,14 @@ from emtaint.memory import SymbolicOp, AccessRoot, AliasKind
 from emtaint.memory.state import MemoryLocation
 from emtaint.memory.abstract_heap import ObjectCardinality, ObjectLifetime
 from emtaint.analysis.dataflow.legacy_demand import LegacyDemand, DemandBudget, DemandLimit, ArgumentRead
+from emtaint.analysis.dataflow.demand_index import FunctionDemandIndex
+from emtaint.analysis.dataflow.demand_address import DemandAddressNormalizer
+from emtaint.analysis.dataflow.demand_register import RegisterSliceResolver
+from emtaint.analysis.dataflow.demand_loop import LegacyLoopSummarizer
+from emtaint.analysis.dataflow.demand_query import (
+    DemandQueryResult,
+    DemandQueryRunner,
+)
 from emtaint.analysis.taint.regions import RegionTaintTracker
 from emtaint.procedures.legacy import ProcedureRule, lookup, legacy_format_parameters
 from emtaint.memory.policies import BudgetExceeded
@@ -120,17 +128,32 @@ def sink_order(sink):
 
 
 class ProcedureDemand(LegacyDemand):
-    def __init__(self, *args, names=None, cache_queries=True, **kwargs):
+    def __init__(self, function, port, cfg, initial, *, budget=DemandBudget(),
+                 summaries=None, names=None, cache_queries=True):
         self.reaching_cache={}
+        self.reaching_cache_hits=0
+        self.reaching_cache_misses=0
         self.definition_cache={}
+        self.definition_cache_hits=0
+        self.definition_cache_misses=0
         self.recurrence_cache={}
         self.recurrence_cache_hits=0
         self.query_scalar_limit=None
-        super().__init__(*args, **kwargs)
+        super().__init__(function, port, cfg, initial, budget=budget,
+                         summaries=summaries)
+        self.function_index=FunctionDemandIndex.build(function, cfg)
+        self.address_normalizer=DemandAddressNormalizer(self)
+        self.register_slices=RegisterSliceResolver(self)
+        self.loop_summarizer=LegacyLoopSummarizer(self)
+        self.query_runner=DemandQueryRunner(
+            self, (DemandLimit, BudgetExceeded, RecursionError))
         self.names=dict(names or {})
         self.return_calls={}
         self.cache_queries=cache_queries
         self.binding_cache={}
+        self.binding_cache_hits=0
+        self.binding_cache_misses=0
+        self.summary_call_reachability={}
         self.frontiers=DefinitionFrontierCache(self)
         self.predecessors={block:tuple(sorted(values, key=lambda b:(b.rva, b.index, b.mode))) for block, values in self.predecessors.items()}
 
@@ -145,11 +168,28 @@ class ProcedureDemand(LegacyDemand):
         key=block, index, name
         if self.cache_queries and key in self.reaching_cache:
             self.tick(0)
+            self.reaching_cache_hits+=1
             return self.reaching_cache[key]
-        definitions, entry=super().reaching(block, index, name)
+        self.reaching_cache_misses+=1
+        definitions, entry=self.function_index.reaching(
+            block, index, name, on_visit=lambda:self.tick(0))
         result=frozenset(definitions), entry
         if self.cache_queries:self.reaching_cache[key]=result
         return result
+
+    def definition_cutoff(self, block, index, name):
+        """Use the immutable body index for the legacy cutoff contract."""
+        return self.function_index.definition_cutoff(block, index, name)
+
+    def resolve_value(self, operand)->DemandQueryResult:
+        """Resolve one top-level value with explicit incomplete semantics.
+
+        Query-local cycle placeholders are discarded after the query.  Only
+        completed values already admitted to the ordinary legacy memo remain
+        shared.  The function-level step ceiling and all MemoryQueryPort
+        accounting continue to apply.
+        """
+        return self.query_runner.resolve_value(operand)
 
     def register(self, block, index, name, width, depth):
         # The old recurrence transfer already leaves a symbolic remainder
@@ -171,8 +211,26 @@ class ProcedureDemand(LegacyDemand):
             self.recurrence_cache[key]=result
         return result
 
+    def linear_register(self, operand, name, seen=frozenset()):
+        """Delegate legacy affine register parsing to the loop component."""
+        return self.loop_summarizer.linear_register(operand, name, seen)
+
+    def increments(self, name, width):
+        """Delegate legacy increment discovery to the loop component."""
+        return self.loop_summarizer.increments(name, width)
+
+    def induction(self, block, index, name, width, depth):
+        """Delegate legacy DDG induction without changing its abstraction."""
+        return self.loop_summarizer.induction(
+            block, index, name, width, depth)
+
+    def affine(self, reference, variable):
+        """Delegate SSE affine projection used by legacy table paths."""
+        return self.loop_summarizer.affine(reference, variable)
+
     def memory_definitions(self, block, index, loc, load, seen, depth):
-        if not self.cache_queries or self.summaries:
+        if (not self.cache_queries or
+                self.reaching_summary_store(block, index)):
             return super().memory_definitions(block, index, loc, load, seen, depth)
         e=self.port.engine
         key=(block, index, loc.id.scope, loc.object_id, loc.offset_lower, loc.offset_upper, loc.width_bits,
@@ -180,49 +238,80 @@ class ProcedureDemand(LegacyDemand):
             self.initial.memory, tuple(e.object_facts.items()))
         if key in self.definition_cache:
             self.tick(depth)
+            self.definition_cache_hits+=1
             return self.definition_cache[key]
+        self.definition_cache_misses+=1
         result=self.frontiers.query(block, index, loc, load, seen, depth)
         if len(self.definition_cache)<8192 and not any(self.contains(value, self.cycles) for value in result[0]):self.definition_cache[key]=result
         return result
 
+    def reaching_summary_store(self, block, index):
+        """Return whether a modeled callee Store can precede this query."""
+        key=block, index
+        if key in self.summary_call_reachability:
+            return self.summary_call_reachability[key]
+        pending=[key]
+        visited=set()
+        found=False
+        while pending and not found:
+            current, cutoff=pending.pop()
+            if (current, cutoff) in visited:continue
+            visited.add((current, cutoff))
+            for effect in self.blocks[current].effects[:cutoff]:
+                if not isinstance(effect, CallEffect) or not isinstance(effect.target, DirectTarget):continue
+                summary=self.summaries.get(effect.target.function)
+                if summary is not None and getattr(summary, 'stores', ()):
+                    found=True
+                    break
+            if not found:
+                pending.extend((predecessor, len(self.blocks[predecessor].effects))
+                    for predecessor in self.predecessors[current])
+        self.summary_call_reachability[key]=found
+        return found
+
     def address_binding(self, reference, seen=frozenset()):
-        if not self.cache_queries or seen:return super().address_binding(reference, seen)
-        if reference not in self.binding_cache:self.binding_cache[reference]=super().address_binding(reference, seen)
+        if not self.cache_queries or seen:
+            binding=super().address_binding(reference, seen)
+            return (binding if binding is not None else
+                    self.address_normalizer.entry_stack_binding(reference))
+        if reference in self.binding_cache:
+            self.binding_cache_hits+=1
+        else:
+            self.binding_cache_misses+=1
+            binding=super().address_binding(reference, seen)
+            if binding is None:
+                binding=self.address_normalizer.entry_stack_binding(reference)
+            self.binding_cache[reference]=binding
         return self.binding_cache[reference]
+
+    def demand_metrics(self)->dict[str, int]:
+        """Return cache/query counters without changing analysis state."""
+        metrics={
+            'function_effects':self.function_index.effect_count,
+            'reaching_cache_entries':len(self.reaching_cache),
+            'reaching_cache_hits':self.reaching_cache_hits,
+            'reaching_cache_misses':self.reaching_cache_misses,
+            'definition_cache_entries':len(self.definition_cache),
+            'definition_cache_hits':self.definition_cache_hits,
+            'definition_cache_misses':self.definition_cache_misses,
+            'frontier_cache_entries':len(self.frontiers.cache),
+            'frontier_cache_hits':self.frontiers.hits,
+            'frontier_cache_misses':self.frontiers.misses,
+            'recurrence_cache_entries':len(self.recurrence_cache),
+            'recurrence_cache_hits':self.recurrence_cache_hits,
+            'binding_cache_entries':len(self.binding_cache),
+            'binding_cache_hits':self.binding_cache_hits,
+            'binding_cache_misses':self.binding_cache_misses,
+        }
+        metrics.update(self.query_runner.metrics())
+        return metrics
 
     def exact_stack_address(
             self, operand: Constant | ValueRef, seen: frozenset[str] = frozenset()
     ) -> tuple[AccessRoot, int | None] | None:
         """Project a copied constant offset from an unchanged entry SP for an exact stack query."""
-        if hasattr(operand, 'id') and operand.id not in seen and operand.id in self.defs:
-            block, index, effect=self.defs[operand.id]
-            if isinstance(effect, ReadRegister):
-                name=effect.source.register
-                definitions, entry=self.reaching(block, index, name)
-                if name=='sp' and self.stack_proven and not definitions and entry:
-                    return dict(self.initial.addresses).get('reg:sp')
-                if len(definitions)==1 and not entry:
-                    defined_block, cutoff=next(iter(definitions))
-                    prior=self.blocks[defined_block].effects[cutoff-1]
-                    if (isinstance(prior, WriteRegister) and prior.target.register==name
-                            and prior.target.bit_offset==0 and prior.target.width_bits==prior.target.register_width_bits
-                            and getattr(prior.guard, 'value', None) is True):
-                        return self.exact_stack_address(prior.value, seen|{operand.id})
-                return None
-            if isinstance(effect, Compute) and effect.op.value=='copy':
-                return self.exact_stack_address(effect.args[0], seen|{operand.id})
-            if isinstance(effect, Compute) and effect.op.value in ('add', 'sub'):
-                if effect.op.value=='add' and self.literal(effect.args[0])==0:
-                    return self.exact_stack_address(effect.args[1], seen|{operand.id})
-                delta=self.literal(effect.args[1])
-                if type(delta) is int:
-                    base=self.exact_stack_address(effect.args[0], seen|{operand.id})
-                    if base is not None:
-                        root, offset=base
-                        if offset is None:return root, None
-                        width=self.port.engine.architecture.pointer_bits
-                        return root, (offset+(delta if effect.op.value=='add' else -delta))%(1<<width)
-        return super().local_address(operand, seen) if isinstance(operand, Constant) else None
+        proof=self.address_normalizer.exact_stack_address(operand, seen)
+        return None if proof is None else proof.binding
 
     def call_name(self, call):
         return self.names.get(call.site.point.instruction_rva, call.target.symbol if isinstance(call.target, ExternalTarget) else '')
@@ -234,49 +323,18 @@ class ProcedureDemand(LegacyDemand):
         An overlapping write with different geometry falls back to Unknown.
         This P7 refinement leaves P6 whole-register demand unchanged.
         """
-        key=block, index, source
-        if key in seen:
-            return self.port.unknown(ValueType.bv(source.width_bits),
-                self.blocks[block].effects[0].origin, 'Cyclic partial register demand'),
-        seen=seen|{key}
-        definitions, entry=self.reaching(block, index, source.register)
-        if definitions:
-            alternatives=[]
-            for defined_block, cutoff in sorted(definitions,
-                    key=lambda item:(item[0].rva, item[0].index, item[0].mode, item[1])):
-                alternatives.append(self.exact_slice_definition(
-                    defined_block, cutoff, source, depth+1, seen))
-            if entry:alternatives.append(self.full_slice_fallback(block, index, source, depth+1))
-            return self.union(alternatives)
-        return self.full_slice_fallback(block, index, source, depth+1)
+        return self.register_slices.exact_before(
+            block, index, source, depth, seen)
 
     def exact_slice_definition(self, block:BlockId, cutoff:int, source:RegisterSlice,
                                depth:int, seen:frozenset)->tuple:
-        write=self.blocks[block].effects[cutoff-1]
-        if isinstance(write, WriteRegister):
-            target=write.target
-            if (target.bit_offset+target.width_bits<=source.bit_offset or
-                    source.bit_offset+source.width_bits<=target.bit_offset):
-                return self.exact_slice_before(block, cutoff-1, source, depth+1, seen)
-            if target==source:
-                guards=self.value(write.guard, depth+1)
-                choices={self.guard_concrete(guard) for guard in guards}
-                written=self.value(write.value, depth+1) if choices!={False} else ()
-                if choices=={True}:
-                    self.rules.add('p7.exact-partial-register-slice')
-                    return written
-                previous=self.exact_slice_before(block, cutoff-1, source, depth+1, seen)
-                self.rules.add('p7.conditional-partial-register-slice')
-                return self.union((written, previous))
-        return self.full_slice_fallback(block, cutoff, source, depth+1)
+        return self.register_slices.exact_definition(
+            block, cutoff, source, depth, seen)
 
     def full_slice_fallback(self, block:BlockId, index:int, source:RegisterSlice,
                             depth:int)->tuple:
-        full=self.register(block, index, source.register,
-                           source.register_width_bits, depth+1)
-        return tuple(self.port.operation(SymbolicOp.EXTRACT, ValueType.bv(source.width_bits),
-            (value,), self.blocks[block].effects[0].origin,
-            (source.bit_offset+source.width_bits-1, source.bit_offset)) for value in full)
+        return self.register_slices.full_fallback(
+            block, index, source, depth)
 
     def value(self, operand, depth=0):
         definition=self.defs.get(operand.id) if hasattr(operand, 'id') else None

@@ -13,7 +13,7 @@ from emtaint.analysis.framework.runtime import AnalysisRuntime
 from emtaint.analysis.framework.state import TargetFact
 from emtaint.core import FunctionId
 from emtaint.core.contracts import Assessment
-from emtaint.debugging import log_event
+from emtaint.debugging import function_address_fields, log_event
 from emtaint.memory.engine import combine, over
 
 
@@ -48,6 +48,8 @@ class CIRProgramSearch:
         analyze: Callable[[FunctionId], FunctionAnalysisResult],
         max_rounds: int = 3,
         order: Callable[[Iterable[FunctionId]], Iterable[FunctionId]] | None = None,
+        *,
+        image_base: int = 0,
     ) -> None:
         """Configure a dependency-driven fixed-point search.
 
@@ -57,6 +59,7 @@ class CIRProgramSearch:
             analyze: Callback that builds a fresh scoped analysis for one function.
             max_rounds: Positive hard cap for graph reanalysis rounds.
             order: Optional deterministic ordering, usually callee-first.
+            image_base: Absolute load base used to derive IDA virtual addresses.
         """
 
         if type(max_rounds) is not int or max_rounds < 1:
@@ -66,6 +69,7 @@ class CIRProgramSearch:
         self.analyze = analyze
         self.max_rounds = max_rounds
         self.order = order
+        self.image_base = image_base
 
     def run(
         self,
@@ -111,6 +115,11 @@ class CIRProgramSearch:
                 round=rounds,
                 worklist=len(ordered),
                 functions=[hex(function.rva) for function in ordered],
+                function_rvas=[hex(function.rva) for function in ordered],
+                function_vas=[
+                    hex(self.image_base + function.rva)
+                    for function in ordered
+                ],
                 pending_before=len(self.runtime.pending),
             )
 
@@ -120,7 +129,7 @@ class CIRProgramSearch:
                 log_event(
                     LOGGER,
                     "icall.search.function.dispatched",
-                    function=hex(function.rva),
+                    **function_address_fields(function.rva, self.image_base),
                     round=rounds,
                     position=position,
                     total=len(ordered),

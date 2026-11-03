@@ -3,6 +3,9 @@
 The numeric sentinel is a legacy analysis convention, not a concrete runtime
 stack address. Object identity is function/context/frame, never the SP name.
 Argument roots describe possible pointees and are not proven pairwise disjoint.
+An ABI-aware client may separately prove that these pointees cannot belong to
+the callee frame, because that frame does not exist until after argument
+values have been formed.
 """
 from dataclasses import replace
 from emtaint.core import MemoryObject, MemoryObjectId
@@ -11,8 +14,19 @@ from emtaint.memory.access_path import AccessRoot
 from emtaint.memory.abstract_heap import ObjectCardinality, ObjectLifetime
 
 
-def legacy_entry(flow, *, stack_pointer='sp', argument_registers=('r0', 'r1', 'r2', 'r3'), stack_arguments=4):
+def legacy_entry(
+        flow, *, stack_pointer='sp',
+        argument_registers=('r0', 'r1', 'r2', 'r3'), stack_arguments=4,
+        arguments_outside_frame=False):
+    """Create the legacy symbolic entry state.
+
+    ``arguments_outside_frame`` is opt-in so frozen P6 callers retain their
+    original conservative relationship.  Native ABI clients can enable it
+    when argument pointer values necessarily predate the newly allocated
+    callee frame.  It does not make separate argument roots disjoint.
+    """
     if type(stack_arguments) is not int or stack_arguments<0:raise ValueError('Nonnegative stack argument count required')
+    if type(arguments_outside_frame) is not bool:raise TypeError('Frame separation policy must be boolean')
     p=flow.port
     e=p.engine
     origin=e.origins[0].id
@@ -34,6 +48,10 @@ def legacy_entry(flow, *, stack_pointer='sp', argument_registers=('r0', 'r1', 'r
         e.add_object(MemoryObject(obj, 'Legacy unresolved argument '+str(index)), root,
                      ObjectCardinality.UNKNOWN, ObjectLifetime.EXTERNAL,
                      ('Unresolved function interface; argument pointees can alias',))
+        if arguments_outside_frame:
+            e.prove_disjoint(
+                stack.object_id, obj,
+                'ABI argument pointer predates the newly allocated callee frame')
         argument_roots[index]=root
         value=p.symbol('argument:'+str(index), ValueType.bv(e.architecture.pointer_bits), origin)
         if index<len(argument_registers):

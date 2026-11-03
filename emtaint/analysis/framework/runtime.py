@@ -19,7 +19,7 @@ from emtaint.core import (
     FunctionId,
     Program,
 )
-from emtaint.debugging import EventSampler, log_event
+from emtaint.debugging import EventSampler, function_address_fields, log_event
 from emtaint.graph import CallEdge, CallGraph, ControlFlowGraph
 
 
@@ -90,7 +90,10 @@ class AnalysisRuntime:
         )
         self._diagnostics.emit(
             "analysis.handle.created",
-            function=hex(function.rva),
+            **function_address_fields(
+                function.rva,
+                self.session.program.image_base,
+            ),
             context=context.token,
             revision=handle.revision,
         )
@@ -108,7 +111,10 @@ class AnalysisRuntime:
                 LOGGER,
                 "analysis.handle.stale",
                 level=logging.WARNING,
-                function=hex(handle.function.rva),
+                **function_address_fields(
+                    handle.function.rva,
+                    self.session.program.image_base,
+                ),
                 handle_revision=handle.revision,
                 current_revision=current[1],
             )
@@ -142,7 +148,10 @@ class AnalysisRuntime:
         self._diagnostics.emit(
             "analysis.cache.stored",
             namespace=namespace,
-            function=hex(function.rva),
+            **function_address_fields(
+                function.rva,
+                self.session.program.image_base,
+            ),
             context=context.token,
             epoch=self.epochs[function],
             cache_entries=len(self._cache),
@@ -162,7 +171,10 @@ class AnalysisRuntime:
         self._diagnostics.emit(
             "analysis.cache.lookup",
             namespace=namespace,
-            function=hex(function.rva),
+            **function_address_fields(
+                function.rva,
+                self.session.program.image_base,
+            ),
             context=context.token,
             epoch=self.epochs[function],
             hit=hit,
@@ -251,7 +263,10 @@ class AnalysisRuntime:
             LOGGER,
             "cfg.replaced",
             level=logging.INFO,
-            function=hex(cfg.function.rva),
+            **function_address_fields(
+                cfg.function.rva,
+                self.session.program.image_base,
+            ),
             nodes_before=len(old.nodes),
             nodes_after=len(cfg.nodes),
             edges_before=len(old.edges),
@@ -433,7 +448,10 @@ class AnalysisRuntime:
         log_event(
             LOGGER,
             "summary.recipe.stored",
-            function=hex(function.rva),
+            **function_address_fields(
+                function.rva,
+                self.session.program.image_base,
+            ),
             context=context.token,
             nodes=len(recipe.nodes),
             returns=len(recipe.returns),
@@ -459,7 +477,10 @@ class AnalysisRuntime:
         log_event(
             LOGGER,
             "memory.port.bound",
-            function=hex(function.rva),
+            **function_address_fields(
+                function.rva,
+                self.session.program.image_base,
+            ),
             context=context.token,
             revision=handle.revision,
             active_ports=len(self.ports),

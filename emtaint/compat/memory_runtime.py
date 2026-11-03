@@ -21,7 +21,7 @@ from emtaint.core.contracts import (
     ValueType,
     same_scope,
 )
-from emtaint.debugging import EventSampler
+from emtaint.debugging import EventSampler, function_address_fields
 from emtaint.memory import (
     AliasKind,
     ReadMemory,
@@ -98,7 +98,10 @@ class MemoryRuntimePort:
         self.apg = engine.access_graph_arena
         self._events.emit(
             "memory.port.initialized",
-            function=hex(self.scope.function.rva),
+            **function_address_fields(
+                self.scope.function.rva,
+                getattr(engine, "image_base", 0),
+            ),
             context=_key(self.scope.context),
             initial_memory=_key(self.initial),
             alias_cache=cache_alias_queries,

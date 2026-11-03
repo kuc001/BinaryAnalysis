@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 from emtaint.debugging import (
     EventSampler,
     configure_logging,
+    function_address_fields,
     log_event,
     progress_heartbeat,
     shutdown_logging,
@@ -56,6 +57,22 @@ class DebugLoggingTests(unittest.TestCase):
         self.assertEqual(row["source_file"], "test_debug_logging.py")
         self.assertGreater(row["source_line"], 0)
         self.assertEqual(row["source_function"], "test_jsonl_event_contains_named_context")
+
+    def test_function_address_fields_keep_rva_and_ida_va_explicit(self) -> None:
+        path = self.folder / "addresses.jsonl"
+        logger = configure_logging("DEBUG", path, json_lines=True)
+        log_event(
+            logger.getChild("orchestration.program_search"),
+            "icall.search.function.dispatched",
+            **function_address_fields(0x8EE0, 0x8000),
+        )
+        shutdown_logging()
+        row = self._rows(path)[0]
+        self.assertEqual(row["function"], "0x8ee0")
+        self.assertEqual(row["function_rva"], "0x8ee0")
+        self.assertEqual(row["function_va"], "0x10ee0")
+        va_fields = function_address_fields(0x8EE0, 0x8000, legacy_field="va")
+        self.assertEqual(va_fields["function"], "0x10ee0")
 
     def test_existing_log_is_never_overwritten(self) -> None:
         path = self.folder / "existing.log"

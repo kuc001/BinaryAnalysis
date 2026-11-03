@@ -10,12 +10,13 @@ from emtaint.frontends.inputs import InputBlock, FunctionInput, parse_ida_cfg, E
 from emtaint.frontends.saved_cir import load_saved_cir
 
 
-def tiny_elf(code=b'\x90\xc3', machine=62):
+def tiny_elf(code=b'\x90\xc3', machine=62, elf_type=2):
     data = bytearray(0x100 + len(code))
     data[:16] = b'\x7fELF\x02\x01\x01' + b'\0' * 9
-    struct.pack_into('<HHIQQQIHHHHHH', data, 16, 2, machine, 1, 0x400100, 64, 0, 0,
+    link_base = 0 if elf_type == 3 else 0x400000
+    struct.pack_into('<HHIQQQIHHHHHH', data, 16, elf_type, machine, 1, link_base + 0x100, 64, 0, 0,
                      64, 56, 1, 0, 0, 0)
-    struct.pack_into('<IIQQQQQQ', data, 64, 1, 5, 0, 0x400000, 0, len(data), len(data), 0x1000)
+    struct.pack_into('<IIQQQQQQ', data, 64, 1, 5, 0, link_base, 0, len(data), len(data), 0x1000)
     data[0x100:] = code
     return bytes(data)
 
@@ -52,6 +53,16 @@ class InputTests(unittest.TestCase):
             image.read(0x500000, 4)
         with self.assertRaises(InputError):
             ELFImage(b'not-ELF')
+
+    def test_pie_requires_and_uses_an_explicit_native_loader_base(self):
+        data = tiny_elf(elf_type=3)
+        with self.assertRaisesRegex(InputError, 'explicit'):
+            ELFImage(data)
+        image = ELFImage(data, load_base=0x500000)
+        self.assertEqual(image.image_base, 0x500000)
+        self.assertEqual(image.read(0x500100, 2), b'\x90\xc3')
+        with self.assertRaises(InputError):
+            ELFImage(data, load_base=True)
 
     def test_function_bounds_and_mode_are_explicit(self):
         for args in ((1, 0), (-1, 2), (True, 4)):

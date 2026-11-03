@@ -34,7 +34,7 @@ from emtaint.procedures.legacy_policy import excluded_functions
 from emtaint.analysis.taint.evidence import summary_evidence, EvidenceEncoder, focused_snapshot
 from emtaint.procedures.legacy import legacy_copy_weak_kind, uniform_copy_length_constraints
 from emtaint.results.memory_archive import archive_memory
-from emtaint.debugging import log_event
+from emtaint.debugging import function_address_fields, log_event
 
 
 LOGGER = logging.getLogger(__name__)
@@ -119,7 +119,8 @@ def run_taint(
             write(receipt.with_name(receipt.name+'-start.json'), {'function':fid.rva+store.base, 'round':rounds, 'status':'started'})
             address=fid.rva+store.base
             module, cfg, digest=store.load(address)
-            log_event(LOGGER, 'taint.function.started', function=hex(address), round=rounds,
+            log_event(LOGGER, 'taint.function.started',
+                **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds,
                 cir_sha256=digest, summary_inputs=len(summaries))
             # Native/IDA edge refinement is explicit and versioned.
             runtime.replace_cfg(cfg)
@@ -144,7 +145,8 @@ def run_taint(
                 summary=demand.analyze()
             except (BudgetExceeded, DemandLimit, RecursionError) as error:
                 log_event(LOGGER, 'taint.function.limited', level=logging.WARNING, error_type=type(error).__name__,
-                    error_message=str(error), function=hex(address), round=rounds)
+                    error_message=str(error),
+                    **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds)
                 summary=demand.partial_summary(error) if demand else TaintProcedureSummary(address, pending=(('constructor', type(error).__name__+': '+str(error)),))
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
@@ -174,7 +176,8 @@ def run_taint(
                            'wall_seconds':time.monotonic()-tick}
             invocations.append({'function':address, 'round':rounds, 'pending':len(summary.pending),
                 'sinks':len(summary.sinks), 'source_facts':len(engine.facts), 'steps':getattr(demand, 'steps', 0), 'wall_seconds':time.monotonic()-tick})
-            log_event(LOGGER, 'taint.function.completed', function=hex(address), round=rounds,
+            log_event(LOGGER, 'taint.function.completed',
+                **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds,
                 changed=fid in changed, pending=len(summary.pending), sinks=len(summary.sinks),
                 source_facts=len(engine.facts), queries=len(getattr(demand, 'query_history', ())),
                 taint_steps=getattr(demand, 'steps', 0), memory_metrics=last[address]['metrics'],

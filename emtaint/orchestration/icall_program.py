@@ -12,7 +12,11 @@ from emtaint.compat.legacy_icall_policy import legacy_maximum_address
 from emtaint.compat.memory_runtime import MemoryRuntimePort
 from emtaint.core import ContextId, FunctionId
 from emtaint.core.contracts import AnalysisScope, SemanticBudgets
-from emtaint.debugging import log_event, progress_heartbeat
+from emtaint.debugging import (
+    function_address_fields,
+    log_event,
+    progress_heartbeat,
+)
 from emtaint.frontends.program_index import ProgramIndex
 from emtaint.ir.canonical import CIRModule
 from emtaint.memory.image import ImageMemoryEngine
@@ -157,7 +161,7 @@ def recover_icalls(
         log_event(
             LOGGER,
             "icall.analysis.started",
-            function=hex(address),
+            **function_address_fields(function_id.rva, base, legacy_field="va"),
             sites=len(sites),
             available_recipes=len(recipes),
             make_recipe=function_id in summary_functions,
@@ -185,7 +189,7 @@ def recover_icalls(
         with progress_heartbeat(
             LOGGER,
             "icall.analysis.heartbeat",
-            function=hex(address),
+            **function_address_fields(function_id.rva, base, legacy_field="va"),
             sites=len(sites),
             function_epoch=runtime.epochs[function_id],
         ):
@@ -208,7 +212,7 @@ def recover_icalls(
         log_event(
             LOGGER,
             "icall.analysis.completed",
-            function=hex(address),
+            **function_address_fields(function_id.rva, base, legacy_field="va"),
             steps=result.steps,
             sites=len(result.sites),
             target_facts=len(result.targets),
@@ -240,6 +244,7 @@ def recover_icalls(
         analyze,
         max_rounds=max_rounds,
         order=lambda todo: callee_first(todo, runtime.session.cg),
+        image_base=base,
     ).run(functions)
 
     log_event(

@@ -1,6 +1,7 @@
 """Target provenance, stale memory handles and image-versus-runtime semantics."""
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 from test_program_models import fixture
 from test_p3_contracts import fixture as memory_fixture
 from emtaint.core import ContextId,Endian,Completeness,ProgramPoint
@@ -16,6 +17,10 @@ from emtaint.analysis.dataflow.fast import CIRFastDataFlow
 from emtaint.analysis.framework.runtime import AnalysisRuntime,StaleAnalysis
 from emtaint.analysis.controlflow.targets import TargetGraphUpdater
 from emtaint.orchestration.fast_search import CIRFastSearch
+from emtaint.orchestration.legacy_cir_search import (
+    CIRLegacySearch,
+    CallSiteAnalysisResult,
+)
 from emtaint.orchestration.program_search import CIRProgramSearch
 from emtaint.graph import CallEdge,TargetKind,FlowEdge,FlowKind
 
@@ -31,6 +36,62 @@ def setup():
 
 
 class TargetTests(unittest.TestCase):
+    def test_legacy_search_returns_typed_callsite_result(self):
+        program, runtime, _, port, origins, identifiers = setup()
+        fid, _, entry, successor, _, site = identifiers
+        target = ValueRef("target", ValueType.pointer(32))
+        true = Constant(True, ValueType.boolean())
+        function = CIRFunction(
+            fid,
+            (target,),
+            (
+                CIRBlock(
+                    entry,
+                    (
+                        Compute(
+                            "o0",
+                            target,
+                            ValueOp.COPY,
+                            (Constant(0x1010, target.type),),
+                        ),
+                        CallEffect(
+                            "o0",
+                            site,
+                            IndirectTarget(target),
+                            (),
+                            (),
+                            program.abi,
+                            true,
+                        ),
+                        JumpEffect("o0", successor),
+                    ),
+                    4,
+                ),
+                CIRBlock(
+                    successor,
+                    (ReturnEffect("o1", (), true),),
+                    4,
+                ),
+            ),
+            entry,
+            program.abi,
+        )
+        result = CIRLegacySearch(
+            function,
+            origins,
+            runtime.session.cfg(fid),
+            port,
+            input_sites=(program.image_base + site.point.instruction_rva,),
+            image_base=program.image_base,
+            is_code=lambda address: address == 0x1010,
+            is_data=lambda _address: False,
+            make_recipe=False,
+        ).run()
+        self.assertEqual(len(result.sites), 1)
+        self.assertIsInstance(result.sites[0], CallSiteAnalysisResult)
+        self.assertEqual(result.sites[0].targets, (0x1010,))
+        self.assertEqual(result.sites[0].to_legacy_dict()["site"], 0x1001)
+
     def test_clobbered_register_is_not_correlated_with_old_entry_symbol(self):
         program,runtime,e,p,origins,(fid,callee,a,b,c,site)=setup();flow=CIRAccurateDataFlow(p)
         before=ValueRef('before',ValueType.bv(32));after=ValueRef('after',ValueType.bv(32))
@@ -51,8 +112,27 @@ class TargetTests(unittest.TestCase):
             port=MemoryRuntimePort(PythonMemoryEngine(scope,program.architecture,origins))
             runtime.bind_port(port,function,ContextId())
             return CIRFastSearch(fun,CIRAccurateDataFlow(port),image_base=0x1000).run()
-        result=CIRProgramSearch(runtime,TargetGraphUpdater(runtime,origins),analyze,max_rounds=3).run((fid,))
-        self.assertEqual(result.rounds,2);self.assertEqual(revisions,[0,1]);self.assertEqual(result.pending,())
+        with patch("emtaint.orchestration.program_search.log_event") as event:
+            result=CIRProgramSearch(
+                runtime,
+                TargetGraphUpdater(runtime, origins),
+                analyze,
+                max_rounds=3,
+                image_base=program.image_base,
+            ).run((fid,))
+        dispatched=next(
+            call
+            for call in event.call_args_list
+            if call.args[1] == "icall.search.function.dispatched"
+        )
+        self.assertEqual(dispatched.kwargs["function_rva"], hex(fid.rva))
+        self.assertEqual(
+            dispatched.kwargs["function_va"],
+            hex(program.image_base + fid.rva),
+        )
+        self.assertEqual(result.rounds, 2)
+        self.assertEqual(revisions, [0, 1])
+        self.assertEqual(result.pending, ())
 
     def test_stale_port_cannot_transfer_pure_compute(self):
         program,runtime,e,p,origins,(fid,callee,a,b,c,site)=setup()

@@ -160,10 +160,11 @@ def read_ida_cfg(
 
 
 class ELFImage:
-    """Map file-backed executable bytes by ELF ET_EXEC virtual address.
+    """Map file-backed executable bytes at an explicit virtual address.
 
-    The image retains link-time addresses exactly. PIE relocation is deliberately
-    unsupported because guessing a load base would change address semantics.
+    ET_EXEC images retain link-time addresses. ET_DYN/PIE images require an
+    explicit loader base supplied by a native loader; this class never guesses
+    one from the file.
     """
 
     data: bytes
@@ -176,7 +177,7 @@ class ELFImage:
     segments: list[Segment]
     image_base: Address
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, *, load_base: int | None = None) -> None:
         if type(data) is not bytes or data[:4] != b'\x7fELF' or len(data) < 52:
             raise InputError('Invalid ELF bytes')
         self.data = data
@@ -188,8 +189,12 @@ class ELFImage:
         self.endian = 'little' if self.encoding == 1 else 'big'
         try:
             self.elf_type, self.machine = struct.unpack_from(order + 'HH', data, 16)
-            if self.elf_type != 2:
-                raise InputError('Only ET_EXEC is mapped by this frontend; PIE needs explicit relocation support')
+            if self.elf_type not in (2, 3):
+                raise InputError('Only ET_EXEC and explicitly relocated ET_DYN images are supported')
+            if load_base is not None and (type(load_base) is not int or load_base < 0):
+                raise InputError('ELF load base must be a nonnegative integer')
+            if self.elf_type == 3 and load_base is None:
+                raise InputError('PIE needs an explicit native-loader base')
             if self.elf_class == 1:
                 phoff = struct.unpack_from(order + 'I', data, 28)[0]
                 entsize, count = struct.unpack_from(order + 'HH', data, 42)
@@ -215,13 +220,29 @@ class ELFImage:
             raise InputError('Truncated ELF structure') from error
         if not self.segments:
             raise InputError('ELF has no loadable segments')
-        self.image_base = min(s[0] for s in self.segments)
+        link_base = min(segment[0] for segment in self.segments)
+        if self.elf_type == 2:
+            if load_base is not None and load_base != link_base:
+                raise InputError('ET_EXEC native-loader base differs from link-time mapping')
+        else:
+            if load_base is None:
+                raise InputError('PIE relocation base disappeared during validation')
+            self.segments = [
+                (vaddr - link_base + load_base, offset, filesz, memsz, flags)
+                for vaddr, offset, filesz, memsz, flags in self.segments
+            ]
+        self.image_base = min(segment[0] for segment in self.segments)
 
     @classmethod
-    def from_path(cls, path: str | PathLike[str]) -> ELFImage:
+    def from_path(
+        cls,
+        path: str | PathLike[str],
+        *,
+        load_base: int | None = None,
+    ) -> ELFImage:
         """Create an image from the exact bytes stored at ``path``."""
 
-        return cls(Path(path).read_bytes())
+        return cls(Path(path).read_bytes(), load_base=load_base)
 
     def read(self, start: Address, size: int) -> bytes:
         """Read bytes from one file-backed executable load segment.

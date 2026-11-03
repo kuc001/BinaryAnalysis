@@ -88,7 +88,8 @@ def main():
                 body_token=body_hashes[fid],make_recipe=fid in summaries).run()
             if result.recipe is not None:runtime.recipe_put(fid,context,result.recipe)
             passes[fid]=passes.get(fid,0)+1;prefix='function-'+hex(fid.rva+base)+'-pass-'+str(passes[fid])
-            write(folder/(prefix+'.json'),{'function':fid.rva+base,'sites':result.sites,'pending':result.pending,
+            write(folder/(prefix+'.json'),{'function':fid.rva+base,
+                'sites':[site.to_legacy_dict() for site in result.sites],'pending':result.pending,
                 'steps':result.steps,'metrics':result.metrics,'epoch':runtime.epochs[fid],
                 'scope':asdict(scope),'wall_seconds':time.monotonic()-tick})
             if archive_enabled:archive_memory(result.snapshot,folder/(prefix+'-memory'))
@@ -109,7 +110,8 @@ def main():
             order=lambda todo:callee_first(todo,runtime.session.cg)).run(functions)
         rows=[];actual={};facts=[]
         for fid,outcome in result.results:
-            for row in outcome.sites:rows.append({'function':fid.rva+base,**row})
+            for row in outcome.sites:
+                rows.append({'function':fid.rva+base,**row.to_legacy_dict()})
             for fact in outcome.targets:
                 address=fact.site.point.instruction_rva+base
                 actual.setdefault(str(fid.rva+base),{}).setdefault(str(address),set()).update(fact.targets)
