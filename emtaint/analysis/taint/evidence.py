@@ -1,5 +1,6 @@
 """P7 private evidence container; P3 CIR/Memory wire schemas are unchanged."""
 from dataclasses import asdict, fields, is_dataclass, replace
+from .demand_models import DeferredFormatArgument, dependency_order
 
 
 class EvidenceEncoder:
@@ -12,7 +13,6 @@ class EvidenceEncoder:
             if recipe.key not in self.recipes:self.recipes[recipe.key]=asdict(recipe.value)
             keys.append(recipe.key)
         result['recipes']=keys
-        from .demand import DeferredFormatArgument
         if isinstance(dependency.value, DeferredFormatArgument):
             result['value']={'format_slot':dependency.value.format_slot,
                 'position':dependency.value.position,
@@ -41,7 +41,6 @@ class EvidenceEncoder:
 def summary_evidence(summary, covered_sources=()):
     encoder=EvidenceEncoder()
     result=encoder.summary(summary)
-    from .demand import dependency_order
     covered=[{'covered':encoder.dependency(narrow), 'covering_input':encoder.dependency(broad)}
         for narrow, broad in sorted(covered_sources, key=lambda pair:(dependency_order(pair[0]), dependency_order(pair[1])))]
     return {'summary':result, 'constraint_recipes':encoder.recipes, 'evidence_format':'P7-evidence-v5',

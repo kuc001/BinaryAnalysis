@@ -1,6 +1,9 @@
 """Stable references from weak candidates to their source requirement rows."""
 
-from emtaint.analysis.taint.demand import SinkRequirement, TaintDependency
+from emtaint.analysis.taint.demand_models import (
+    SinkRequirement,
+    TaintDependency,
+)
 
 
 CANDIDATE_REFS_FORMAT='P7-candidate-refs-v2'

@@ -596,3 +596,27 @@ frontier、P6 summary 专项均通过，最终完整回归 **493 tests OK，exit
 目录的首个端到端样例，不代表 `basic_c_tests/basic_cpp_tests/cs_tests/fs_tests` 已全部通过；
 数组/字段、分支 join、堆对象、函数指针和 C++ 虚调用仍需按目录建立清单与差异回归。
 P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。
+
+### 2026-11-03：P7 demand 保持行为兼容的结构化重构
+
+本轮只重构 `analysis/taint/demand.py` 的结构、生命周期管理、文档和格式，不修复或
+调整 P7 传播语义。公共 immutable model 已迁入 `demand_models.py`，原
+`analysis.taint.demand` 导入路径继续 re-export；字段顺序、默认值、frozen/hash/compare/
+repr、`dependency_order`、`sink_order` 和 evidence/replay JSON 由固定 fixture 锁定。
+查询预算及 observer/`validate_current` 的异常恢复迁入 `demand_budget.py`；Caller 绑定、
+memory frontier、procedure/format/va_list/argv 分别迁入 `demand_binding.py`、
+`demand_memory.py` 和 `demand_procedures.py`，所有可变状态仍归
+`LegacyTaintDemand`，现有公开方法保留 facade。
+
+新增 7 项 compatibility/lifecycle 回归，覆盖公开构造参数顺序、dataclass/repr/hash、
+固定 evidence JSON 字节、排序、嵌套 observer 恢复、参数准备异常恢复和 deadline 的
+query dimension。原 demand 专项命令 **121 tests OK，exit 0**；新增专项
+**7 tests OK，exit 0**；最终完整回归 **500 tests OK，exit 0**；
+`compileall -q emtaint tests scripts` 与 `git diff --check` 均 exit 0。所有拆分文件均无
+超过 120 字符的行，`demand.py` 从 1989 行降为 961 行。未安装依赖、未提交 Git，P6、
+Golden、旧仓库与历史证据均未修改，未发现需要 Difference ID 的行为差异。
+
+本轮未执行独立的真实固件 P6 iCall/CG 产物 hash 对比；冻结保证来自无 P6 文件 diff、
+完整 500 项回归和已有 P6 覆盖。没有新增会拒绝历史 replay 的严格输入校验；负地址、非法
+位宽/offset/未知 kind 的新拒绝规则仍须作为独立语义任务先建立 replay regression 后实施。
+P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。

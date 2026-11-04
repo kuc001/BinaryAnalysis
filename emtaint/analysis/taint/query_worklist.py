@@ -8,6 +8,12 @@ from dataclasses import dataclass, replace
 import logging
 import time
 from emtaint.analysis.dataflow.legacy_demand import DemandLimit
+from emtaint.analysis.taint.demand_models import (
+    BufferDestination,
+    SinkRequirement,
+    TaintDependency,
+    dependency_order,
+)
 from emtaint.debugging import log_event
 
 
@@ -62,7 +68,6 @@ def interleave_inherited_prefix(owner, queries):
 
 
 def run_queries(owner, queries, max_attempts=2):
-    from .demand import TaintDependency, SinkRequirement, BufferDestination, dependency_order
     from emtaint.procedures.legacy import lookup
     todo=deque((query, 1) for query in interleave_inherited_prefix(owner, queries))
     retries=[]

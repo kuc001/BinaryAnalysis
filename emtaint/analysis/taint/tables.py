@@ -7,15 +7,12 @@ This is a may model of entry storage, never a precise hash-table execution.
 from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
-from typing import TYPE_CHECKING
 from emtaint.core import MemoryObject, MemoryObjectId
 from emtaint.core.contracts import SymbolicExprId, ValueType
 from emtaint.ir.canonical import CallEffect
 from emtaint.memory import AccessRoot, Offset, Deref, UnknownOffset, SymbolicOp, AliasKind
 from emtaint.memory.abstract_heap import ObjectCardinality, ObjectLifetime
-
-if TYPE_CHECKING:
-    from .demand import TaintDependency
+from .demand_models import TaintDependency
 
 
 @dataclass(frozen=True)
@@ -72,7 +69,6 @@ class LegacyHashTables:
             if dependency.kind=='source':self.project(root, dependency, call)
 
     def read(self, root, call):
-        from .demand import TaintDependency
         d=self.owner
         self.reads.add(root)
         dependencies=self.bank.get(root)

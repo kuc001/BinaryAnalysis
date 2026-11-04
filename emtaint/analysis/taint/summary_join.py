@@ -6,7 +6,7 @@ No scoped memory/APG/SSE IDs are retained in these detached summaries.
 """
 from dataclasses import replace
 from emtaint.core import ContextId
-from .demand import TaintProcedureSummary, dependency_order, sink_order
+from .demand_models import TaintProcedureSummary, dependency_order, sink_order
 from .global_outputs import output_order
 
 
