@@ -61,6 +61,21 @@ class FrontendResult:
                         edges.add(FlowEdge(block.id, effect.target, FlowKind.JUMP))
                     elif isinstance(effect, ReturnEffect):
                         exits.add(block.id)
+            if self.metadata.get('use_declared_cfg_edges', False):
+                absolute = function.function_id.rva + self.metadata['image_base']
+                source = next(
+                    (item for item in self.metadata.get('source_functions', ())
+                     if item['address'] == absolute),
+                    None,
+                )
+                existing = {(edge.source, edge.target) for edge in edges}
+                for start, target in source['edges'] if source else ():
+                    pair = by_address.get(start), by_address.get(target)
+                    if None not in pair and pair not in existing:
+                        edges.add(FlowEdge(
+                            pair[0], pair[1], FlowKind.UNKNOWN,
+                            'CFGFast normalized control-flow edge'))
+                        existing.add(pair)
             translated_branches = {effect.origin for block in function.blocks for effect in block.effects
                                    if isinstance(effect, BranchEffect)}
             for row in self.metadata.get('native_control_flow', ()):
@@ -324,6 +339,12 @@ class VEXLowerer(ARMScalarLowering):
             # A pure value failure cannot write guest memory or unrelated
             # registers. Its missing result may affect subsequent control.
             self.effects.append(UnknownEffect(self.origin.id, error.opcode, error.detail, (), (), True))
+        elif isinstance(statement, pyvex.stmt.Exit):
+            # An unsupported side-exit guard changes successor selection, not
+            # guest state.  Declared/native CFG edges retain both successors.
+            self.effects.append(UnknownEffect(
+                self.origin.id, error.opcode, error.detail, (), (), True
+            ))
         elif isinstance(statement, pyvex.stmt.Put):
             width=int(statement.data.result_type(self.vex.tyenv)[5:])
             target=self.register_slice(statement.offset, width).register

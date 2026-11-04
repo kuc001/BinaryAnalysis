@@ -597,6 +597,318 @@ frontier、P6 summary 专项均通过，最终完整回归 **493 tests OK，exit
 数组/字段、分支 join、堆对象、函数指针和 C++ 虚调用仍需按目录建立清单与差异回归。
 P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。
 
+## 2026-11-04 fs_tests 100% 迭代：基线与 FS0 输入一致性
+
+按 `docs/migration/FS_TESTS_ALIAS_100_PLAN.md` 建立新的、串行、每样本 120 秒 fs_tests
+基线 `baseline-20261104T105602+0800`：25 个样本、55 个 required marker，2 个样本
+通过，`matched=8`、`complete_required=18`、`missing_markers=7`、`timed_out=1`。
+这取代旧的 19.5% 数字作为当前代码基线。`array_alias_6.c` 使用清单中固定的
+`test_cases_bc` ELF；所有 source/binary SHA-256 均写入清单。
+
+本轮单一 Difference ID 为 **FS0-INPUT-COHERENCE**。最早分歧不是 marker 排序：
+`Binaries/fs_tests/return.c.elf` 的 `main` 只有一次 `my_malloc`，完全没有 `NOALIAS`
+调用；不可变的 `test_cases_bc/fs_tests/return.c.elf` 保留两次分配及
+`NOALIAS@0x4009dc`。先修改回归使其红灯，再在 manifest 生成期用 ELF 符号表和
+Capstone 统计实际保留的 direct marker call；primary/fallback 同分仍保留历史 primary，
+只有 fallback 明确保留更多当前 source marker 时才选择 fallback。选择来源、每类调用数和
+inventory 完整性均写入 v2 manifest；分析器不接收源码 operand、期望 Alias 分类或源码行号。
+
+`fs-manifest-v2.json` 中 fs_tests 25/25 的 marker inventory 均完整，fallback 仅为
+`array_alias_6.c` 和 `return.c`。单样本新目录确认 return 从 missing 变为一条明确 observation；
+其 Alias 仍为 `ADDRESS_UNRESOLVED/INCOMPLETE`，没有伪装成通过。全量新目录
+`fs0-input-coherence-20261104T1123+0800` 的 `missing_markers` 从 7 降为 6，六条均来自
+`array_alias_2.c` 的 120 秒超时；其余 aggregate 保持 `matched=8`、
+`complete_required=18`、2/25 样本通过，说明本轮没有混入地址或分类语义修改。
+
+回归：alias 专项 9 tests OK；P4 专项 11 tests OK；完整回归 509 tests OK；
+`compileall` 和 `git diff --check` exit 0；strong_update 仍为 NO+MUST、2/2 complete。
+并行原生测试曾因两个进程竞争 pyvex FFI 临时缓存产生一次 PermissionError，固定到仓库内
+native-cache 后串行复跑通过，不记为 CFG 失败。`quality_audit --fail-on safety` 仍报告工作区
+既有的 2 个 silent-exception，尚未在本 Difference ID 中混改。Difference Matrix 已写入
+`docs/migration/FS_TESTS_ALIAS_DIFFERENCE_MATRIX.md`。下一单一 Difference ID 为
+**FS0-TIMEOUT/array_alias_2.c**：先保存成本和最早状态爆炸快照，不提高预算。
+
+### fs_tests FS0-TIMEOUT：Windows 子进程管道假超时
+
+单一 Difference ID **FS0-PIPE-DRAIN** 的分段快照证明 `array_alias_2.c` 并无分析
+状态爆炸：冷启动约 6.4 秒、discover 0.4 秒、summary 0.02 秒，六个 marker 分类合计约
+0.11 秒；直接 CLI 可正常输出约 6KB JSON。旧 `_execute` 同时把 stdout/stderr 设为 PIPE，
+却在子进程退出后才调用 `communicate`。Windows 匿名管道填满后，子进程等待父进程读取，
+父进程持续等待子进程退出，最终被错误记录为 120 秒 timeout。
+
+最小回归先让子进程分别向 stdout/stderr 写 256KiB，修复前稳定在 5 秒门限失败。runner
+现在用两个 reader thread 在进程运行期间持续排空两条流，仍由原循环监控进程树 RSS 和相同
+timeout，结束后 join、拼接并关闭 pipe；没有提高预算。回归在 0.2 秒左右通过且启用
+`ResourceWarning` as error 也无泄漏。单样本 suite 随后得到 6/6 observations、0 timeout、
+0 missing；其中 5 条 complete、2 条匹配，最后一条仍明确 ADDRESS_UNRESOLVED。
+
+完整防回退：alias 专项 10 tests、P4 专项 11 tests、全量 510 tests 均 OK；compileall 和
+diff-check exit 0。全新全量目录 `fs0-complete-20261104T1150+0800` 达到 FS0 门禁：
+25 个样本均有 JSON，55/55 marker observation，`missing_markers=0`、`extra_markers=0`、
+`timed_out=0`；aggregate 为 `matched=10`、`complete_required=23`、2/25 样本通过。
+FS0 已关闭。下一轮进入 FS1，先对 `simple_1.c:14` 的完整但错误 MAY 保存 stack
+object/interval/alias 首差快照。
+
+### fs_tests FS1：pointer address identity 不应使用 pointer-width 区间
+
+单一 Difference ID **FS1-ADDRESS-IDENTITY** 从 `simple_1.c:14` 开始。两侧 SSE 都是
+完整常量，绑定到同一 singleton stack frame，模 2^64 offset 分别为 -40 与 -36；对象、
+cardinality、lifetime 和 location assessment 均完整。首差在 benchmark 构造 Alias location：
+旧代码用 64-bit pointer width，错误地把“两个指针值是否指向同一地址”变成“从每个地址开始
+访问 8 字节是否重叠”，使相距 4 字节的两个 `int` 地址返回 MAY。
+
+新增 native 红灯 `StackAddressIdentityTests` 固定 `simple_1` 应为 NO+MUST。修复只把 marker
+operand 的地址身份建模为单字节 witness；实际 Load/Store 继续使用 CIR 访问宽度，MemoryEngine
+及强/弱更新语义未改。最小测试转绿；同根因 6 样本运行中 `simple_1`、`simple_2`、
+`struct_1`、`strong_update` 全通过，`array_alias_2` 从 2/6 提升到 5/6，`array_alias_1`
+另恢复一条 NO。全量还恢复 `function_pointer_2:26` 和 `global_1:13` 两条精确 NO。
+
+回归：alias 专项 11 tests、P4 专项 11 tests、全量 511 tests 均 OK；compileall 与
+diff-check exit 0。新全量目录 `fs1-address-identity-20261104T1215+0800`：5/25 样本通过，
+`matched=21/55`（前轮 10）、`complete_required=23` 不变，missing/extra/timeout 均为 0。
+所有原有 ADDRESS_UNRESOLVED 仍显式 incomplete，没有用宽度修复掩盖未知。下一轮继续 FS1，
+选择 `array_alias_1.c:24`，追踪首个 `address_binding=None` 到 reaching Store/ValueRef。
+
+### fs_tests FS1：未写局部 pointer 的 empty points-to alternative
+
+单一 Difference ID **FS1-UNINITIALIZED-STACK** 的 `array_alias_1.c:24/26` 首差是
+`COPY→COPY→MEMORY_READ(initial mem-0)`：location 属于当前 singleton frame 的精确负
+offset，且 Definition Frontier 没有 reaching Store。旧分类把该值交给普通 address binding，
+得到 None 并报 ADDRESS_UNRESOLVED；这把“本函数未写的局部 pointer slot”与任意外部未知
+地址混为一类。
+
+`_AliasProcedureDemand.uninitialized_frame_pointer` 现在只识别 COPY 包装、entry MemoryVersion、
+精确负 stack offset 的 pointer-query value。它作为显式 empty points-to alternative 参与分类：
+纯空一侧不能制造 alias，得到带证据的 NO；空 alternative 与已定义同址 alternative 并存时
+阻止 MUST、保留 MAY。正 offset ABI stack argument、非 stack、非 entry state、range offset 和
+普通 Unknown 均不匹配，继续 INCOMPLETE。没有把未知直接当 NO。
+
+先加入 `UninitializedStackPointerTests` 红灯，修复后 `array_alias_1` 由 2/4 变为 4/4；
+category 运行中 strong_update 保持 2/2，array_alias_2/4/5 的条件分支 MemoryVersion 仍为
+ADDRESS_UNRESOLVED，没有越过本 Difference 边界。alias 专项 12、P4 专项 11、完整回归
+512 tests 均 OK；compileall/diff-check exit 0。全量新目录
+`fs1-uninitialized-stack-20261104T1255+0800` 为 6/25 样本、`matched=23/55`、
+`complete_required=25/55`，missing/extra/timeout 均 0。下一轮进入条件分支 Definition
+Frontier，先快照 `array_alias_4.c` 的 join MemoryVersion 和 predecessor 覆盖。
+
+### fs_tests FS2：unsupported Exit 不能伪造全状态写
+
+单一 Difference ID **FS2-EXIT-EFFECT** 的快照先排除了 CFG 漏边：array_alias_4 的共享
+suffix `0x999` 同时保留 `0x963` 和 `0x991` predecessor。首差在 entry block 的 AMD64
+`amd64g_calculate_condition` 尚无 scalar expansion；其临时值使 Exit guard 降级为
+UnknownEffect。`unknown()` 的通用 else 分支错误地赋予该 Exit `may_write_regions=('*',)`、
+`may_write_registers=('*',)`，reaching-definition 因而把它当成 rbp 的最后定义。后续全部
+`rbp+constant` 地址丢失 stack root，并在 load 前沿注入 MayAlias Unknown。
+
+P4 native shared-suffix 回归先扩展为红灯，同时断言两条 CFG edge 和 unsupported control
+effect 合约。修复为：unsupported side-exit guard 仅 `may_change_control=True`，不写 guest
+memory/register；声明/native CFG 仍保留两个 successor。没有实现或猜测 helper 条件，也没有
+改变路径可行性。回归转绿后 array_alias_4 由 0/2 incomplete 变为 NO+MAY、2/2 complete。
+
+同类 8 样本中 array_alias_2/4/5、branch_1/2/3、strong_update 全部通过，19/20 marker
+正确且 complete；唯一余项是 array_alias_6 动态 index 的独立 ARRAY_INTERVAL 根因。alias
+专项 12、P4 专项 11、完整回归 512 tests 均 OK；compileall/diff-check exit 0。全量新目录
+`fs2-exit-effect-20261104T1340+0800` 为 12/25、`matched=34/55`、
+`complete_required=36/55`，missing/extra/timeout 仍为 0。下一轮锁定
+`array_alias_6.c:26`，保存 index×stride 的 SSE 和 interval 首差。
+
+### fs_tests FS1：indexed stack address 的 field residue/stride
+
+单一 Difference ID **FS1-ARRAY-INTERVAL** 的 `array_alias_6:26` 地址 SSE 各为 26 个
+节点，可规范化成 `entry-sp - 56 + sign_extend(index32) * 16`。旧 normalizer 仅接受 constant
+offset，虽然 stack root、field residue 和 stride 都可证明，仍把整个 load 变为 Unknown。
+
+`DemandAddressNormalizer.indexed_stack_address` 新增受限 affine 提取：只接受常量、COPY、
+安全的单变量 width conversion、ADD/SUB 和一侧为常量的 MUL；所有变量 coefficient 的 gcd
+作为 stride，且 stride 必须大于 1，常量基址还必须落在 entry stack sentinel 的有限范围。
+proof 显式携带 stride，不能冒充 exact concrete index。alias benchmark 用 residue 查找可能的
+field Store，并总是补回 entry empty alternative；因此相同 residue 的已定义值可以形成 MAY，
+但未知 index 不能产生 strong kill 或 MUST。非 affine、stride 1、无 stack base 的表达继续
+ADDRESS_UNRESOLVED。
+
+`IndexedStackAddressTests` 先红后绿，array_alias_6 得到 complete MAY+MUST。category 运行中
+array_alias_2、array_alias_6、strong_update 共 10/10 marker 全通过。alias 专项 13、P4 专项
+11、完整回归 513 tests 均 OK；compileall/diff-check exit 0。全量目录
+`fs1-array-interval-20261104T1430+0800` 为 13/25、`matched=35/55`、
+`complete_required=37/55`，missing/extra/timeout 均 0。FS1/FS2 的当前数组和 branch 目标均已
+关闭；下一轮进入 FS3，从 `global_1.c:22` 的完整 NO→期望 MUST 查 global Store/Load 版本首差。
+
+### 2026-11-04：CFGFast 共享后缀块规范化
+
+`fs_tests/array_alias_4.c.elf` 的 `main` 暴露了 CFGFast 合法的重叠块表示：
+fall-through 块 `[0x400991,0x4009ac)` 包含分支直接进入的共享后缀
+`[0x400999,0x4009ac)`。旧 `discover_inputs` 将两个原始范围直接构造成要求互不重叠的
+`FunctionInput`，因此在 CIR lowering 前以 `Overlapping source blocks` 拒绝输入。
+
+修复将 CFGFast 的全部 block start/end 作为 cut point，把上述范围规范化为
+`[0x400991,0x400999)` 与 `[0x400999,0x4009ac)`；重叠 decode mode 仍显式拒绝。
+同时把 CFGFast 原图边映射到规范化分区，并增加前缀到共享后缀的 fall-through 边。
+这些 declared edges 仅用于同一 `AngrVexFrontend` 实例实际 `discover` 得到的规格，显式
+IDA bounds/P6 acquisition 路径不启用，避免改变冻结 P6 输入策略。
+
+真实 `array_alias_4` 现可完成 lifting 和评估，生成两条 observation；当前两条仍因
+`ADDRESS_UNRESOLVED` 输出 `INCOMPLETE`，这是后续数组/字段地址精度问题，不再是 CFG 输入
+异常。此前同根因的 `array_alias_2.c`、`array_alias_5.c`、`branch_1.c` 和
+`function_pointer.c` 也均生成报告且无 traceback。新增 3 项 shared-suffix/冲突 mode/真实
+ELF 回归，P4 专项 **11 tests OK**，alias 专项 **9 tests OK**，完整回归
+**509 tests OK，exit 0**。P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。
+
+### fs_tests FS3：global Store 不能被 stack-local summary 过滤器删除
+
+单一 Difference ID **FS3-GLOBAL-STORE-FILTER** 从 `global_1.c:22` 开始。实际 CIR
+快照显示 `bar` 有一个 frame Store 和两个 global Store；后两者分别绑定到 global root 的
+偏移 648、632，但 `_summary` 编译出的 recipe stores 为 0。首差在 Store 过滤条件：
+`exact_stack_address` 返回的是通用 proof-carrying address binding，absolute global constant
+也可形成 proof；调用方只判断 proof 是否存在，就把 global Store 与 callee frame Store 一并
+删除，调用者因而一直读取 writable global 的入口快照。
+
+新增 `GlobalStoreSummaryTests` 先稳定复现 `global_1` 的 NO+NO（期望 NO+MUST）。初版曾在
+通用 normalizer 内拒绝 global proof，但完整回归立即暴露其既有 provenance/binding 合约，
+因此撤回该扩大修改。最终修复只收窄出错消费者：summary 仅当 proof 的
+`root.region == "stack"` 时过滤 Store；global Store 保留进 detached recipe，normalizer、
+MemoryEngine、P6/P7 taint 和 strong-update 条件均不变。
+
+定向回归转绿，global category 中 `global_1` 与 `global_5` 通过，`strong_update` 保持
+NO+MUST；global_2/3/4 与 test-su 仍明确 INCOMPLETE，未在本 Difference 中混改。alias 专项
+14 tests、P4 shared-suffix 专项 3 tests、完整回归 514 tests 均 OK；compileall、
+quality audit safety gate 和 diff-check exit 0。首次 P4 导入遇到 Windows pyvex FFI 临时缓存
+PermissionError，固定 TEMP/TMP 到仓库 native-cache 后串行复跑通过，未记为语义失败。
+
+全新、无 resume 的完整目录
+`fs3-global-store-filter-20261104T1235+0800` 达到 15/25 样本，
+`matched=37/55`、`complete_required=38/55`，missing/extra/timeout 均为 0；相对上一轮新增
+global_1、global_5 两个通过样本。下一轮仍在 FS3，选择 `global_2.c:18`，保存其两侧
+global pointer load、MemoryVersion 与 summary instantiate 的第一处 ADDRESS_UNRESOLVED。
+
+### fs_tests FS3：常量重定位地址必须规范到 containing segment
+
+单一 Difference ID **FS3-GLOBAL-ADDRESS-CANONICALIZATION** 从 `global_2.c:18` 开始。
+同一全局位置的 Load 经 SSE concrete value 绑定为实际 writable PT_LOAD root+offset 656；
+reaching Store 的 `local_address` 却按 `image_base + relocation_delta` 逐层累加，保留
+PT_LOAD(0) root 并形成越界 offset 2105392。MemoryEngine 正确地把不同 ObjectId 判为 NO，
+但上游错误 object identity 使本应 MUST 的 Store 未进入 MemoryVersion。
+
+alias benchmark demand 新增受限 constant folding：仅接受 Constant、COPY、ADD、SUB，全部
+operand 可证明为整数时按 pointer width 折叠，再交给 `ImageMemoryEngine.address` 选择真正包含
+该绝对地址的 ELF segment。动态表达式、Load、参数、未知转换仍走原保守路径；通用 P6/P7
+demand 和 MemoryEngine 未改。`GlobalAddressCanonicalizationTests` 先以 global_2 两条
+INCOMPLETE 红灯，修复后 line 18 得到完整 NO；line 29 保留独立 summary incomplete。
+
+同类运行还使 global_3 得到完整 MUST、test-su 得到两个完整 NO；global_1/5 和
+strong_update 均保持通过。alias 专项 15 tests、P4 专项 3 tests、完整回归 515 tests、
+compileall、quality audit safety gate 和 diff-check 全部通过。全新无 resume 目录
+`fs3-global-address-canonicalization-20261104T1300+0800` 为 17/25 样本，
+`matched=41/55`、`complete_required=42/55`，missing/extra/timeout 均为 0。下一轮选择
+`global_2.c:29`，追踪 foo/bar summary stores 的 must_execute、unknown_effects、实例化地址与
+caller MemoryVersion，作为 FS4 的独立 Difference。
+
+### fs_tests FS4：CFG 证明的 Store 完整性跨 marker 边界保留
+
+单一 Difference ID **FS4-CFG-SUMMARY-COMPLETENESS** 处理 `global_2.c:29`。foo 的
+entry block 包含 4 个 true-guard global Store，唯一 successor 是 Return block，故所有 Store
+均支配正常 Return；旧 summary 只在“函数恰好一个 block”时设置 must_execute，因 marker call
+切块而全部降级。同时 marker CallEffect 的保守 ABI footprint 被计入 unknown_effects，尽管
+benchmark 合约中 marker 只观察两个值、不改变被测程序状态。
+
+benchmark summary 现在基于实际 CFG 计算 reachable block dominators：Store 只有 true guard、
+位于所有正常 Return 的 dominator 中、且同块顺序早于 Return 时才是 must-execute。unknown
+effect 重算只排除本二进制中已识别的 marker DirectTarget；普通 direct/indirect unknown call、
+UnknownEffect 和 HavocEffect 仍保持保守。该修复没有读取 marker 的期望类别或源码 operand。
+
+回归拆成 canonical segment 与 marker-boundary/must-execute 两项，global_2 由 NO+INCOMPLETE
+变为完整 NO+MUST。其余 7 个失败样本预测不变，strong_update 保持通过。alias 专项
+16 tests、P4 专项 3 tests、完整回归 516 tests、compileall、quality audit safety gate、
+diff-check 均通过。全新无 resume 目录
+`fs4-cfg-summary-completeness-20261104T1330+0800` 为 18/25，
+`matched=42/55`、`complete_required=43/55`，missing/extra/timeout 均为 0。下一轮选择
+`global_4.c:12`，追踪 argument-relative Store recipe 在 Xray caller 的地址绑定。
+
+### fs_tests FS4：loaded Store address 的唯一 demand binding
+
+单一 Difference ID **FS4-DEMANDED-STORE-ADDRESS** 从 `global_4.c:12` 开始。Zulu 的
+`*p=q` 地址先从 callee frame slot 加载；`demand.value` 已唯一恢复 argument root 0，
+但 local_address 只跟 Constant/ReadRegister/Compute，对 LoadEffect 返回 None。该 unknown Store
+又被错误认为可能覆盖保存 p 的 callee stack slot，污染后续 `*p=obj` 的地址和值。
+
+benchmark demand 现在仅在原 local/exact proof 失败时启动有 recursion guard 的 demand fallback；
+所有 alternatives 必须非空、每个都可 address_binding，且全部 binding 完全相同，才返回该
+唯一地址。任一 unknown、多位置或递归继续 unresolved。ProcedureRecipe 对由早期 Store 引入的
+`MayAlias/partial/guarded reaching store` 分支也在 caller 实例化时复核：只有存在真实 read
+alternative，且 caller-specialized 的所有更早 summary Store 与所有相关 read location 均为
+完整 NOALIAS 时才删除该条件性 unknown；否则保持不变。
+
+该修复使 global_4、simple_3、pcycle1、pcycle2 共 10 个 marker 全部完整正确，证明这些
+cycle 样本的首差是 Store 地址恢复而非需要放宽 fixed-point unknown。strong_update 保持通过。
+alias 专项 17 tests、P4 专项 3 tests、P6 summary 专项 4 tests、完整回归 517 tests、
+compileall、quality audit safety gate、diff-check 均通过。P6 专项直接模块入口因测试内顶层
+import 不可用，改用标准 discover pattern 后 4/4 通过。
+
+全新无 resume 目录 `fs4-demanded-store-address-20261104T1400+0800` 为 22/25，
+`matched=52/55`、`complete_required=54/55`，missing/extra/timeout 均为 0。仅
+function_pointer、function_pointer_2（完整但错误 MAY）和 return（唯一 incomplete）未通过。
+下一轮先处理 return 的 allocation-return object identity，再进入 FS5 indirect-call context。
+
+### fs_tests FS4：allocator return 跨 wrapper 保留 heap identity
+
+单一 Difference ID **FS4-ALLOCATION-RETURN** 处理唯一 incomplete 的 `return.c:21`。
+fallback ELF 中 malloc PLT 是无 ReturnEffect 的空 lifted function；ProcedureDemand 又先把 CallEffect
+结果降成 `procedure-return:*` symbol，因此 my_malloc wrapper 和 main 两次调用均没有 heap
+ObjectId，marker 两侧 address_binding 都为 None。
+
+alias benchmark 为 malloc/calloc 建立 allocation return recipe。实例化时按实际 callsite point 与
+context 创建 heap object，保留 allocation 节点穿过 wrapper recipe，并在外层调用点重新实例化；
+fresh live allocation 与已有 live object 建立 disjoint proof，同一抽象调用点仍复用 summary
+object。benchmark demand 仅对已有非空 DirectTarget return recipe 恢复 summary instantiate；
+无摘要、递归和空 return 保持原 unresolved 路径。没有按 return.c 地址或期望标签特判。
+
+`AllocationReturnTests` 先红后绿，return 得到完整 NO；两个函数指针样本保持完整 MAY，
+strong_update 保持通过。alias 专项 18 tests、P6 summary 专项 4 tests、完整回归 518 tests、
+compileall、quality audit safety gate、diff-check 均通过。全新无 resume 目录
+`fs4-allocation-return-20261104T1430+0800` 为 23/25，`matched=53/55`、
+`complete_required=55/55`，missing/extra/timeout 均为 0。下一轮 FS5 只处理两个完整但错误的
+function-pointer MUST，先保存 main 的 indirect call target evidence 与 callee marker formal binding。
+
+### fs_tests FS5 与最终门禁：完整 indirect caller context
+
+后续架构审查更正：本节 25/25、55/55 仅是 benchmark 专用分析路径结果，
+不能证明通用 CLI/ProcedureDemand 别名能力达到相同准确率。测试清单与运行器已移至
+`scripts/`；通用入口迁移及独立复验尚未完成，本节的“最终门禁”只针对旧 benchmark 路径。
+
+最后一个 Difference ID **FS5-INDIRECT-CALLER-CONTEXT** 处理 function_pointer 两样本。
+旧 scope 只选择含 marker 的 func1 并向下发现，不包含 caller main；formal argument roots 在空
+context 下只能得到 MAY。实际 main CIR 中两次 IndirectTarget.address 均由 demand 完整、唯一
+求值为 func1 地址，实际参数 0/1 均绑定同一个 caller singleton stack location。
+
+发现范围现在始终包含 main。caller-context 构造只接受所有 target alternatives 都为同一
+concrete address 且映射到已 lift FunctionId；marker operand 也必须完整归约到唯一、offset 0
+的 formal argument root，才在 caller demand 中以 actual argument 分类。多 caller context
+逐个分类并 join；target/formal 不完整不会猜测。结果 function_pointer 得到 MUST，
+function_pointer_2 得到 MUST+NO；evidence 明确记录 complete caller target specialization。
+
+最终无 resume 完整目录
+`fs5-indirect-caller-context-20261104T1500+0800`：25/25 samples、55/55 matched、
+55/55 complete，failed/missing/extra/timed_out 全 0，aggregate passed=true。array、branch、
+global、return、function pointer、cycle、simple/struct 与 strong update 均有独立回归。7 个代表
+样本（array_alias_6、branch_3、global_4、return、function_pointer_2、pcycle2、
+strong_update）连续 3 次的 site/prediction/completeness/alias-kind/reason signature 一致。
+
+最终回归：alias 19 tests、P4 3 tests、P6 summary 4 tests、完整 519 tests 全部 OK；
+compileall、quality audit safety gate、git diff-check 通过。quality audit 仍列出工作区既有
+2 个 silent-exception 及文档/类型债务，没有作为本任务混改。真实 P6 integration 使用冻结
+CIR/loader/legacy-CG 在新 P7 evidence 目录重跑：17/17 sites、535 target entries、5892
+logical/legacy edges、CG missing/extra=0、graph/function pending=0，passed 与
+native_revision_passed 均 true；与批准 P6 report 的关键字段逐项相等。受控 summary retraction
+中 0x2d394 从 61→0→61 正常恢复。
+
+httpd baseline standalone 检查通过，9 个归档文件 SHA-256 全匹配，统计保持 30919 blocks、
+4584 tainted blocks、402 sinks、143 buffer、7 command、796/881 analyzed/all functions。
+integrity check 证明旧 EmTaint 13461、target venv 13044、Golden 既有内容（351+批准 P7 25）
+和 sealed P6 2950 文件均 unchanged，无 unexpected addition。整体 integrity JSON 的 passed=false
+仅因根 AGENTS/MIGRATION_BLUEPRINT/CODE_TASK 相对旧 P7 快照已有既存演进；本任务 git 状态
+未修改这三份文件。一次 integrity evidence-root 参数误选和一次 httpd 缺少 --output 的 argparse
+错误均保留说明，随后正确命令通过。P6 回归证据最初误放 `.p6-work`，发现 sealed-root 边界后
+完整移动到 `.p7-work/alias-benchmark/`；最终 sealed P6 文件数与 hash/mtime 清单完全一致。
+
 ### 2026-11-03：P7 demand 保持行为兼容的结构化重构
 
 本轮只重构 `analysis/taint/demand.py` 的结构、生命周期管理、文档和格式，不修复或

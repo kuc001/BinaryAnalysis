@@ -118,18 +118,119 @@ def discover_inputs(
         function = cfg.kb.functions.get(address)
         if function is None:
             raise InputError('CFGFast did not recover selected function ' + hex(address))
-        bounds = {}
+        bounds = set()
         for block in function.blocks:
             if type(block.size) is int and block.size >= 0:
                 mode = 'thumb' if getattr(block, 'thumb', False) else 'default'
                 physical = block.addr & ~1 if mode == 'thumb' else block.addr
-                prior = bounds.get(physical)
-                candidate = InputBlock(physical, physical + block.size, mode, boundary=(block.size == 0))
-                if prior is not None and prior != candidate:
-                    raise InputError('CFG contains ambiguous overlapping block variants')
-                bounds[physical] = candidate
+                candidate = InputBlock(
+                    physical,
+                    physical + block.size,
+                    mode,
+                    boundary=(block.size == 0),
+                )
+                bounds.add(candidate)
             else:
                 raise InputError('CFG produced an invalid code extent')
-        physical = address & ~1 if project.arch.name.startswith('ARM') and address & 1 else address
-        records.append(FunctionInput(physical, function.name, tuple(sorted(bounds.values(), key=lambda b: b.start))))
+        raw_blocks = tuple(bounds)
+        partitioned = _partition_discovered_blocks(raw_blocks)
+        physical = (
+            address & ~1
+            if project.arch.name.startswith('ARM') and address & 1
+            else address
+        )
+        records.append(FunctionInput(
+            physical,
+            function.name,
+            partitioned,
+            _normalized_discovered_edges(function, raw_blocks, partitioned),
+        ))
     return tuple(records)
+
+
+def _partition_discovered_blocks(
+    blocks: tuple[InputBlock, ...],
+) -> tuple[InputBlock, ...]:
+    """Partition CFGFast shared suffixes into non-overlapping input blocks.
+
+    CFGFast may represent both a fall-through block and a branch target that
+    starts inside it.  Both ranges are valid views of the same instruction
+    bytes, but ``FunctionInput`` deliberately requires a byte partition.  All
+    recovered starts and ends therefore become cut points.  An atomic interval
+    is retained when at least one source block covers it.  Conflicting decode
+    modes remain an error because byte partitioning cannot resolve them.
+    """
+
+    concrete = tuple(block for block in blocks if not block.boundary)
+    cuts = sorted({
+        value
+        for block in concrete
+        for value in (block.start, block.end)
+    })
+    result = []
+    for start, end in zip(cuts, cuts[1:]):
+        covering = tuple(
+            block for block in concrete
+            if block.start <= start and end <= block.end
+        )
+        if not covering:
+            continue
+        modes = {block.mode for block in covering}
+        if len(modes) != 1:
+            raise InputError(
+                'CFG contains overlapping blocks with conflicting decode modes'
+            )
+        result.append(InputBlock(start, end, modes.pop()))
+    for boundary in (block for block in blocks if block.boundary):
+        if any(block.start == boundary.start for block in result):
+            raise InputError(
+                'CFG boundary conflicts with a recovered block start'
+            )
+        result.append(boundary)
+    return tuple(sorted(result, key=lambda block: block.start))
+
+
+def _normalized_discovered_edges(
+    function: Any,
+    original: tuple[InputBlock, ...],
+    partitioned: tuple[InputBlock, ...],
+) -> tuple[tuple[int, int], ...]:
+    """Map CFGFast edges and shared-block fall-through to the partition."""
+
+    concrete = tuple(block for block in original if not block.boundary)
+    starts = {block.start for block in partitioned}
+    edges = set()
+
+    # A cut introduced inside one original block is not a new branch. Execution
+    # falls through from the prefix into the shared suffix.
+    for block in concrete:
+        fragments = tuple(
+            item for item in partitioned
+            if block.start <= item.start and item.end <= block.end
+        )
+        edges.update(
+            (left.start, right.start)
+            for left, right in zip(fragments, fragments[1:])
+        )
+
+    def physical(node: Any) -> int:
+        address = int(node.addr)
+        return address & ~1 if getattr(node, 'thumb', False) else address
+
+    for source, target, data in function.graph.edges(data=True):
+        if data.get('outside', False):
+            continue
+        source_start = physical(source)
+        target_start = physical(target)
+        source_size = int(getattr(source, 'size', 0) or 0)
+        candidates = tuple(
+            item for item in partitioned
+            if source_start <= item.start
+            and item.end <= source_start + source_size
+        )
+        normalized_source = (
+            candidates[-1].start if candidates else source_start
+        )
+        if normalized_source in starts and target_start in starts:
+            edges.add((normalized_source, target_start))
+    return tuple(sorted(edges))

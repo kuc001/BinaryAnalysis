@@ -1,10 +1,11 @@
 """Proof-carrying address normalization for demand analysis."""
 
 from dataclasses import dataclass
+from math import gcd
 
 from emtaint.core.contracts import Constant, ValueRef
 from emtaint.ir.canonical import Compute, ReadRegister, WriteRegister
-from emtaint.memory import AccessRoot
+from emtaint.memory import AccessRoot, SymbolicOp
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class AddressProof:
     root: AccessRoot
     offset: int | None
     provenance: tuple[str, ...]
+    stride: int | None = None
 
     @property
     def binding(self) -> tuple[AccessRoot, int | None]:
@@ -170,6 +172,115 @@ class DemandAddressNormalizer:
         if not -0x100000 <= signed_delta <= 0x100000:
             return None
         return binding[0], delta
+
+    def indexed_stack_address(self, reference) -> AddressProof | None:
+        """Recover a stack-field residue from an affine indexed address.
+
+        The proof keeps the nonzero stride so callers cannot mistake the
+        normalized residue for one exact concrete address.
+        """
+
+        demand = self.owner
+        engine = demand.port.engine
+        dag = engine.dag
+        memo = {}
+
+        def affine(current):
+            if current in memo:
+                return memo[current]
+            concrete = demand.port.concrete(current)
+            if type(concrete) is int:
+                result = concrete, {}
+            else:
+                node = dag.nodes[current]
+                if node.op in (
+                        SymbolicOp.MEMORY_READ,
+                        SymbolicOp.SYMBOL,
+                        SymbolicOp.UNKNOWN):
+                    result = 0, {current: 1}
+                elif node.op == SymbolicOp.COPY:
+                    result = affine(node.operands[0])
+                elif node.op in (
+                        SymbolicOp.ZERO_EXTEND,
+                        SymbolicOp.SIGN_EXTEND,
+                        SymbolicOp.EXTRACT):
+                    inner = affine(node.operands[0])
+                    result = (
+                        inner
+                        if inner is not None
+                        and inner[0] == 0
+                        and len(inner[1]) == 1
+                        and tuple(inner[1].values()) == (1,)
+                        else None
+                    )
+                elif node.op in (SymbolicOp.ADD, SymbolicOp.SUB):
+                    left, right = (affine(item) for item in node.operands)
+                    if left is None or right is None:
+                        result = None
+                    else:
+                        sign = 1 if node.op == SymbolicOp.ADD else -1
+                        terms = dict(left[1])
+                        for variable, coefficient in right[1].items():
+                            terms[variable] = (
+                                terms.get(variable, 0) + sign * coefficient
+                            )
+                            if terms[variable] == 0:
+                                del terms[variable]
+                        result = left[0] + sign * right[0], terms
+                elif node.op == SymbolicOp.MUL:
+                    left, right = (affine(item) for item in node.operands)
+                    if left is None or right is None:
+                        result = None
+                    elif not left[1]:
+                        result = (
+                            left[0] * right[0],
+                            {
+                                variable: left[0] * coefficient
+                                for variable, coefficient in right[1].items()
+                            },
+                        )
+                    elif not right[1]:
+                        result = (
+                            left[0] * right[0],
+                            {
+                                variable: right[0] * coefficient
+                                for variable, coefficient in left[1].items()
+                            },
+                        )
+                    else:
+                        result = None
+                else:
+                    result = None
+            memo[current] = result
+            return result
+
+        expression = affine(reference)
+        if expression is None or not expression[1]:
+            return None
+        stride = 0
+        for coefficient in expression[1].values():
+            stride = gcd(stride, abs(coefficient))
+        if stride <= 1:
+            return None
+        stack_pointer = demand.function.abi.stack_pointer or "sp"
+        root_binding = dict(demand.initial.addresses).get(
+            "reg:" + stack_pointer
+        )
+        entry = dict(demand.initial.registers).get(stack_pointer)
+        base = demand.port.concrete(entry) if entry is not None else None
+        if root_binding is None or type(base) is not int:
+            return None
+        modulus = 1 << engine.architecture.pointer_bits
+        delta = (expression[0] - base) % modulus
+        signed_delta = (delta + modulus // 2) % modulus - modulus // 2
+        if not -0x100000 <= signed_delta <= 0x100000:
+            return None
+        return AddressProof(
+            root_binding[0],
+            delta,
+            ("indexed-stack-affine:stride=" + str(stride),),
+            stride,
+        )
 
     @staticmethod
     def _append(

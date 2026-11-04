@@ -12,16 +12,23 @@ class AngrVexFrontend:
         self.project = angr.Project(str(self.path), auto_load_libs=False)
         mapped_base = self.project.loader.main_object.mapped_base
         self.image = ELFImage.from_path(self.path, load_base=mapped_base)
+        self._discovered = {}
         if self.project.loader.main_object.mapped_base != self.image.image_base:
             raise InputError('angr and ELF virtual-address mappings differ; relocation must be explicit')
 
     def discover(self, addresses=None):
-        return discover_inputs(self.project, addresses)
+        result = discover_inputs(self.project, addresses)
+        self._discovered.update((item.address, item) for item in result)
+        return result
 
     def lift(self, specifications=None, *, function_addresses=None):
         from ..vex_lowering import VEXLowerer
         if specifications is None:
             specifications = self.discover(function_addresses)
+        cfgfast_edges = all(
+            self._discovered.get(item.address) == item
+            for item in specifications
+        )
         def lift(address, data, mode):
             native_address = address | 1 if mode == 'thumb' else address
             block = self.project.factory.block(native_address, size=len(data), opt_level=0,
@@ -32,4 +39,5 @@ class AngrVexFrontend:
         chunks = collect_chunks(self.image, specifications, self.project.arch, lift)
         return VEXLowerer(self.image.sha256, self.image.image_base, self.project.arch, 'angr-vex').lower(
             specifications, chunks, {'input_kind': 'angr Project', 'image_base': self.image.image_base,
-                'selection': 'explicit bounds' if function_addresses is None else 'CFGFast selection'})
+                'selection': 'CFGFast selection' if cfgfast_edges else 'explicit bounds',
+                'use_declared_cfg_edges': cfgfast_edges})

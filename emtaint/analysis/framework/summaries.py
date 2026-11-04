@@ -6,8 +6,10 @@ This is an analysis-private representation, not a change to CIR wire v1.
 """
 from dataclasses import dataclass
 from itertools import product
+from emtaint.core import MemoryObject, MemoryObjectId
 from emtaint.core.contracts import ValueType
-from emtaint.memory import SymbolicOp
+from emtaint.memory import AccessRoot, AliasKind, SymbolicOp
+from emtaint.memory.abstract_heap import ObjectCardinality, ObjectLifetime
 from emtaint.analysis.dataflow.legacy_demand import DemandLimit
 from emtaint.ir.canonical import CallEffect, UnknownEffect, HavocEffect
 
@@ -89,6 +91,41 @@ class ProcedureRecipe:
                 result=caller.register(block, index, node.value, node.type.bits, depth+1)
             elif node.op=='constant':result=(p.constant(node.value, node.type, call.origin),)
             elif node.op=='symbol':result=(p.symbol(node.value, node.type, call.origin),)
+            elif node.op=='allocation':
+                engine=p.engine
+                object_id=MemoryObjectId.heap(
+                    call.site.point, engine.scope.context
+                )
+                root=engine.roots.get(object_id)
+                if root is None:
+                    existing=tuple(engine.objects)
+                    root=AccessRoot(
+                        object_id, 'heap', 'default', call.origin
+                    )
+                    engine.add_object(
+                        MemoryObject(object_id, 'Modeled allocator return'),
+                        root,
+                        ObjectCardinality.SUMMARY,
+                        ObjectLifetime.ALLOCATED,
+                        ('Fresh live allocation at modeled callsite',),
+                    )
+                    for other in existing:
+                        engine.prove_disjoint(
+                            object_id,
+                            other,
+                            'Fresh allocator return is disjoint from live objects',
+                        )
+                value=p.symbol(
+                    'allocation:'+object_id.token,
+                    node.type,
+                    call.origin,
+                )
+                bindings=getattr(caller, 'allocation_bindings', None)
+                if bindings is None:
+                    bindings={}
+                    caller.allocation_bindings=bindings
+                bindings[value]=(root, 0)
+                result=(value,)
             elif node.op=='unknown':result=(p.unknown(node.type, call.origin, str(node.value)),)
             elif node.op=='read':
                 query=SummaryRead(node.type.bits, node.endian, call.origin)
@@ -127,11 +164,17 @@ class ProcedureRecipe:
         return caller.union(done[x] for x in store.addresses)
 
     def stored_values(self, caller, call, store, depth):
-        done=self.evaluate(caller, call, store.values+store.guards, depth)
+        value_roots=tuple(
+            root for root in store.values
+            if not self._disproved_may_store_unknown(
+                caller, call, store, root, depth
+            )
+        )
+        done=self.evaluate(caller, call, value_roots+store.guards, depth)
         p=caller.port
         guards=caller.union(done[x] for x in store.guards) if store.guards else (p.constant(True, ValueType.boolean(), call.origin),)
         result=[]
-        for value in caller.union(done[x] for x in store.values):
+        for value in caller.union(done[x] for x in value_roots):
             for guard in guards:
                 if not store.must_execute:
                     path=p.symbol('callee-store-path:'+call.origin+':'+store.origin, ValueType.boolean(), call.origin)
@@ -139,6 +182,77 @@ class ProcedureRecipe:
                         (path, guard, p.constant(False, ValueType.boolean(), call.origin)), call.origin)
                 result.append((value, guard))
         return tuple(result)
+
+    def _disproved_may_store_unknown(
+            self, caller, call, store, root, depth):
+        """Reject a callee MayAlias branch disproved after call binding."""
+
+        node_id=root
+        while (
+                self.nodes[node_id].op=='copy'
+                and len(self.nodes[node_id].operands)==1):
+            node_id=self.nodes[node_id].operands[0]
+        node=self.nodes[node_id]
+        if not (
+                node.op=='unknown'
+                and str(node.value).startswith(
+                    'MayAlias/partial/guarded reaching store')):
+            return False
+        position=next((
+            index for index, candidate in enumerate(self.stores)
+            if candidate is store
+        ), None)
+        if position is None or position==0:
+            return False
+        reads=[]
+        seen=set()
+        todo=[candidate for candidate in store.values if candidate!=root]
+        while todo:
+            candidate=todo.pop()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            candidate_node=self.nodes[candidate]
+            if candidate_node.op=='read':
+                reads.append(candidate_node)
+            todo.extend(candidate_node.operands)
+        if not reads:
+            return False
+        engine=caller.port.engine
+        for earlier in self.stores[:position]:
+            earlier_addresses=self.addresses(caller, call, earlier, depth+1)
+            for read in reads:
+                read_addresses=self.evaluate(
+                    caller, call, read.operands, depth+1
+                )[read.operands[0]]
+                for earlier_address in earlier_addresses:
+                    earlier_binding=caller.address_binding(earlier_address)
+                    if earlier_binding is None:
+                        return False
+                    earlier_location=engine.location(
+                        *earlier_binding,
+                        earlier.width_bits,
+                        earlier.endian,
+                        call.origin,
+                    )
+                    for read_address in read_addresses:
+                        read_binding=caller.address_binding(read_address)
+                        if read_binding is None:
+                            return False
+                        read_location=engine.location(
+                            *read_binding,
+                            read.type.bits,
+                            read.endian,
+                            call.origin,
+                        )
+                        alias=caller.port.alias(
+                            caller.initial.memory,
+                            earlier_location,
+                            read_location,
+                        )
+                        if alias.kind!=AliasKind.NO:
+                            return False
+        return True
 
 
 def compile_recipe(demand, returns, *, stores=(), provenance=()):
@@ -176,6 +290,8 @@ def compile_recipe(demand, returns, *, stores=(), provenance=()):
                     node=SummaryNode(n.type, 'register', value=n.value.split(':', 1)[1], origin=n.origin)
                 elif n.value.startswith('legacy-cycle:'):
                     node=SummaryNode(n.type, 'unknown', value='Unresolved callee induction definition', origin=n.origin)
+                elif n.value.startswith('allocation:'):
+                    node=SummaryNode(n.type, 'allocation', origin=n.origin)
                 else:node=SummaryNode(n.type, 'symbol', value=n.value, origin=n.origin)
             else:
                 node=SummaryNode(n.type, n.op.value, tuple(visit(x) for x in n.operands), n.value, n.params, n.origin)

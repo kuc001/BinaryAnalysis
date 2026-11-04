@@ -27,12 +27,16 @@ def main() -> int:
     else:
         for item in report.observations:
             line = "?" if item.source_line is None else str(item.source_line)
-            status = "PASS" if item.matched else "FAIL"
+            if item.expected_status == "xfail":
+                status = "XPASS" if item.matched else "XFAIL"
+            else:
+                status = "PASS" if item.matched else "FAIL"
             print(
                 f"{status} line {line}: {item.left}, {item.right} -> "
                 f"{item.predicted} at {item.site:#x}"
             )
         print(f"matched {report.matched}/{report.total}")
+        print(f"xfail {report.xfailed}, xpass {report.xpassed}")
         for diagnostic in report.diagnostics:
             print("diagnostic: " + diagnostic)
     return 0 if report.matched == report.total else 1
