@@ -10,7 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from emtaint.analysis.aliasing import analyze_alias_benchmark
+from alias_benchmark_analysis import analyze_alias_benchmark
 
 
 def main() -> int:

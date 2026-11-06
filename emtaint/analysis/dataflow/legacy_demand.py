@@ -8,7 +8,7 @@ not prove that writable memory still has its initial contents at runtime.
 from collections import deque
 from dataclasses import dataclass
 from itertools import product
-from emtaint.core import BlockId
+from emtaint.core import BlockId, Completeness
 from emtaint.core.contracts import Constant, ValueType
 from emtaint.ir.canonical import (Compute, ReadRegister, WriteRegister, LoadEffect,
     CallEffect, DirectTarget, BranchEffect, JumpEffect, UnknownEffect, StoreEffect)
@@ -407,7 +407,7 @@ class LegacyDemand:
         # never an unsolvable custom Load embedded in the symbolic expression.
         ref=p.read(self.initial.memory, loc, p.constant(True, ValueType.boolean(), origin), origin).value
         self.loads[ref]=(address, effect.width_bits, effect.endian, origin)
-        if binding:
+        if binding and binding[1] is not None:
             root, offset=binding
             path=e.path(root, (Offset(offset), Deref(e.architecture.pointer_bits, effect.width_bits, effect.endian)), effect.width_bits, effect.endian, origin)
             graph=self.apg.intern(path, p.point(origin))
@@ -581,6 +581,8 @@ class LegacyDemand:
             base=self.address_binding(n.operands[0], seen)
             offset=p.concrete(n.operands[1])
             if base and type(offset) is int:
+                if base[1] is None:
+                    return base[0], None
                 return base[0], (base[1]+(offset if n.op==SymbolicOp.ADD else -offset))%(1<<e.architecture.pointer_bits)
         return None
 
@@ -600,7 +602,32 @@ class LegacyDemand:
         # matching argument/address. Expanding every callee store value before
         # this match creates unrelated dependencies and expression explosion.
         for definition in reversed(summary.stores):
-            for address in summary.addresses(self, call, definition, depth):
+            candidates = tuple(summary.addresses(self, call, definition, depth))
+            # A strong update must cover every possible target of this Store.
+            # Finding one MustAlias target is insufficient when another path
+            # writes elsewhere and leaves the old definition live.
+            candidate_aliases = []
+            for address in candidates:
+                binding = self.address_binding(address)
+                if binding is None:
+                    candidate_aliases.append(None)
+                    continue
+                candidate_aliases.append(p.alias(
+                    self.initial.memory,
+                    e.location(*binding, definition.width_bits,
+                               definition.endian, call.origin),
+                    loc,
+                ))
+            all_correspondences_complete = bool(candidate_aliases) and all(
+                result is not None
+                and result.assessment.status == Completeness.COMPLETE
+                and result.kind in (AliasKind.NO, AliasKind.MUST)
+                for result in candidate_aliases
+            )
+            universal_must = all_correspondences_complete and all(
+                result.kind == AliasKind.MUST for result in candidate_aliases
+            )
+            for address in candidates:
                 binding=self.address_binding(address)
                 store=e.location(*binding, definition.width_bits, definition.endian, call.origin) if binding else e.location(None, None, definition.width_bits, definition.endian, call.origin)
                 alias=p.alias(self.initial.memory, store, loc)
@@ -617,10 +644,21 @@ class LegacyDemand:
                     full=store.width_bits==loc.width_bits and store.endian==loc.endian and store.offset_lower==loc.offset_lower
                     values.append(value if full else read.value)
                     self.rules.add('legacy._update_expr_from_callees/argument-def + _do_store_define')
-                    if alias.kind==AliasKind.MUST and full and p.concrete(guard) is True and definition.must_execute and not summary.unknown_effects:
+                    if (
+                            universal_must and alias.kind == AliasKind.MUST
+                            and full and p.concrete(guard) is True
+                            and definition.must_execute
+                            and (not summary.unknown_effects
+                                 or definition.no_unknown_after)):
                         killed=True
                         break
-                    values.append(p.unknown(ValueType.bv(loc.width_bits), load.origin, 'Callee may-definition retains earlier/unknown memory'))
+                    if not (
+                            all_correspondences_complete
+                            and alias.kind == AliasKind.MUST and full
+                            and p.concrete(guard) is True):
+                        values.append(p.unknown(
+                            ValueType.bv(loc.width_bits), load.origin,
+                            'Callee may-definition retains earlier/unknown memory'))
                 if killed:break
             if killed:break
         return self.union((values,)), killed

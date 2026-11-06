@@ -1,17 +1,17 @@
-"""Pointer-alias benchmark analysis over native CIR and LegacyDemand."""
+"""Demand-driven pointer alias queries over native CIR and shared memory facts."""
 
-from .benchmark import (
-    AliasBenchmarkReport,
-    AliasExpectation,
-    AliasObservation,
-    analyze_alias_benchmark,
-    parse_alias_expectations,
+from .demand import AliasProcedureDemand
+from .program import NativeAliasProgram
+from .query import (
+    AliasQueryResult, classify_alias_operands, classify_alias_values,
+    query_alias,
 )
 
 __all__ = [
-    "AliasBenchmarkReport",
-    "AliasExpectation",
-    "AliasObservation",
-    "analyze_alias_benchmark",
-    "parse_alias_expectations",
+    "AliasProcedureDemand",
+    "NativeAliasProgram",
+    "AliasQueryResult",
+    "classify_alias_operands",
+    "classify_alias_values",
+    "query_alias",
 ]

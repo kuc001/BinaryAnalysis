@@ -597,6 +597,72 @@ frontier、P6 summary 专项均通过，最终完整回归 **493 tests OK，exit
 数组/字段、分支 join、堆对象、函数指针和 C++ 虚调用仍需按目录建立清单与差异回归。
 P7-A/B/C/D 状态不变，仍为 **NOT_PASSED**。
 
+### 2026-11-04：别名查询迁移触及共享 demand 的专项记录
+
+本轮将 source Oracle 与 benchmark 调度留在 `scripts/`，通用 ELF 别名查询
+接入 `cli.py -a`、CIR demand、MemoryQueryPort 和 procedure recipe。
+`LegacyDemand.callee_definitions` 的 CS1 差异：跨过程 Store 有两个完整的
+地址候选时，旧实现遇到第一个 MustAlias 就 strong kill，忽略另一个
+NoAlias 路径。现只在所有候选均完整 MustAlias、写入宽度/guard/
+must-execute 满足原条件时 kill。`cs10.c` 的两个 MAY marker 从误判
+MUST 恢复为 MAY；`fs_tests` 通用 CLI 防回退重跑 25/25、55/55。
+
+共享 demand 受影响专项命令（`PYTHONPATH=tests` 下 P6/P7 demand、预算、
+memory definition cache）**64 tests OK，exit 0**；alias 专项
+**22 tests OK，1 expected failure，exit 0**。完整 unittest discover
+**522 tests OK，1 expected failure，exit 0**。预期失败是 `cs15.c`
+嵌套 Store/Read 的时序摘要，尚未修复。真实固件 P6 iCall/CG、
+httpd/Golden 与完整性检查：**未执行**，不能沿用上轮证据声称本轮
+全部通过。当前差异、输入 SHA、输出目录和剩余风险记录于
+`docs/migration/ALIAS_GENERALIZATION_MATRIX.md`。P7-A/B/C/D 仍为
+**NOT_PASSED**；如需回退，撤销本轮 `legacy_demand.py` 的 CS1 修改。
+
+后续 C++ 虚调用专项：在共享 `ProcedureRecipe` 的 Store 中记录是否可由
+CFG 证明其后无未知写入，`LegacyDemand.callee_definitions` 仅在该证明
+与原 MustAlias/完整覆盖条件同时成立时允许该 Store kill。别名查询
+调用实例中，非循环分配调用点可建立 SINGLETON heap 身份；循环调用点
+仍保留 SUMMARY。`abstract.cpp` 的可达 `B::f/B::g` 四个 marker
+从 MAY 变为期望的 MUST/NO，`A::g` 的两个无 caller-context marker
+仍未通过。变更后完整 unittest discover **523 tests OK，
+1 expected failure，exit 0**。真实固件 P6/Golden 对比仍未执行。
+
+再后续，调用者实参专门化由一层扩展为最多 8 层且带 cycle guard；
+`constructor-1.cpp` 的 `f ← 构造器 ← main` 两个 marker 从 MAY
+变为 MUST。定向 suite 2/2，完整 unittest discover **524 tests OK，
+1 expected failure，exit 0**。`constructor-2.cpp` 的包装函数虚目标
+仍不完整，真实固件 P6/Golden 对比未执行。
+
+CLI 手动查询再支持同程序点寄存器、绝对地址内存指针槽与指针常量，
+分类仍委托同一 `MemoryQueryPort.alias` 路径。两项手动/扫描一致性
+回归通过；最终完整 unittest discover **526 tests OK，
+1 expected failure，exit 0**。四套件固定代码版本结果为
+`four-suite-status-20261104-v3.json` 中可验证 88/166 样本、253/437
+查询，目标未达成。源码变量名/DWARF 映射、跨过程内存版本和 C++
+复杂容器仍待实现；真实固件 P6/Golden 对比未执行。
+
+后续发现 `indexed_stack_address` 的 affine 余数被误当精确 offset：
+`field-ptr-arith-varIdx.c` 中未知索引 `b` 的间接读取曾被完整判为
+NOALIAS，存在虚假确定性。通用 demand 现保留未知 offset，旧版
+`LegacyDemand.read` 和地址加法同时容纳未知 offset；该样本改为
+`INCOMPLETE/ADDRESS_UNRESOLVED`。新固定快照
+`general-alias-cli-fs-20261104-06` 为 24/25 样本、53/55 查询，
+`array_alias_6.c` 的第一个 MAY 查询改为 INCOMPLETE，第二个 MUST
+仍通过。历史 25/25 不再适用于当前代码。两处真实 ELF 的回归已加入
+单元测试；同索引字段 MAY 的健全证明仍缺失，四套件目标未达成。
+本次完整 unittest discover **527 tests OK、1 expected failure、exit 0**；
+`compileall` 与 `git diff --check` 均 exit 0。旧 `-05` 结果仅供历史比较。
+
+随后以同一 `code_sha256=ec4ddc49aa21d088a29d10332dc37878eadb0307637c73ec42d2b682554524fd`
+完成四套件全量重跑，汇总
+`.p7-work/alias-benchmark/four-suite-status-20261104-v4.json`：
+**85/166 可验证样本、249/437 查询匹配**。fs 24/25、54/55；
+cs 19/35、71/116；basic C 32/53、66/99；basic C++ 10/53、58/167。
+六个 `INPUT_INCOHERENT` 保持单列，C++ `unordered_map-1/2` 与
+`unordered_set-1` 三个样本超时，所有套件无进程级失败。
+`fs -06` 在未知 offset 地址加法补丁前运行，不能与另外三套混算；
+同版本 fs 结果来自 `fs -07`。目标仍未达成，真实固件 P6/Golden
+对比尚未执行。
+
 ## 2026-11-04 fs_tests 100% 迭代：基线与 FS0 输入一致性
 
 按 `docs/migration/FS_TESTS_ALIAS_100_PLAN.md` 建立新的、串行、每样本 120 秒 fs_tests

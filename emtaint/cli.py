@@ -385,16 +385,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-f", "--binary_file", required=True)
-    parser.add_argument("-n", "--firmware_name", required=True)
-    parser.add_argument("-v", "--firmware_version", required=True)
+    parser.add_argument("-n", "--firmware_name")
+    parser.add_argument("-v", "--firmware_version")
 
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("-i", "--icall_check", action="store_true")
     modes.add_argument("-t", "--taint_check", action="store_true")
+    modes.add_argument("-a", "--alias-check", action="store_true")
 
-    parser.add_argument("--ida-data", required=True)
-    parser.add_argument("--acquisition", required=True)
+    parser.add_argument("--ida-data")
+    parser.add_argument("--acquisition")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--function", help="Alias query function name or absolute address")
+    parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
+    parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
+    parser.add_argument("--right", help="Binary value locator, e.g. arg:1")
+    parser.add_argument("--discover-alias-calls", action="store_true")
+    parser.add_argument("--observe-call", action="append", default=[], help="Pure binary query function symbol")
     parser.add_argument("--engine", choices=("python",), default="python")
     parser.add_argument(
         "--memory-engine",
@@ -466,6 +473,20 @@ def build_parser() -> argparse.ArgumentParser:
 def validate_arguments(args: argparse.Namespace) -> None:
     """Reject invalid mode, budget, backend, and diagnostic combinations."""
 
+    if args.alias_check:
+        if args.discover_alias_calls:
+            if not args.observe_call or any(
+                    value is not None for value in
+                    (args.function, args.site, args.left, args.right)):
+                raise ValueError("Alias scan requires --observe-call and no manual locator")
+        elif any(value is None for value in
+                 (args.function, args.site, args.left, args.right)):
+            raise ValueError("Manual alias query requires function, site, left and right")
+        if args.memory_engine != "apg" or args.legacy_plan or args.legacy_resume_prepared:
+            raise ValueError("Alias mode uses the shared native memory engine")
+        return
+    if not all((args.firmware_name, args.firmware_version, args.ida_data, args.acquisition)):
+        raise ValueError("-i/-t require firmware identity, IDA data and acquisition")
     if args.function_seconds < 1 or not 1 <= args.taint_rounds <= 15:
         raise ValueError("Positive function deadline and 1..15 taint rounds required")
     if args.icall_check and args.taint_functions:
@@ -514,6 +535,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     validate_arguments(args)
+    if args.alias_check:
+        from emtaint.analysis.aliasing.cli_runner import run_alias_cli
+
+        return run_alias_cli(args)
     root = Path(__file__).resolve().parents[1]
     folder = prepare_output(args, root)
 

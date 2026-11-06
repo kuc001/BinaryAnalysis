@@ -1,0 +1,64 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "BinaryAnalysis: cs15 Alias Benchmark",
+            "type": "debugpy",
+            "request": "launch",
+
+            // Python解释器
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+
+            // 等价于 python -m emtaint
+            "module": "emtaint",
+
+            // Python解释器参数，等价于 -B
+            "pythonArgs": [
+                "-B"
+            ],
+
+            // emtaint模块接收的命令行参数
+            "args": [
+                "-a",
+                "-f",
+                "D:\\works\\dataflow\\EmTaint\\emtaint-migration\\Test-Suite-master\\Binaries\\cs_tests\\cs15.c.elf",
+
+                "--discover-alias-calls",
+
+                "--output",
+                "D:\\works\\dataflow\\EmTaint\\emtaint-migration\\BinaryAnalysis\\.debug\\cs15",
+
+                "--observe-call",
+                "NOALIAS",
+
+                "--observe-call",
+                "MAYALIAS",
+
+                "--observe-call",
+                "MUSTALIAS",
+
+                "--observe-call",
+                "PARTIALALIAS",
+
+                "--observe-call",
+                "EXPECTEDFAIL_MAYALIAS",
+
+                "--observe-call",
+                "EXPECTEDFAIL_NOALIAS"
+            ],
+
+            // 工作目录
+            "cwd": "${workspaceFolder}",
+
+            // 使用集成终端
+            "console": "integratedTerminal",
+
+            // 允许进入第三方库调试
+            "justMyCode": false,
+
+            // 发生异常时保持调试信息
+            "stopOnEntry": false
+        }
+    ]
+}

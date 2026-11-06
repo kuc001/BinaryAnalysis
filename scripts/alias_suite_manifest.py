@@ -9,7 +9,7 @@ from pathlib import Path
 from capstone import CS_ARCH_X86, CS_MODE_32, CS_MODE_64, CS_OP_IMM, Cs
 from elftools.elf.elffile import ELFFile
 
-from emtaint.analysis.aliasing.benchmark import MARKERS, parse_alias_expectations
+from scripts.alias_benchmark_analysis import MARKERS, parse_alias_expectations
 
 
 SUITES = (
