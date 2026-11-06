@@ -6,8 +6,9 @@ import unittest
 
 from scripts.httpd_baseline_check import check_baseline
 
-from emtaint.analysis.aliasing import (
+from scripts.alias_benchmark_analysis import (
     analyze_alias_benchmark,
+    matches_expectation,
     parse_alias_expectations,
 )
 from scripts.alias_suite_manifest import build_alias_suite_manifest
@@ -113,6 +114,12 @@ FUNCTION_POINTER_TWO_BINARY = (
 
 @unittest.skipUnless(SOURCE.is_file(), "Test-Suite-master source is unavailable")
 class AliasExpectationTests(unittest.TestCase):
+    def test_complete_must_refines_may_assertion_only(self):
+        self.assertTrue(matches_expectation("MAYALIAS", "MUSTALIAS", True))
+        self.assertFalse(matches_expectation("MAYALIAS", "MUSTALIAS", False))
+        self.assertFalse(matches_expectation("MUSTALIAS", "MAYALIAS", True))
+        self.assertFalse(matches_expectation("NOALIAS", "MUSTALIAS", True))
+
     def test_active_markers_preserve_source_lines_and_ignore_absent_may(self):
         expectations = parse_alias_expectations(SOURCE)
         self.assertEqual(
@@ -224,7 +231,7 @@ class StrongUpdateAliasTests(unittest.TestCase):
         self.assertEqual(self.report.diagnostics, ())
 
     def test_incomplete_observation_cannot_match_mayalias(self):
-        from emtaint.analysis.aliasing import AliasObservation
+        from scripts.alias_benchmark_analysis import AliasObservation
 
         observation = AliasObservation(
             "main",
@@ -331,14 +338,15 @@ class UninitializedStackPointerTests(unittest.TestCase):
     "Test-Suite-master array_alias_6 fixture is unavailable",
 )
 class IndexedStackAddressTests(unittest.TestCase):
-    def test_unknown_array_indexes_preserve_field_stride_and_empty_alternative(self):
+    def test_unknown_array_indexes_do_not_become_exact_stack_offsets(self):
         report = analyze_alias_benchmark(ARRAY_SIX_SOURCE, ARRAY_SIX_BINARY)
         self.assertEqual(
             [item.predicted for item in report.observations],
-            ["MAYALIAS", "MUSTALIAS"],
+            ["INCOMPLETE", "MUSTALIAS"],
         )
-        self.assertTrue(all(item.complete for item in report.observations))
-        self.assertTrue(all(item.matched for item in report.observations))
+        self.assertFalse(report.observations[0].complete)
+        self.assertIn("ADDRESS_UNRESOLVED", report.observations[0].reason_codes)
+        self.assertTrue(report.observations[1].matched)
 
 
 @unittest.skipUnless(

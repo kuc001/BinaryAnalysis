@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,10 @@ import time
 from typing import Iterable
 
 import psutil
+
+from scripts.alias_benchmark_analysis import (
+    MARKERS, matches_expectation, parse_alias_expectations,
+)
 
 
 def read_manifest(path: Path) -> dict[str, object]:
@@ -124,8 +129,10 @@ def evaluate_sample(
         for name in ("EXPECTEDFAIL_MAYALIAS", "EXPECTEDFAIL_NOALIAS")
     )
     if report is None:
+        incoherent = not bool(sample.get("binary_marker_inventory_complete", True))
         return {
             "passed": False,
+            "input_incoherent": incoherent,
             "smoke_only": bool(sample["smoke_only"]),
             "required": required,
             "matched": 0,
@@ -136,7 +143,8 @@ def evaluate_sample(
             "missing_markers": required + expected_xfail,
             "extra_markers": 0,
             "reason_codes": [
-                "TIMEOUT" if execution["timed_out"] else "PROCESS_FAILED"
+                "TIMEOUT" if execution["timed_out"] else "PROCESS_FAILED",
+                *(["INPUT_INCOHERENT"] if incoherent else []),
             ],
         }
     observations = report.get("observations", [])
@@ -178,8 +186,13 @@ def evaluate_sample(
         and not extra
         and (smoke_passed or required_passed)
     )
+    input_incoherent = not bool(sample.get("binary_marker_inventory_complete", True))
+    if input_incoherent:
+        reasons["INPUT_INCOHERENT"] += 1
+        passed = False
     return {
         "passed": passed,
+        "input_incoherent": input_incoherent,
         "smoke_only": smoke_only,
         "required": required,
         "matched": int(report.get("matched", 0)),
@@ -190,6 +203,56 @@ def evaluate_sample(
         "missing_markers": missing,
         "extra_markers": extra,
         "reason_codes": dict(sorted(reasons.items())),
+    }
+
+
+def _attach_oracle(report: dict[str, object], source: Path) -> dict[str, object]:
+    """Compare binary-only CLI observations with source labels after analysis."""
+
+    expected = parse_alias_expectations(source)
+    by_marker = {
+        marker: [item for item in expected if item.marker == marker]
+        for marker in MARKERS
+    }
+    indexes = {marker: 0 for marker in MARKERS}
+    observations = []
+    for original in report.get("observations", ()):
+        item = dict(original)
+        marker = item["observer"]
+        position = indexes[marker]
+        candidates = by_marker[marker]
+        oracle = candidates[position] if position < len(candidates) else None
+        indexes[marker] += 1
+        item["expected"] = oracle.kind if oracle else None
+        item["expected_status"] = oracle.status if oracle else "required"
+        item["exact_matched"] = (
+            oracle is not None and item["complete"]
+            and item["predicted"] == oracle.kind
+        )
+        item["matched"] = (
+            oracle is not None and matches_expectation(
+                oracle.kind, item["predicted"], item["complete"]
+            )
+        )
+        observations.append(item)
+    return {
+        **report,
+        "observations": observations,
+        "matched": sum(
+            item["matched"] and item["expected_status"] == "required"
+            for item in observations
+        ),
+        "strict_matched": sum(
+            item["exact_matched"] and item["expected_status"] == "required"
+            for item in observations
+        ),
+        "refined_may": sum(
+            item["expected"] == "MAYALIAS"
+            and item["predicted"] == "MUSTALIAS"
+            and item["complete"]
+            and item["expected_status"] == "required"
+            for item in observations
+        ),
     }
 
 
@@ -206,7 +269,26 @@ def _load_completed(path: Path) -> dict[str, object]:
         return json.load(stream)
 
 
-def _environment() -> dict[str, object]:
+def _code_sha256(binary_analysis: Path) -> str:
+    """Fingerprint the Python analysis and the test adapter for run identity."""
+
+    paths = sorted((binary_analysis / "emtaint").rglob("*.py"))
+    paths.extend(
+        binary_analysis / "scripts" / name
+        for name in (
+            "alias_benchmark_analysis.py",
+            "alias_suite_manifest.py",
+            "alias_suite_runner.py",
+        )
+    )
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.relative_to(binary_analysis).as_posix().encode())
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def _environment(binary_analysis: Path) -> dict[str, object]:
     modules = {}
     for name in ("angr", "archinfo", "claripy", "cle", "psutil", "pyvex"):
         module = __import__(name)
@@ -216,6 +298,7 @@ def _environment() -> dict[str, object]:
         "executable": sys.executable,
         "platform": platform.platform(),
         "modules": modules,
+        "code_sha256": _code_sha256(binary_analysis),
     }
 
 
@@ -251,9 +334,19 @@ def run_alias_suite(
     _prepare_native_cache(binary_analysis)
     if output.exists() and not resume:
         raise FileExistsError("Output directory exists; use --resume: " + str(output))
+    environment = _environment(binary_analysis)
+    if resume and output.exists():
+        prior_environment = output / "environment.json"
+        if prior_environment.is_file():
+            recorded = _load_completed(prior_environment)
+            if recorded.get("code_sha256") != environment["code_sha256"]:
+                raise ValueError("Cannot resume an unverified or changed code snapshot")
+        prior_manifest = output / "manifest.json"
+        if prior_manifest.is_file() and _load_completed(prior_manifest) != manifest:
+            raise ValueError("Cannot resume with a changed alias-suite manifest")
     output.mkdir(parents=True, exist_ok=True)
     _write_json(output / "manifest.json", manifest)
-    _write_json(output / "environment.json", _environment())
+    _write_json(output / "environment.json", environment)
     commands = []
     results = []
     for sample in _selected_samples(manifest, suites or set(), names or set()):
@@ -268,14 +361,22 @@ def run_alias_suite(
         command = [
             sys.executable,
             "-B",
-            str(binary_analysis / "scripts" / "alias_benchmark.py"),
-            "--source",
-            str(source),
-            "--binary",
+            "-m",
+            "emtaint",
+            "-a",
+            "-f",
             str(binary),
-            "--json",
+            "--discover-alias-calls",
+            "--output",
+            str(output / "queries" / sample["suite"] / sample["sample"]),
         ]
+        for marker in MARKERS:
+            command.extend(("--observe-call", marker))
         execution = _execute(command, binary_analysis, timeout_seconds)
+        if _code_sha256(binary_analysis) != environment["code_sha256"]:
+            raise RuntimeError(
+                "Analysis code changed during sample " + sample["sample"]
+            )
         commands.append({
             "suite": sample["suite"],
             "sample": sample["sample"],
@@ -285,7 +386,7 @@ def run_alias_suite(
         parse_error = None
         if execution["stdout"].strip():
             try:
-                report = json.loads(execution["stdout"])
+                report = _attach_oracle(json.loads(execution["stdout"]), source)
             except json.JSONDecodeError as error:
                 parse_error = str(error)
         outcome = evaluate_sample(sample, execution, report)
@@ -328,13 +429,41 @@ def run_alias_suite(
             reason_counts.update(reasons)
     _write_json(output / "failures.json", failures)
     _write_json(output / "unknown-reasons.json", dict(sorted(reason_counts.items())))
+    verifiable = [
+        result for result in results
+        if not result["outcome"].get("input_incoherent")
+    ]
     aggregate = {
         "schema": "emtaint-alias-suite-run-v1",
         "selected_samples": len(results),
         "passed_samples": sum(result["outcome"]["passed"] for result in results),
         "failed_samples": len(failures),
+        "input_incoherent_samples": sum(
+            bool(result["outcome"].get("input_incoherent")) for result in results
+        ),
+        "verifiable_samples": len(verifiable),
+        "passed_verifiable_samples": sum(
+            result["outcome"]["passed"] for result in verifiable
+        ),
+        "verifiable_required": sum(
+            result["outcome"]["required"] for result in verifiable
+        ),
+        "verifiable_matched": sum(
+            result["outcome"]["matched"] for result in verifiable
+        ),
+        "verifiable_passed": all(
+            result["outcome"]["passed"] for result in verifiable
+        ),
         "required": sum(result["outcome"]["required"] for result in results),
         "matched": sum(result["outcome"]["matched"] for result in results),
+        "strict_matched": sum(
+            int(result["report"].get("strict_matched", 0))
+            for result in results if result["report"] is not None
+        ),
+        "refined_may": sum(
+            int(result["report"].get("refined_may", 0))
+            for result in results if result["report"] is not None
+        ),
         "complete_required": sum(
             result["outcome"]["complete_required"] for result in results
         ),

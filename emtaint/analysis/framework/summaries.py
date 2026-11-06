@@ -41,6 +41,7 @@ class SummaryStore:
     origin:str
     guards:tuple=()
     must_execute:bool=False
+    no_unknown_after:bool=False
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,11 @@ class ProcedureRecipe:
             elif node.op=='symbol':result=(p.symbol(node.value, node.type, call.origin),)
             elif node.op=='allocation':
                 engine=p.engine
+                cardinality = (
+                    caller.allocation_cardinality(call)
+                    if hasattr(caller, 'allocation_cardinality')
+                    else ObjectCardinality.SUMMARY
+                )
                 object_id=MemoryObjectId.heap(
                     call.site.point, engine.scope.context
                 )
@@ -105,9 +111,14 @@ class ProcedureRecipe:
                     engine.add_object(
                         MemoryObject(object_id, 'Modeled allocator return'),
                         root,
-                        ObjectCardinality.SUMMARY,
+                        cardinality,
                         ObjectLifetime.ALLOCATED,
-                        ('Fresh live allocation at modeled callsite',),
+                        (
+                            'Fresh live allocation at modeled callsite',
+                            'At most once per analysis invocation'
+                            if cardinality == ObjectCardinality.SINGLETON
+                            else 'Callsite may allocate multiple dynamic objects',
+                        ),
                     )
                     for other in existing:
                         engine.prove_disjoint(
