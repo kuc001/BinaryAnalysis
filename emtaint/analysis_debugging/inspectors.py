@@ -286,3 +286,12 @@ class AnalysisDebugInspector:
             "Observed rules: " + (", ".join(rules) if rules else "none recorded")
         )
         return "\n".join(lines)
+
+    def ida_index(self, image_base: int):
+        """Create an explicit IDA address view over the attached provenance."""
+
+        if self.provenance is None:
+            raise ValueError("IDA mapping requires an attached provenance index")
+        from .ida_export import IdaAddressIndex
+
+        return IdaAddressIndex(self.provenance, image_base)

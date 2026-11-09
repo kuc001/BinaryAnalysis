@@ -8,6 +8,12 @@ from .provenance import (
 )
 from .inspectors import AnalysisDebugInspector
 from .trace import AnalysisTraceEvent, AnalysisTraceRecorder
+from .ida_export import (
+    DEBUG_SIDECAR_VERSION,
+    IdaAddressIndex,
+    IdaAddressRecord,
+    ida_effective_address,
+)
 
 __all__ = [
     "ProvenanceIndex",
@@ -17,4 +23,8 @@ __all__ = [
     "AnalysisDebugInspector",
     "AnalysisTraceEvent",
     "AnalysisTraceRecorder",
+    "DEBUG_SIDECAR_VERSION",
+    "IdaAddressIndex",
+    "IdaAddressRecord",
+    "ida_effective_address",
 ]
