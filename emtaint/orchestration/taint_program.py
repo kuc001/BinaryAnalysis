@@ -149,16 +149,27 @@ def run_taint(
             port.validate_current=validate_deadline
             names={c.instruction-store.base:c.target for c in by_address[address].calls if type(c.target) is str}
             demand=None
+            trace_recorder=None
             try:
                 demand=LegacyTaintDemand(module.functions[0], port, cfg, legacy_entry(CIRAccurateDataFlow(port)),
                     names=names, summaries=summaries, targets=site_targets, image_base=store.base, tables=MappingProxyType(dict(table_bank)),
                     function_deadline=tick+args.function_seconds)
+                if getattr(args, 'debug_trace', False):
+                    from emtaint.analysis_debugging import AnalysisTraceRecorder
+                    trace_recorder = AnalysisTraceRecorder(
+                        enabled=True, max_events=args.debug_trace_max_events
+                    )
+                    demand.demand.enable_debug_trace(trace_recorder)
                 summary=demand.analyze()
             except (BudgetExceeded, DemandLimit, RecursionError) as error:
                 log_event(LOGGER, 'taint.function.limited', level=logging.WARNING, error_type=type(error).__name__,
                     error_message=str(error),
                     **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds)
                 summary=demand.partial_summary(error) if demand else TaintProcedureSummary(address, pending=(('constructor', type(error).__name__+': '+str(error)),))
+            trace_path = None
+            if trace_recorder is not None:
+                trace_path = receipt.with_name(receipt.name + '-trace.jsonl')
+                trace_recorder.export_jsonl(trace_path)
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
                 for callee in demand.call_functions(call)}) if demand else []
@@ -175,6 +186,11 @@ def run_taint(
             if not semantic_equal(summaries.get(address), summary):changed.add(fid)
             summaries[address]=summary
             last[address]={'summary':summary, 'metrics':port.metrics(), 'steps':getattr(demand, 'steps', 0),
+                           'debug_trace':None if trace_recorder is None else {
+                               'path':str(trace_path),
+                               'events':len(trace_recorder.events()),
+                               'dropped':trace_recorder.dropped,
+                           },
                            'source_facts':[asdict(f) for f in engine.facts], 'transformation':store.transformations.get(address),
                            'unknown_frontiers':sorted(demand.unknown_evidence) if demand else [],
                            'cir_sha256':digest, 'raw_summary':str(raw_path),

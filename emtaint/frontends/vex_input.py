@@ -85,7 +85,7 @@ def collect_chunks(
                     break
                 if vex.size <= 0 or vex.size > len(data):
                     chunks.append(NativeChunk(function, block.start, block.end, cursor, block.end,
-                        block.mode, None, digest, 'VEX made no bounded decoding progress'))
+                        block.mode, None, digest, 'VEX made no bounded decoding progress', data=data))
                     break
                 end = cursor + vex.size
                 chunks.append(NativeChunk(
@@ -96,7 +96,7 @@ def collect_chunks(
                 if vex.jumpkind == 'Ijk_NoDecode' and cursor < block.end:
                     chunks.append(NativeChunk(function, block.start, block.end, cursor, block.end,
                         block.mode, None, hashlib.sha256(image.read(cursor, block.end - cursor)).hexdigest(),
-                        'Undecoded tail after Ijk_NoDecode'))
+                        'Undecoded tail after Ijk_NoDecode', data=image.read(cursor, block.end - cursor)))
                     break
     return chunks
 

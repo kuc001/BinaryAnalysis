@@ -42,11 +42,11 @@ class AnalysisDebugInspector:
         """Create a lazy live inspector around an existing demand object."""
 
         engine = demand.port.engine
-        provenance = ProvenanceIndex.for_function_with_architecture(
-            demand.function,
-            engine.origins,
-            engine.architecture,
-        )
+        provenance = getattr(engine, 'debug_provenance', None)
+        if provenance is None:
+            provenance = ProvenanceIndex.for_function_with_architecture(
+                demand.function, engine.origins, engine.architecture
+            )
         return cls(provenance, engine=engine, demand=demand)
 
     def explain_value(self, value: ValueRef | str) -> str:
@@ -74,10 +74,11 @@ class AnalysisDebugInspector:
             for definition in definitions:
                 inputs = ", ".join(definition.input_value_ids) or "none"
                 lines.append(
-                    f"  - {definition.effect_kind} block=0x{definition.block_rva:x} "
-                    f"effect={definition.effect_index} origin={definition.origin_id} "
-                    f"inputs=[{inputs}]"
+                    f"  - {definition.effect_kind}: {definition.operation}; block RVA=0x{definition.block_rva:x}; "
+                    f"effect={definition.effect_index}; origin={definition.origin_id}; inputs=[{inputs}]"
                 )
+                if definition.operand_descriptions:
+                    lines.append("    Operands: " + "; ".join(definition.operand_descriptions))
         else:
             lines.append(
                 "CIR definitions: unavailable (declared synthetic/interface value)"
@@ -112,8 +113,15 @@ class AnalysisDebugInspector:
                 lines.append("    " + translator.format_address(binary, point.instruction_rva, "Instruction"))
             else:
                 lines.append("    IDA VA: unavailable (configure --debug-ida-image-base)")
-            lines.append("    Machine assembly: not recorded by current acquisition format.")
-            lines.append("    VEX statement text: not recorded; statement index/opcode only.")
+            instruction_hint = item.instruction or self.provenance.instruction_record(item.origin.id)
+            if instruction_hint is None:
+                lines.append("    Instruction detail: NOT_RECORDED (legacy acquisition or missing IMark).")
+            else:
+                lines.append("    VEX statement: " + (instruction_hint.vex_statement_text or "NOT_RECORDED"))
+                lines.append("    Machine bytes: " + (instruction_hint.instruction_bytes_hex or "NOT_RECORDED"))
+                lines.append("    Assembly: " + (instruction_hint.assembly_text or "NOT_DECODED"))
+                if instruction_hint.mode is not None:
+                    lines.append("    Decode mode: " + instruction_hint.mode)
             if item.vex_statement_kind is not None:
                 lines.append(f"    VEX statement: {item.vex_statement_kind}")
             if item.vex_temporary is not None:
