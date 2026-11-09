@@ -485,6 +485,8 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
     if getattr(args, "debug_ida_export", False) and getattr(args, "debug_ida_image_base", None) is None:
         raise ValueError("--debug-ida-export requires --debug-ida-image-base")
+    if (getattr(args, "debug_ida_export", False) or getattr(args, "debug_trace", False)) and not args.taint_check:
+        raise ValueError("--debug-ida-export and --debug-trace are taint-analysis options")
     if getattr(args, "debug_trace_max_events", 1) < 1:
         raise ValueError("--debug-trace-max-events must be positive")
     for option_name in ("debug_ida_image_base", "debug_runtime_base"):
