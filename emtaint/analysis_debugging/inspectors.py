@@ -345,8 +345,15 @@ class AnalysisDebugInspector:
                         f"0x{instruction:x}" if instruction is not None else "synthetic"
                     )
                     lines.append(
-                        f"    Created at: {rendered} ({origin.source_opcode})"
+                        f"    Created at: instruction RVA {rendered} ({origin.source_opcode})"
                     )
+                    translator = getattr(self.engine, "debug_address_translator", None)
+                    if translator is not None and instruction is not None:
+                        lines.append("      " + translator.format_address(
+                            self.provenance.module.binary_sha256, instruction, "Instruction"
+                        ))
+                    elif instruction is not None:
+                        lines.append("      IDA VA unavailable (IDA_IMAGE_BASE_NOT_CONFIGURED)")
                 else:
                     lines.append(
                         f"    Created at: unresolved origin {node.origin}"
@@ -434,7 +441,17 @@ class AnalysisDebugInspector:
             definition = record.definition
             indent = "  " * (depth + 1)
             lines.append(f"{indent}{type(definition).__name__}: {current.key}")
-            lines.append(f"{indent}Origin: {getattr(definition, 'origin', 'initial')}")
+            origin_id = getattr(definition, "origin", None)
+            lines.append(f"{indent}Origin: {origin_id or 'initial/synthetic'}")
+            if origin_id is not None and self.provenance is not None:
+                origin_record = self.provenance.origin_record(origin_id)
+                translator = getattr(self.engine, "debug_address_translator", None)
+                if origin_record is not None and translator is not None:
+                    lines.append(indent + translator.format_address(
+                        self.provenance.module.binary_sha256,
+                        origin_record.point.instruction_rva,
+                        "Instruction",
+                    ))
             if hasattr(definition, "location"):
                 location = self.engine.locations.get(definition.location)
                 if location is not None:
@@ -477,6 +494,13 @@ class AnalysisDebugInspector:
             return "Memory read location descriptor is missing."
         lines = [f"MEMORY READ: {expression.key}", f"State: {node.state.key}",
                  f"Location: {location.id.key}", f"Object/range: {location.object_id}; {location.byte_interval}"]
+        translator = getattr(self.engine, "debug_address_translator", None)
+        origin_record = self.provenance.origin_record(node.origin) if self.provenance is not None else None
+        if origin_record is not None:
+            lines.append(f"Load origin: {node.origin}; instruction RVA={origin_record.point.instruction_rva!r}")
+            if translator is not None:
+                lines.append(translator.format_address(self.provenance.module.binary_sha256,
+                    origin_record.point.instruction_rva, "Load instruction"))
         reads = [item for item in self.engine.reads if item.result == expression]
         if reads:
             lines.append("Read guards: " + ", ".join(str(item.guard) for item in reads))
@@ -505,6 +529,12 @@ class AnalysisDebugInspector:
             lines.append("  No candidate store found in the recorded ancestry.")
         for state, definition, store, overlap, uncertain in candidates:
             lines.append(f"  state={state.key}; object={store.object_id}; range={store.byte_interval}; guard={definition.guard}; update={definition.update.value}; recorded-alias={definition.alias.kind.value}; overlap={overlap}; uncertain={uncertain}")
+            store_origin = self.provenance.origin_record(definition.origin) if self.provenance is not None else None
+            if store_origin is not None:
+                lines.append(f"    Store origin RVA: {store_origin.point.instruction_rva!r}")
+                if translator is not None:
+                    lines.append("    " + translator.format_address(self.provenance.module.binary_sha256,
+                        store_origin.point.instruction_rva, "Store instruction"))
             lines.append("  evidence=" + "; ".join(definition.alias.evidence or definition.alias.assessment.precision_loss))
         lines.append("Candidate ancestry is not proof that a store reaches this read; path feasibility and alias precision remain separate obligations.")
         return "\n".join(lines)
@@ -514,6 +544,13 @@ class AnalysisDebugInspector:
         lines = [f"ALIAS QUERY: state={getattr(state, 'key', state)}",
                  f"Left: {left.id.key}; object={left.object_id}; range={left.byte_interval}",
                  f"Right: {right.id.key}; object={right.object_id}; range={right.byte_interval}"]
+        translator = getattr(self.engine, "debug_address_translator", None)
+        if translator is not None and self.provenance is not None:
+            for label, location in (("Left origin", left), ("Right origin", right)):
+                origin = self.provenance.origin_record(getattr(location, "origin", ""))
+                if origin is not None:
+                    lines.append(translator.format_address(self.provenance.module.binary_sha256,
+                        origin.point.instruction_rva, label))
         if result is None:
             cache = getattr(getattr(self.demand, "port", None), "_alias_cache", {})
             for key, cached in cache.items():
@@ -558,8 +595,18 @@ class AnalysisDebugInspector:
             return "Taint evidence unavailable: no LegacyTaintDemand is attached."
         lines = ["TAINT ANALYSIS EVIDENCE", f"Function RVA: 0x{owner.function.function_id.rva:x}",
                  f"Completed sinks: {len(owner.completed_sinks)}"]
+        translator = getattr(self.engine, "debug_address_translator", None)
+        binary = self.provenance.module.binary_sha256 if self.provenance is not None else None
+        if translator is not None and binary is not None:
+            lines.append(translator.format_address(binary, owner.function.function_id.rva, "Function"))
         for sink in owner.completed_sinks[:max_items]:
             lines.append("  Sink: " + repr(sink))
+            if translator is not None and binary is not None:
+                sink_site = getattr(sink, "site", None)
+                if type(sink_site) is int:
+                    sink_rva = sink_site - getattr(owner, "base", 0)
+                    if sink_rva >= 0:
+                        lines.append("    " + translator.format_address(binary, sink_rva, "Sink instruction"))
         lines.append(f"Source bindings: {len(owner.source_bindings)}")
         for key, binding in list(owner.source_bindings.items())[:max_items]:
             lines.append(f"  Source binding {key}: {binding!r}")
@@ -692,6 +739,17 @@ class AnalysisDebugInspector:
         }
         (destination / "session.json").write_text(
             json.dumps(session, indent=2, sort_keys=True, default=str) + "\\n", encoding="utf8"
+        )
+        (destination / "README.md").write_text(
+            "# BinaryAnalysis Debug Report\\n\\n"
+            "- `session.json`: binary identity, address configuration and completeness flags\\n"
+            "- `provenance.json`: OriginMap and captured VEX/instruction records\\n"
+            "- `analysis-events.jsonl`: recorded causal rule events (empty if tracing was disabled)\\n"
+            "- `values/`: bounded CIR value explanations\\n"
+            "- `expressions/`: bounded SSE expression explanations\\n"
+            "- `memory/`: recorded memory-version ancestry\\n"
+            "- `reports/`: demand, taint and address mapping summaries\\n",
+            encoding="utf8",
         )
         if self.provenance is not None:
             provenance_rows = []
