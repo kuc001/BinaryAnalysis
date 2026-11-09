@@ -6,10 +6,12 @@ from .provenance import (
     ValueDefinition,
     ValueOrigin,
 )
+from .inspectors import AnalysisDebugInspector
 
 __all__ = [
     "ProvenanceIndex",
     "SourceHint",
     "ValueDefinition",
     "ValueOrigin",
+    "AnalysisDebugInspector",
 ]

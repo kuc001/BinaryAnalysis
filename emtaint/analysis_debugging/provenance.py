@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
-from emtaint.core.contracts import Origin, ValueRef
+from emtaint.core.contracts import Assessment, Origin, ValueRef
 from emtaint.ir.canonical import (
+    CIRFunction,
     CIRModule,
     CallEffect,
     Compute,
@@ -193,6 +194,39 @@ class ProvenanceIndex:
         self._values_by_instruction = MappingProxyType(
             {key: tuple(items) for key, items in values_by_instruction.items()}
         )
+
+    @classmethod
+    def for_function_with_architecture(
+        cls,
+        function: CIRFunction,
+        origins: Iterable[Origin],
+        architecture: object,
+    ) -> "ProvenanceIndex":
+        """Build a sidecar module view without changing the CIR wire schema."""
+
+        owned_origins = tuple(
+            origin
+            for origin in origins
+            if origin.point.function == function.function_id
+        )
+        if not owned_origins:
+            raise ValueError("Function has no declared origins")
+        module = CIRModule(
+            owned_origins[0].producer,
+            architecture,
+            architecture.endian,
+            function.function_id.binary.sha256,
+            (function,),
+            owned_origins,
+            ("typed-effects",),
+            Assessment(),
+        )
+        return cls(module)
+
+    def origin_record(self, origin_id: str) -> Origin | None:
+        """Return one declared OriginMap record without performing a query."""
+
+        return self._origins.get(origin_id)
 
     def value(self, value: ValueRef | str) -> ValueRef | None:
         """Return a declared value, or ``None`` for an unknown identifier."""

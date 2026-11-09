@@ -46,6 +46,15 @@ class FrontendResult:
     metadata: dict
     provenance: ProvenanceIndex | None = None
 
+    @property
+    def debug(self):
+        """Return a read-only CIR inspector for this frontend result."""
+
+        from emtaint.analysis_debugging import AnalysisDebugInspector
+
+        provenance = self.provenance or ProvenanceIndex(self.module)
+        return AnalysisDebugInspector(provenance)
+
     def cfgs(self):
         from emtaint.graph import ControlFlowGraph, FlowEdge, FlowKind
         origins = {o.id: o for o in self.module.origin_map}

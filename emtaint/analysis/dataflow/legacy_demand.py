@@ -67,6 +67,18 @@ class LegacyDemand:
             for b in function.blocks for e in b.effects if isinstance(e, (CallEffect, UnknownEffect)))
         if self.stack_proven:self.stack_proven=self.prove_stack_range(cfg)
 
+    @property
+    def debug(self):
+        """Return a lazily built read-only inspector for this live demand."""
+
+        inspector = getattr(self, '_debug_inspector', None)
+        if inspector is None:
+            from emtaint.analysis_debugging import AnalysisDebugInspector
+
+            inspector = AnalysisDebugInspector.from_demand(self)
+            self._debug_inspector = inspector
+        return inspector
+
     def prove_stack_range(self, cfg):
         """A frame label alone cannot prove disjointness after SP arithmetic.
 
