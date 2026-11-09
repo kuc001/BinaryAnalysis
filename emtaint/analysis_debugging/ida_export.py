@@ -131,6 +131,8 @@ class IdaAddressIndex:
         """Look up all statements and CIR values at a BinaryId/RVA pair."""
 
         binary_sha256 = _binary_sha256(binary)
+        if type(instruction_rva) is not int or instruction_rva < 0:
+            raise ValueError('Instruction RVA must be a non-negative integer')
         return tuple(
             record
             for record in self._records

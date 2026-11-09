@@ -343,7 +343,7 @@ class AnalysisDebugInspector:
                 f"#{event.sequence} {event.event_id} {event.rule}: "
                 f"{list(event.input_ids)} -> {list(event.output_ids)}; origin={event.origin_id}; reason={event.reason}"
             )
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def inspect_value(self, value: ValueRef | str):
         """Return a value report directly for a VS Code Watch expression."""

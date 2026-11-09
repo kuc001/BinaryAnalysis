@@ -426,6 +426,8 @@ class LegacyTaintDemand:
         self._binding=DemandBinding(self)
         self._memory=DemandMemory(self)
         self._procedures=DemandProcedures(self)
+        # Read-only debugging back-reference; never participates in analysis transfers.
+        self.demand.taint_owner = self
 
     def tick(self):
         self.port.validate_current()

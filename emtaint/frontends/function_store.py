@@ -63,6 +63,8 @@ class FunctionStore:
         def records(filename, record_type, expected_hash):
             path = folder / filename
             if not path.is_file():
+                if expected_hash is not None:
+                    raise FileNotFoundError('Required debug sidecar is missing: ' + str(path))
                 return ()
             raw = path.read_bytes()
             if expected_hash is not None and hashlib.sha256(raw).hexdigest() != expected_hash:
@@ -71,6 +73,12 @@ class FunctionStore:
 
         sources = records('debug-provenance.jsonl', SourceHint, row.get('debug_provenance_sha256'))
         instructions = records('debug-instructions.jsonl', InstructionHint, row.get('debug_instruction_sha256'))
+        expected_sources = row.get('debug_provenance_records')
+        expected_instructions = row.get('debug_instruction_records')
+        if expected_sources is not None and len(sources) != expected_sources:
+            raise ValueError('Debug source-hint record count mismatch')
+        if expected_instructions is not None and len(instructions) != expected_instructions:
+            raise ValueError('Debug instruction-hint record count mismatch')
         return ProvenanceIndex(module, sources, instructions)
 
     def program_index(self, specifications):

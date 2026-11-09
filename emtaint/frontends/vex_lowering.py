@@ -500,9 +500,10 @@ class VEXLowerer(ARMScalarLowering):
             return None
         return chunk.data[offset:offset + length]
 
-    def _disassemble_instruction(self, address: int, raw: bytes) -> str | None:
+    def _disassemble_instruction(self, address: int, raw: bytes, mode: str) -> str | None:
         """Disassemble one exact instruction using the configured Capstone decoder."""
-        decoder = getattr(self.native_arch, 'capstone', None)
+        decoder_name = 'capstone_thumb' if mode == 'thumb' else 'capstone'
+        decoder = getattr(self.native_arch, decoder_name, None)
         if decoder is None:
             return None
         if callable(decoder) and not hasattr(decoder, 'disasm'):
@@ -544,7 +545,7 @@ class VEXLowerer(ARMScalarLowering):
                         self.current_instruction_bytes = self._instruction_bytes(chunk, statement)
                         self.current_assembly_text = (
                             None if self.current_instruction_bytes is None
-                            else self._disassemble_instruction(statement.addr, self.current_instruction_bytes)
+                            else self._disassemble_instruction(statement.addr, self.current_instruction_bytes, chunk.mode)
                         )
                     self.set_origin(statement.tag, index)
                     self.instruction_hints.append(InstructionHint(

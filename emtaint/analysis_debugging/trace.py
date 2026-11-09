@@ -41,6 +41,7 @@ class AnalysisTraceEvent:
     instruction_rva: int | None = None
     reason: str | None = None
     parent_event_id: str | None = None
+    parent_event_ids: tuple[str, ...] = ()
     details: tuple[tuple[str, str], ...] = ()
 
 
@@ -62,6 +63,7 @@ class AnalysisTraceRecorder:
         self.rules = frozenset(rules or ())
         self.identities = frozenset(identities or ())
         self._events: list[AnalysisTraceEvent] = []
+        self._last_producer: dict[str, str] = {}
         self._dropped = 0
         self._lock = Lock()
 
@@ -98,8 +100,14 @@ class AnalysisTraceRecorder:
             if len(self._events) >= self.max_events:
                 self._dropped += 1
                 return
-            self._events.append(
-                AnalysisTraceEvent(
+            parent_ids = tuple(dict.fromkeys(
+                self._last_producer[value]
+                for value in input_ids
+                if value in self._last_producer
+            ))
+            if parent_event_id is not None and parent_event_id not in parent_ids:
+                parent_ids = (parent_event_id, *parent_ids)
+            event = AnalysisTraceEvent(
                     len(self._events) + 1,
                     "trace-" + str(len(self._events) + 1),
                     rule,
@@ -109,10 +117,13 @@ class AnalysisTraceRecorder:
                     origin_id,
                     instruction_rva,
                     reason,
-                    parent_event_id,
+                    parent_event_id or (parent_ids[-1] if parent_ids else None),
+                    parent_ids,
                     tuple(details),
                 )
-            )
+            self._events.append(event)
+            for output in output_ids:
+                self._last_producer[output] = event.event_id
 
     def events(self) -> tuple[AnalysisTraceEvent, ...]:
         """Return an immutable snapshot in sequence order."""

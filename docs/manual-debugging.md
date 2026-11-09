@@ -255,3 +255,44 @@ demand.debug.inspect_expr(roots[0], max_depth=8, max_nodes=200)
 ```
 
 The current saved acquisition records OriginMap statement indexes and opcode names, but not full VEX statement text, instruction bytes, or disassembly. Reports identify these gaps instead of guessing assembly from `Ijk_*` jump kinds.
+
+
+## 9. Complete D1-D4 source and trace workflow
+
+The updated acquisition writes two additive files beside each function body:
+
+- `debug-provenance.jsonl`: ValueRef-to-OriginMap role, VEX temporary, and register hints.
+- `debug-instructions.jsonl`: VEX statement text, IMark machine bytes, Capstone assembly when the configured decoder recognizes the exact instruction, and ARM/Thumb mode.
+
+These files are independent of `function.json`; they do not change the CIR wire version or analysis identities. Their SHA256 values and record counts are stored in the acquisition report. Regenerate the acquisition using the updated source to capture instruction-level details. Older acquisitions remain readable; absent sidecars are reported as unavailable rather than guessed.
+
+For taint analysis, enable the bounded trace and optional IDA export:
+
+```powershell
+python -B -m emtaint -t -f <binary> -n <firmware-name> -v <firmware-version> `
+  --ida-data <ida-data> --acquisition <acquisition> `
+  --output <new-output-under-.p7-work> `
+  --debug-ida-image-base 0x140000000 `
+  --debug-ida-export `
+  --debug-trace --debug-trace-max-events 50000
+```
+
+Each analyzed function writes an append-only `*-trace.jsonl` and, when requested, a `*-ida-map.json` beside its function receipt. Trace events carry stable IDs, producer-derived parent event IDs, input/output identities, OriginMap identity, instruction RVA, and rule details. The backward causal slice follows existing producer/consumer identities; it does not rerun analysis.
+
+### Inspector / Watch expressions
+
+```python
+demand.demand.debug.inspect_value(value_ref)
+demand.demand.debug.inspect_instruction(origin_id)
+demand.demand.debug.inspect_expr(sse_expression, max_depth=8, max_nodes=200)
+demand.demand.debug.inspect_demand_value(demand.demand, value_ref)
+demand.demand.debug.inspect_memory_version(memory_version)
+demand.demand.debug.inspect_memory_read(memory_read_expression)
+demand.demand.debug.inspect_alias(memory_version, left_location, right_location)
+demand.demand.debug.inspect_taint_state()
+demand.demand.debug.inspect_trace(sse_expression)
+```
+
+Memory-read inspection lists structurally ancestral candidate stores and their guards, update strength, and recorded alias evidence. These are candidates, not proof that a store reaches the read. Alias inspection is read-only: it displays a cached result when available and otherwise reports `NOT_CACHED`; it never launches a new points-to, alias, or solver query.
+
+The trace is bounded per function. The function receipt records event count and dropped-event count. A truncated trace is explicitly incomplete and must not be interpreted as proof that no propagation or memory event occurred.

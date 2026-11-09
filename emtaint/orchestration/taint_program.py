@@ -166,6 +166,11 @@ def run_taint(
                     error_message=str(error),
                     **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds)
                 summary=demand.partial_summary(error) if demand else TaintProcedureSummary(address, pending=(('constructor', type(error).__name__+': '+str(error)),))
+            ida_map_path = None
+            if getattr(args, 'debug_ida_export', False):
+                from emtaint.analysis_debugging import IdaAddressIndex
+                ida_map_path = receipt.with_name(receipt.name + '-ida-map.json')
+                IdaAddressIndex(debug_provenance, args.debug_ida_image_base).export(ida_map_path)
             trace_path = None
             if trace_recorder is not None:
                 trace_path = receipt.with_name(receipt.name + '-trace.jsonl')
@@ -186,6 +191,7 @@ def run_taint(
             if not semantic_equal(summaries.get(address), summary):changed.add(fid)
             summaries[address]=summary
             last[address]={'summary':summary, 'metrics':port.metrics(), 'steps':getattr(demand, 'steps', 0),
+                           'debug_ida_export':None if ida_map_path is None else str(ida_map_path),
                            'debug_trace':None if trace_recorder is None else {
                                'path':str(trace_path),
                                'events':len(trace_recorder.events()),
