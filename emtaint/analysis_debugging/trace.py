@@ -166,10 +166,24 @@ class AnalysisTraceRecorder:
                 pending.extend(item for item in event.input_ids if item not in seen_values)
         return tuple(selected[key] for key in sorted(selected))
 
-    def export_jsonl(self, path: str | Path) -> None:
-        """Exclusively create a JSONL trace sidecar from the current snapshot."""
+    def export_jsonl(
+        self,
+        path: str | Path,
+        *,
+        address_translator: object | None = None,
+        binary_id: object | None = None,
+    ) -> None:
+        """Create JSONL trace and attach explicit IDA/runtime projections."""
 
         destination = Path(path)
-        with destination.open("x", encoding="utf8", newline="\n") as stream:
+        with destination.open("x", encoding="utf8", newline="\\n") as stream:
             for event in self.events():
-                stream.write(json.dumps(asdict(event), sort_keys=True) + "\n")
+                row = asdict(event)
+                if address_translator is not None and binary_id is not None:
+                    row["function_address"] = address_translator.address_fields(
+                        binary_id, event.function_rva
+                    )
+                    row["instruction_address"] = address_translator.address_fields(
+                        binary_id, event.instruction_rva
+                    )
+                stream.write(json.dumps(row, sort_keys=True) + "\\n")

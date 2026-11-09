@@ -174,7 +174,11 @@ def run_taint(
             trace_path = None
             if trace_recorder is not None:
                 trace_path = receipt.with_name(receipt.name + '-trace.jsonl')
-                trace_recorder.export_jsonl(trace_path)
+                trace_recorder.export_jsonl(
+                    trace_path,
+                    address_translator=getattr(engine, 'debug_address_translator', None),
+                    binary_id=module.binary_sha256,
+                )
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
                 for callee in demand.call_functions(call)}) if demand else []
