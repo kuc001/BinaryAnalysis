@@ -296,3 +296,50 @@ demand.demand.debug.inspect_trace(sse_expression)
 Memory-read inspection lists structurally ancestral candidate stores and their guards, update strength, and recorded alias evidence. These are candidates, not proof that a store reaches the read. Alias inspection is read-only: it displays a cached result when available and otherwise reports `NOT_CACHED`; it never launches a new points-to, alias, or solver query.
 
 The trace is bounded per function. The function receipt records event count and dropped-event count. A truncated trace is explicitly incomplete and must not be interpreted as proof that no propagation or memory event occurred.
+
+
+## 9. 完整 Debug Explainability 工作流
+
+### 9.1 重新采集前端来源信息
+
+旧 acquisition 不含 `debug-provenance.jsonl` 和 `debug-instructions.jsonl`，只能提供原有 CIR/OriginMap 信息。若要解释真实 VEX Statement、指令 Bytes 和 Assembly，需要用当前版本重新执行 acquisition：
+
+```powershell
+python -B scripts\p7_acquire.py --folder .p7-work\acquisition-debug-<unique-name>
+```
+
+acquisition 生成的两个调试 sidecar 有独立 SHA256 和记录数，不修改 CIR wire schema。VEX statement 取自 pyvex 对象本身；机器指令 bytes 来自对应 chunk 中的真实指令范围；assembly 只在 Capstone 能完整解码相同地址和长度时输出。
+
+### 9.2 运行完整调试采集
+
+在已有、匹配的 iCall fixed-point 输出目录上执行 taint：
+
+```powershell
+python -B -m emtaint -t -f <binary> -n <firmware-name> -v <version> `
+  --ida-data <ida-data> --acquisition <acquisition> `
+  --output <existing-fixed-point-output> `
+  --debug-ida-image-base 0x140000000 `
+  --debug-runtime-base 0x7ff700000000 `
+  --debug-trace --debug-report --debug-ida-export
+```
+
+`--debug-trace` 必须在分析开始前启用，不能为之前已经完成的传播补造事件。每个被分析函数会在其独立结果目录生成 trace、IDA map 和 debug-report。Debug report 默认有节点数量上限，避免把大型二进制的整个 SSE DAG 无界写出。
+
+### 9.3 报告目录
+
+```text
+<function-receipt>-debug-report/
+  README.md
+  session.json
+  provenance.json
+  analysis-events.jsonl
+  values/
+  expressions/
+  memory/
+  reports/
+    demand-explanations.md
+    taint-evidence.md
+    address-mapping.md
+```
+
+报告只遍历已经存在的 CIR、DAG、MemoryVersion、Demand memo 和 trace 记录。未记录的历史会明确标注，不会在导出阶段重新执行 alias、memory 或 solver 查询。

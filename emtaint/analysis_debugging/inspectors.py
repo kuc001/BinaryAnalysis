@@ -280,6 +280,14 @@ class AnalysisDebugInspector:
             if not show_origins:
                 line = line.rsplit(" origin=", 1)[0]
             lines.append(indent + line)
+            recorder = getattr(self.demand, "_trace_recorder", None)
+            if recorder is not None:
+                for event in recorder.events_for(reference):
+                    lines.append(f"{indent}  Creation/propagation event: #{event.sequence} {event.event_id} {event.rule}")
+                    if event.reason:
+                        lines.append(f"{indent}    Reason: {event.reason}")
+                    for key, value in event.details:
+                        lines.append(f"{indent}    {key}: {value}")
             if show_memory:
                 lines.extend(self._memory_lines(node, indent + "  "))
                 loads = getattr(self.demand, "loads", {})
@@ -523,6 +531,12 @@ class AnalysisDebugInspector:
         reads = [item for item in self.engine.reads if item.result == expression]
         if reads:
             lines.append("Read guards: " + ", ".join(str(item.guard) for item in reads))
+        recorder = getattr(self.demand, "_trace_recorder", None)
+        if recorder is not None:
+            for event in recorder.events_for(expression):
+                lines.append(f"Recorded read event: #{event.sequence} {event.event_id} {event.rule}; reason={event.reason}")
+                for key, value in event.details:
+                    lines.append(f"  {key}: {value}")
         pending, seen, candidates = [node.state], set(), []
         while pending and len(seen) < 512:
             state = pending.pop()
