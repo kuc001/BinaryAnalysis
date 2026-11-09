@@ -14,6 +14,7 @@ from emtaint.ir.canonical import (Compute, ValueOp, LoadEffect, StoreEffect, Reg
     RegisterWritePolicy, ReadRegister, WriteRegister, CallEffect, CallFootprint,
     DirectTarget, IndirectTarget, ExternalTarget, BranchEffect, JumpEffect, ReturnEffect,
     UnknownEffect, CIRBlock, CIRFunction, CIRModule)
+from emtaint.analysis_debugging import ProvenanceIndex, SourceHint
 from .inputs import FunctionInput, InputError
 from .arm_scalar import ARMScalarLowering
 
@@ -43,6 +44,7 @@ class FrontendResult:
     coverage: tuple[dict, ...]
     mappings: tuple[dict, ...]
     metadata: dict
+    provenance: ProvenanceIndex | None = None
 
     def cfgs(self):
         from emtaint.graph import ControlFlowGraph, FlowEdge, FlowKind
@@ -131,6 +133,7 @@ class VEXLowerer(ARMScalarLowering):
                  'cc_op', 'cc_dep1', 'cc_dep2', 'cc_ndep'),
                 ('rbx', 'rbp', 'r12', 'r13', 'r14', 'r15', 'rsp'))
         self.origins, self.coverage, self.mappings = [], [], []
+        self.source_hints: list[SourceHint] = []
         self.unsupported = set()
         self.expression_histogram = Counter()
         self.native_control = []
@@ -163,7 +166,34 @@ class VEXLowerer(ARMScalarLowering):
     def ref(self, type_, prefix='v'):
         result = ValueRef(f'f{self.fid.rva:x}:{prefix}{len(self.values)}', type_)
         self.values.append(result)
+        self.source_hints.append(SourceHint(
+            result.id,
+            self.origin.id,
+            'definition',
+            self.origin.source_opcode,
+        ))
         return result
+
+    def add_source_hint(
+        self,
+        value: ValueRef,
+        *,
+        role: str,
+        vex_temporary: int | None = None,
+        register_offset: int | None = None,
+        register_name: str | None = None,
+    ) -> None:
+        """Record VEX detail while ``value`` and its source are both known."""
+
+        self.source_hints.append(SourceHint(
+            value.id,
+            self.origin.id,
+            role,
+            self.origin.source_opcode,
+            vex_temporary,
+            register_offset,
+            register_name,
+        ))
 
     def compute(self, op, args, type_, params=()):
         result = self.ref(type_)
@@ -233,6 +263,12 @@ class VEXLowerer(ARMScalarLowering):
             sl = self.register_slice(expression.offset, type_.bits)
             read_type = ValueType.bv(type_.bits)
             result = self.ref(read_type)
+            self.add_source_hint(
+                result,
+                role='register-read',
+                register_offset=expression.offset,
+                register_name=sl.register,
+            )
             self.effects.append(ReadRegister(self.origin.id, result, sl))
             if sl.bit_offset==0 and sl.width_bits==sl.register_width_bits and sl.register in self.register_constants:
                 self.constant_values[result.id]=self.register_constants[sl.register]
@@ -378,6 +414,11 @@ class VEXLowerer(ARMScalarLowering):
         if isinstance(statement, pyvex.stmt.WrTmp):
             value = self.expr(statement.data)
             result = self.ref(value.type, 't')
+            self.add_source_hint(
+                result,
+                role='vex-temporary',
+                vex_temporary=statement.tmp,
+            )
             self.effects.append(Compute(self.origin.id, result, ValueOp.COPY, (value,)))
             self.tmps[statement.tmp] = result
             known=self.known_constant(value)
@@ -462,16 +503,17 @@ class VEXLowerer(ARMScalarLowering):
                         self.native_control.append({'function': specification.address, 'irsb': chunk.start,
                             'statement_index': index, 'origin': self.origin.id, 'kind': statement.jumpkind,
                             'target': statement.dst.value, 'guard_class': statement.guard.tag})
-                    saved = (len(self.effects), len(self.values), dict(self.tmps),
+                    saved = (len(self.effects), len(self.values), len(self.source_hints), dict(self.tmps),
                              dict(self.constant_values), dict(self.register_constants))
                     detail = ''
                     try:
                         self.count_expressions(statement)
                         status = self.statement(statement)
                     except UnsupportedVEX as error:
-                        length, value_length, self.tmps, self.constant_values, self.register_constants = saved
+                        length, value_length, hint_length, self.tmps, self.constant_values, self.register_constants = saved
                         del self.effects[length:]
                         del self.values[value_length:]
+                        del self.source_hints[hint_length:]
                         for name in ('tmp', 'dst', 'result', 'oldLo', 'oldHi'):
                             temp = getattr(statement, name, None)
                             if type(temp) is int:
@@ -564,4 +606,11 @@ class VEXLowerer(ARMScalarLowering):
         metadata['source_functions'] = [{'address': s.address, 'name': s.name,
             'blocks': [vars(b) for b in s.blocks], 'edges': list(s.edges), 'call_hints': [vars(c) for c in s.calls]}
             for s in specifications]
-        return FrontendResult(module, tuple(self.coverage), tuple(self.mappings), metadata)
+        provenance = ProvenanceIndex(module, tuple(self.source_hints))
+        return FrontendResult(
+            module,
+            tuple(self.coverage),
+            tuple(self.mappings),
+            metadata,
+            provenance,
+        )
