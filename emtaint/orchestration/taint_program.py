@@ -179,6 +179,12 @@ def run_taint(
                     address_translator=getattr(engine, 'debug_address_translator', None),
                     binary_id=module.binary_sha256,
                 )
+            debug_report_path = None
+            if getattr(args, 'debug_report', False):
+                from emtaint.analysis_debugging import AnalysisDebugInspector
+                inspector = AnalysisDebugInspector(debug_provenance, engine=engine, demand=None if demand is None else demand.demand)
+                debug_report_path = receipt.with_name(receipt.name + '-debug-report')
+                inspector.export_report(debug_report_path)
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
                 for callee in demand.call_functions(call)}) if demand else []
@@ -201,6 +207,7 @@ def run_taint(
                                'events':len(trace_recorder.events()),
                                'dropped':trace_recorder.dropped,
                            },
+                           'debug_report':None if debug_report_path is None else str(debug_report_path),
                            'source_facts':[asdict(f) for f in engine.facts], 'transformation':store.transformations.get(address),
                            'unknown_frontiers':sorted(demand.unknown_evidence) if demand else [],
                            'cir_sha256':digest, 'raw_summary':str(raw_path),

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from typing import Any
+from dataclasses import asdict, is_dataclass
+import json
+from pathlib import Path
 
 from emtaint.core.contracts import SymbolicExprId, ValueRef
 from emtaint.memory.state import SymbolicOp
@@ -650,6 +653,140 @@ class AnalysisDebugInspector:
         for reference in matches:
             lines.append(f"  {reference.key}: {dag.nodes[reference].op.value}")
         return "\n".join(lines)
+
+
+    def export_report(
+        self,
+        directory: str | Path,
+        *,
+        max_values: int = 256,
+        max_expressions: int = 512,
+        max_depth: int = 8,
+        max_nodes: int = 256,
+    ) -> Path:
+        """Export a bounded, read-only explainability bundle for this session.
+
+        The method only traverses existing CIR/provenance/DAG/memory/trace
+        objects. It never invokes Demand.value(), alias, memory or solver APIs.
+        """
+        if max_values < 1 or max_expressions < 1 or max_depth < 0 or max_nodes < 1:
+            raise ValueError("Debug report limits must be positive (depth may be zero)")
+        destination = Path(directory)
+        destination.mkdir(parents=True, exist_ok=False)
+        for name in ("values", "expressions", "memory", "reports"):
+            (destination / name).mkdir()
+        binary = None if self.provenance is None else self.provenance.module.binary_sha256
+        translator = getattr(self.engine, "debug_address_translator", None)
+        session = {
+            "schema_version": "BinaryAnalysis-Debug-Report-v1",
+            "binary_sha256": binary,
+            "ida_image_base": None if translator is None else translator.ida_image_base,
+            "runtime_base": None if translator is None else translator.runtime_base,
+            "provenance_source_hints": bool(self.provenance and self.provenance.source_hints_available),
+            "provenance_instruction_hints": bool(self.provenance and self.provenance.instruction_hints_available),
+            "analysis_trace_enabled": getattr(self.demand, "_trace_recorder", None) is not None,
+            "analysis_trace_missing_reason": None if getattr(self.demand, "_trace_recorder", None) is not None else "TRACE_NOT_ENABLED_DURING_ANALYSIS",
+            "read_only": True,
+            "limits": {"max_values": max_values, "max_expressions": max_expressions,
+                       "max_depth": max_depth, "max_nodes": max_nodes},
+        }
+        (destination / "session.json").write_text(
+            json.dumps(session, indent=2, sort_keys=True, default=str) + "\\n", encoding="utf8"
+        )
+        if self.provenance is not None:
+            provenance_rows = []
+            for origin in self.provenance.module.origin_map:
+                point = origin.point
+                row = {
+                    "origin_id": origin.id,
+                    "source_opcode": origin.source_opcode,
+                    "function_rva": hex(point.function.rva),
+                    "block_rva": hex(point.block.rva),
+                    "statement_index": point.statement,
+                    "instruction_rva": None if point.instruction_rva is None else hex(point.instruction_rva),
+                    "instruction_address": None if translator is None else translator.address_fields(binary, point.instruction_rva),
+                    "instruction_hint": None if self.provenance.instruction_record(origin.id) is None else asdict(self.provenance.instruction_record(origin.id)),
+                    "value_ids": [value.id for value in self.provenance.values_for_origin(origin.id)],
+                }
+                provenance_rows.append(row)
+            (destination / "provenance.json").write_text(
+                json.dumps(provenance_rows, indent=2, sort_keys=True, default=str) + "\\n", encoding="utf8"
+            )
+            values = tuple(self.provenance._values.values())[:max_values]
+            for value in values:
+                report = self.explain_value(value, max_depth=max_depth, max_nodes=max_nodes)
+                (destination / "values" / (value.id.replace(":", "_") + ".md")).write_text(report + "\\n", encoding="utf8")
+            (destination / "values" / "index.json").write_text(
+                json.dumps({"total_values": len(self.provenance._values), "exported_values": len(values),
+                            "truncated": len(self.provenance._values) > len(values)},
+                           indent=2, sort_keys=True) + "\\n", encoding="utf8"
+            )
+        dag = getattr(self.engine, "dag", None)
+        if dag is not None:
+            expressions = tuple(dag.nodes)[:max_expressions]
+            for expression in expressions:
+                report = self.explain_expr(expression, max_depth=max_depth, max_nodes=max_nodes)
+                (destination / "expressions" / (expression.key.replace(":", "_") + ".md")).write_text(report + "\\n", encoding="utf8")
+            (destination / "expressions" / "index.json").write_text(
+                json.dumps({"total_expressions": len(dag.nodes), "exported_expressions": len(expressions),
+                            "truncated": len(dag.nodes) > len(expressions)},
+                           indent=2, sort_keys=True) + "\\n", encoding="utf8"
+            )
+            versions = getattr(self.engine, "versions", {})
+            memory_index = []
+            for version in tuple(versions)[:max_expressions]:
+                report = self.explain_memory_version(version, max_depth=max_depth)
+                (destination / "memory" / (version.key.replace(":", "_") + ".md")).write_text(report + "\\n", encoding="utf8")
+                memory_index.append({"version": version.key, "definition": type(versions[version].definition).__name__})
+            (destination / "memory" / "index.json").write_text(
+                json.dumps({"total_versions": len(versions), "exported_versions": len(memory_index),
+                            "versions": memory_index}, indent=2, sort_keys=True, default=str) + "\\n",
+                encoding="utf8"
+            )
+        recorder = getattr(self.demand, "_trace_recorder", None)
+        if recorder is not None:
+            recorder.export_jsonl(
+                destination / "analysis-events.jsonl",
+                address_translator=translator,
+                binary_id=binary,
+            )
+        else:
+            (destination / "analysis-events.jsonl").write_text("", encoding="utf8")
+        demand_owner = self.demand
+        taint_owner = getattr(demand_owner, "taint_owner", None)
+        if demand_owner is not None:
+            memo_values = [
+                key[1] for key in getattr(demand_owner, "memo", {})
+                if isinstance(key, tuple) and len(key) == 2 and key[0] == "value"
+            ]
+            demand_reports = []
+            for value_id in dict.fromkeys(memo_values):
+                value = self.provenance.value(value_id) if self.provenance is not None else None
+                if value is None:
+                    continue
+                demand_reports.append(self.explain_demand_value(demand_owner, value))
+            (destination / "reports" / "demand-explanations.md").write_text(
+                "\\n\\n---\\n\\n".join(demand_reports) + ("\\n" if demand_reports else "No completed demand roots were cached.\\n"),
+                encoding="utf8"
+            )
+        if taint_owner is not None:
+            (destination / "reports" / "taint-evidence.md").write_text(
+                self.explain_taint_state() + "\\n", encoding="utf8"
+            )
+        (destination / "reports" / "address-mapping.md").write_text(
+            "Address mapping\\n\\n" +
+            ("IDA image base was not configured. No IDA VA values are fabricated.\\n"
+             if translator is None or translator.ida_image_base is None else
+             f"IDA image base: 0x{translator.ida_image_base:x}\\n") +
+            ("Runtime base: unavailable\\n" if translator is None or translator.runtime_base is None
+             else f"Runtime base: 0x{translator.runtime_base:x}\\n"),
+            encoding="utf8"
+        )
+        return destination
+
+    def inspect_report(self, directory: str | Path, **limits: object) -> str:
+        """VS Code Watch helper: export a bounded report and return its path."""
+        return str(self.export_report(directory, **limits))
 
     def ida_index(self, image_base: int):
         """Create an explicit IDA address view over the attached provenance."""

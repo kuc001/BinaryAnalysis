@@ -406,6 +406,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Record bounded Demand/SSE/Memory rule events for each analyzed function")
     parser.add_argument("--debug-trace-max-events", type=int, default=50000,
                         help="Maximum structural trace events per function (default: 50000)")
+    parser.add_argument("--debug-report", action="store_true",
+                        help="Export bounded per-function provenance, value, expression, memory and taint reports")
     parser.add_argument("--function", help="Alias query function name or absolute address")
     parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
     parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
@@ -485,7 +487,7 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
     if getattr(args, "debug_ida_export", False) and getattr(args, "debug_ida_image_base", None) is None:
         raise ValueError("--debug-ida-export requires --debug-ida-image-base")
-    if (getattr(args, "debug_ida_export", False) or getattr(args, "debug_trace", False)) and not args.taint_check:
+    if (getattr(args, "debug_ida_export", False) or getattr(args, "debug_trace", False) or getattr(args, "debug_report", False)) and not args.taint_check:
         raise ValueError("--debug-ida-export and --debug-trace are taint-analysis options")
     if getattr(args, "debug_trace_max_events", 1) < 1:
         raise ValueError("--debug-trace-max-events must be positive")
