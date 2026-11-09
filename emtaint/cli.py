@@ -396,6 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ida-data")
     parser.add_argument("--acquisition")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--debug-ida-image-base", type=lambda value: int(value, 0),
+                        help="Explicit IDA database image base for debug RVA-to-VA display")
+    parser.add_argument("--debug-runtime-base", type=lambda value: int(value, 0),
+                        help="Optional runtime module base, independent of IDA database base")
     parser.add_argument("--function", help="Alias query function name or absolute address")
     parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
     parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
@@ -472,6 +476,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def validate_arguments(args: argparse.Namespace) -> None:
     """Reject invalid mode, budget, backend, and diagnostic combinations."""
+
+    for option_name in ("debug_ida_image_base", "debug_runtime_base"):
+        option_value = getattr(args, option_name, None)
+        if option_value is not None and option_value < 0:
+            raise ValueError("--" + option_name.replace("_", "-") + " must be non-negative")
 
     if args.alias_check:
         if args.discover_alias_calls:

@@ -128,6 +128,15 @@ def run_taint(
             scope=AnalysisScope.from_session(runtime.session, fid, context)
             engine=ImageMemoryEngine(scope, module.architecture, module.origin_map, store.segments,
                 SemanticBudgets(sse_nodes=200000, worklist_iterations=2000000), initial_policy='legacy-loader-snapshot', cache_resolutions=True)
+            # Presentation-only mapping; core analysis identities remain RVAs.
+            if getattr(args, 'debug_ida_image_base', None) is not None or getattr(args, 'debug_runtime_base', None) is not None:
+                from emtaint.analysis_debugging import AddressTranslator
+                engine.debug_address_translator = AddressTranslator(
+                    module.binary_sha256,
+                    ida_image_base=getattr(args, 'debug_ida_image_base', None),
+                    runtime_base=getattr(args, 'debug_runtime_base', None),
+                    address_bits=module.architecture.address_bits,
+                )
             port=MemoryRuntimePort(engine, cache_alias_queries=True)
             runtime.bind_port(port, fid, context)
             tick=time.monotonic()

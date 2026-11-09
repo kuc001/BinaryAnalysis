@@ -240,3 +240,18 @@ Get-Content (Join-Path $Phase.FullName 'unknowns.json') | ConvertFrom-Json | For
 记录：源码 commit/`git status`、二进制和 metadata SHA256、冻结 iCall 输入路径、唯一输出
 目录、函数列表、预算、首个分歧事件、相关 result JSON、根因、最小回归、修复前后日志和退出码。
 `Unknown`、`Timeout`、`Unsupported`、`Incomplete` 必须原样保留，不能登记为“无漏洞”。
+
+
+## 8. IDA VA display
+
+Pass `--debug-ida-image-base 0x140000000` to use the exact IDA database base. Debug inspectors display `IDA VA 0x140015688 (RVA 0x15688)` for RVA `0x15688`. The optional `--debug-runtime-base` is a separate runtime module base. Neither option changes CIR, FunctionId, ValueRef, OriginId, or internal addresses. Without an IDA base, the inspector reports `IDA_IMAGE_BASE_NOT_CONFIGURED`.
+
+Use these expressions in VS Code Watch without an outer `print()`:
+
+```python
+demand.debug.inspect_value(operand)
+demand.debug.inspect_demand_value(demand, operand)
+demand.debug.inspect_expr(roots[0], max_depth=8, max_nodes=200)
+```
+
+The current saved acquisition records OriginMap statement indexes and opcode names, but not full VEX statement text, instruction bytes, or disassembly. Reports identify these gaps instead of guessing assembly from `Ijk_*` jump kinds.

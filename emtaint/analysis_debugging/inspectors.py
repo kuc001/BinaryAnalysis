@@ -64,7 +64,10 @@ class AnalysisDebugInspector:
                 f"Value {value_id}\n"
                 "Unavailable: value is not declared by the indexed CIR module."
             )
-        lines = [f"Value {value_id}", f"Type: {_type_name(declared.type)}"]
+        lines = [f"VALUE EXPLANATION: {value_id}", f"Type: {_type_name(declared.type)}"]
+        lines.append("Semantic meaning: not inferred; no source-level symbol is recorded.")
+        translator = getattr(self.engine, "debug_address_translator", None)
+        binary = self.provenance.module.binary_sha256
         definitions = self.provenance.definitions(value_id)
         if definitions:
             lines.append("CIR definitions:")
@@ -99,11 +102,18 @@ class AnalysisDebugInspector:
                 else "none"
             )
             lines.append(
-                f"  - function=0x{point.function.rva:x} "
-                f"block=0x{point.block.rva:x} statement={statement} "
-                f"instruction={instruction} opcode={item.origin.source_opcode} "
-                f"role={item.role}"
+                f"  - function RVA=0x{point.function.rva:x}; block RVA=0x{point.block.rva:x}; "
+                f"statement index={statement}; instruction RVA={instruction}; "
+                f"VEX opcode={item.origin.source_opcode}; role={item.role}"
             )
+            if translator is not None:
+                lines.append("    " + translator.format_address(binary, point.function.rva, "Function"))
+                lines.append("    " + translator.format_address(binary, point.block.rva, "Basic block"))
+                lines.append("    " + translator.format_address(binary, point.instruction_rva, "Instruction"))
+            else:
+                lines.append("    IDA VA: unavailable (configure --debug-ida-image-base)")
+            lines.append("    Machine assembly: not recorded by current acquisition format.")
+            lines.append("    VEX statement text: not recorded; statement index/opcode only.")
             if item.vex_statement_kind is not None:
                 lines.append(f"    VEX statement: {item.vex_statement_kind}")
             if item.vex_temporary is not None:
@@ -252,7 +262,7 @@ class AnalysisDebugInspector:
         for root in roots:
             node = self.engine.dag.nodes.get(root) if self.engine else None
             semantic = node.op.value if node is not None else "missing"
-            lines.append(f"  - {root.key}: {semantic}")
+            lines.append(f"  - {root.key}: operation={semantic}")
             if node is not None:
                 origin = (
                     self.provenance.origin_record(node.origin)
@@ -286,6 +296,18 @@ class AnalysisDebugInspector:
             "Observed rules: " + (", ".join(rules) if rules else "none recorded")
         )
         return "\n".join(lines)
+
+    def inspect_value(self, value: ValueRef | str) -> str:
+        """Return a value report directly for a VS Code Watch expression."""
+        return self.explain_value(value)
+
+    def inspect_expr(self, expression: SymbolicExprId, **limits: object) -> str:
+        """Return a bounded expression report directly for VS Code Watch."""
+        return self.explain_expr(expression, **limits)
+
+    def inspect_demand_value(self, demand: object, value: ValueRef) -> str:
+        """Return the cached demand report directly for VS Code Watch."""
+        return self.explain_demand_value(demand, value)
 
     def ida_index(self, image_base: int):
         """Create an explicit IDA address view over the attached provenance."""
