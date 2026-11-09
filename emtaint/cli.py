@@ -408,6 +408,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Maximum structural trace events per function (default: 50000)")
     parser.add_argument("--debug-report", action="store_true",
                         help="Export bounded per-function provenance, value, expression, memory and taint reports")
+    parser.add_argument("--debug-report-max-values", type=int, default=256)
+    parser.add_argument("--debug-report-max-expressions", type=int, default=512)
+    parser.add_argument("--debug-report-max-depth", type=int, default=8)
+    parser.add_argument("--debug-report-max-nodes", type=int, default=256)
     parser.add_argument("--function", help="Alias query function name or absolute address")
     parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
     parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
@@ -491,6 +495,11 @@ def validate_arguments(args: argparse.Namespace) -> None:
         raise ValueError("--debug-ida-export and --debug-trace are taint-analysis options")
     if getattr(args, "debug_trace_max_events", 1) < 1:
         raise ValueError("--debug-trace-max-events must be positive")
+    for option_name in ("debug_report_max_values", "debug_report_max_expressions", "debug_report_max_nodes"):
+        if getattr(args, option_name, 1) < 1:
+            raise ValueError("--" + option_name.replace("_", "-") + " must be positive")
+    if getattr(args, "debug_report_max_depth", 0) < 0:
+        raise ValueError("--debug-report-max-depth must be non-negative")
     for option_name in ("debug_ida_image_base", "debug_runtime_base"):
         option_value = getattr(args, option_name, None)
         if option_value is not None and option_value < 0:

@@ -184,7 +184,13 @@ def run_taint(
                 from emtaint.analysis_debugging import AnalysisDebugInspector
                 inspector = AnalysisDebugInspector(debug_provenance, engine=engine, demand=None if demand is None else demand.demand)
                 debug_report_path = receipt.with_name(receipt.name + '-debug-report')
-                inspector.export_report(debug_report_path)
+                inspector.export_report(
+                    debug_report_path,
+                    max_values=args.debug_report_max_values,
+                    max_expressions=args.debug_report_max_expressions,
+                    max_depth=args.debug_report_max_depth,
+                    max_nodes=args.debug_report_max_nodes,
+                )
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
                 for callee in demand.call_functions(call)}) if demand else []
