@@ -49,8 +49,9 @@ class AnalysisDebugInspector:
             )
         return cls(provenance, engine=engine, demand=demand)
 
-    def explain_value(self, value: ValueRef | str) -> str:
-        """Explain CIR definitions and source locations for one value."""
+    def explain_value(self, value: ValueRef | str, *, max_depth: int = 5,
+                      max_nodes: int = 100, summary: bool = False) -> str:
+        """Explain recorded CIR/VEX/instruction provenance without running analysis."""
 
         value_id = value.id if isinstance(value, ValueRef) else value
         if self.provenance is None:
@@ -70,15 +71,18 @@ class AnalysisDebugInspector:
         binary = self.provenance.module.binary_sha256
         definitions = self.provenance.definitions(value_id)
         if definitions:
-            lines.append("CIR definitions:")
+            lines.append("CIR DEFINITIONS:")
             for definition in definitions:
                 inputs = ", ".join(definition.input_value_ids) or "none"
-                lines.append(
-                    f"  - {definition.effect_kind}: {definition.operation}; block RVA=0x{definition.block_rva:x}; "
-                    f"effect={definition.effect_index}; origin={definition.origin_id}; inputs=[{inputs}]"
-                )
+                lines.append(f"  - Kind: {definition.effect_kind}; Operation: {definition.operation}; Output: {definition.value_id}; Inputs: [{inputs}]")
+                lines.append(f"    Block RVA: 0x{definition.block_rva:x}; Effect Index: {definition.effect_index}; Origin: {definition.origin_id}")
                 if definition.operand_descriptions:
-                    lines.append("    Operands: " + "; ".join(definition.operand_descriptions))
+                    lines.append("    Operand Details: " + "; ".join(definition.operand_descriptions))
+                if translator is not None:
+                    lines.append("    " + translator.format_address(binary, definition.block_rva, "Definition block"))
+                for input_id in definition.input_value_ids:
+                    input_value = self.provenance.value(input_id)
+                    lines.append(f"    Input {input_id}: " + ("NOT_DECLARED_IN_CIR" if input_value is None else _type_name(input_value.type)))
         else:
             lines.append(
                 "CIR definitions: unavailable (declared synthetic/interface value)"
@@ -90,6 +94,8 @@ class AnalysisDebugInspector:
             )
             return "\n".join(lines)
         lines.append("Origins:")
+        if len(origins) > 1:
+            lines.append(f"  Multiple source records: {len(origins)} (all retained)")
         for item in origins:
             point = item.origin.point
             instruction = (
@@ -134,6 +140,34 @@ class AnalysisDebugInspector:
                     else "unknown-offset"
                 )
                 lines.append(f"    Register: {register} (VEX offset {offset})")
+                lines.append("    Register width/access: NOT_RECORDED_IN_SOURCE_HINT (not inferred).")
+        if not origins:
+            lines.append("Origin Type: SYNTHETIC_OR_UNMAPPED")
+            lines.append("Reason: no defining CIR effect or frontend source hint references this ValueRef.")
+        if max_depth < 0 or max_nodes < 1:
+            raise ValueError("Dependency limits require depth >= 0 and nodes >= 1")
+        if not summary and definitions:
+            lines.append("CIR INPUT DEPENDENCIES:")
+            pending = [(item, 1) for definition in definitions for item in definition.input_value_ids]
+            visited, emitted = {value_id}, 0
+            while pending:
+                input_id, depth = pending.pop(0)
+                if input_id in visited:
+                    lines.append("  " * depth + input_id + " (shared/cycle)")
+                    continue
+                if emitted >= max_nodes:
+                    lines.append(f"... dependency node limit {max_nodes} reached")
+                    break
+                visited.add(input_id); emitted += 1
+                input_value = self.provenance.value(input_id)
+                if input_value is None:
+                    lines.append("  " * depth + f"{input_id}: NOT_DECLARED_IN_CIR")
+                    continue
+                lines.append("  " * depth + f"{input_id}: {_type_name(input_value.type)}")
+                if depth < max_depth:
+                    pending.extend((nested, depth + 1) for definition in self.provenance.definitions(input_id) for nested in definition.input_value_ids)
+                elif self.provenance.definitions(input_id):
+                    lines.append("  " * (depth + 1) + f"... depth limit {max_depth} reached")
         return "\n".join(lines)
 
     def _node_line(self, expression: SymbolicExprId, node: object) -> str:
@@ -200,7 +234,32 @@ class AnalysisDebugInspector:
                 "Unavailable: expression is not present in the attached DAG."
             )
 
-        lines: list[str] = []
+        root_node = dag.nodes[expression]
+        lines: list[str] = [f"SEMANTIC VIEW: {expression.key}", f"Operation: {root_node.op.value}",
+                            f"Type: {_type_name(root_node.type)}", f"Operand count: {len(root_node.operands)}"]
+        translator = getattr(self.engine, "debug_address_translator", None)
+        if root_node.origin:
+            origin = self.provenance.origin_record(root_node.origin) if self.provenance else self.engine.origin_record(root_node.origin)
+            if origin is not None:
+                point = origin.point
+                lines.append(f"Origin opcode: {origin.source_opcode}")
+                if translator is not None:
+                    lines.append("  " + translator.format_address(self.provenance.module.binary_sha256, point.instruction_rva, "Origin instruction"))
+                else:
+                    lines.append(f"  Instruction RVA: {point.instruction_rva!r}; IDA VA unavailable")
+        if root_node.op == SymbolicOp.COPY:
+            chain, current, visited_copy = [], expression, set()
+            while current in dag.nodes and current not in visited_copy:
+                visited_copy.add(current); item = dag.nodes[current]
+                if item.op != SymbolicOp.COPY or len(item.operands) != 1: break
+                chain.append(current); current = item.operands[0]
+            if len(chain) > 1:
+                lines.append(f"Copy Chain: {len(chain)} COPY nodes (original DAG retained)")
+                lines.append(f"Original source: {current.key}")
+                source = dag.nodes.get(current)
+                if source is not None and source.op == SymbolicOp.UNKNOWN:
+                    lines.append(f"Original source status: UNKNOWN; reason={source.value}")
+        lines.append("DAG VIEW:")
         seen: set[SymbolicExprId] = set()
         pending = [(expression, 0)]
         while pending:
@@ -309,12 +368,48 @@ class AnalysisDebugInspector:
                         f"inputs={list(event.input_ids)} outputs={list(event.output_ids)} "
                         f"origin={event.origin_id} {details}"
                     )
+        if len(roots) > 1:
+            groups = {}
+            for root in roots:
+                groups.setdefault(self._expression_fingerprint(root, max_nodes=512), []).append(root)
+            lines.append("ROOT DIFFERENCE SUMMARY:")
+            for fingerprint, members in groups.items():
+                lines.append(f"  Group {fingerprint}: {len(members)} root(s) " + ", ".join(item.key for item in members))
+            lines.append(f"  Distinct bounded structural fingerprints: {len(groups)}")
+            lines.append("  Fingerprints describe DAG shape only; they do not establish path feasibility or semantic equivalence.")
+        if recorder is None:
+            lines.append("Root explanation: INCOMPLETE")
+            lines.append("Missing evidence: ROOT_CREATION_CAUSALITY_NOT_RECORDED")
         rules = tuple(sorted(getattr(demand, "rules", ())))
         lines.append(
             "Observed rules: " + (", ".join(rules) if rules else "none recorded")
         )
         return "\n".join(lines)
 
+
+    def _expression_fingerprint(self, expression: SymbolicExprId, *, max_nodes: int = 512) -> str:
+        """Return a bounded structural fingerprint without simplifying the DAG."""
+        dag = getattr(self.engine, "dag", None)
+        if dag is None or expression not in dag.nodes:
+            return "NOT_AVAILABLE"
+        pending, values, visits = [(expression, False)], {}, 0
+        while pending:
+            current, ready = pending.pop()
+            if current in values: continue
+            node = dag.nodes.get(current)
+            if node is None:
+                values[current] = "MISSING"; continue
+            if not ready:
+                visits += 1
+                if visits > max_nodes:
+                    values[current] = "NODE_LIMIT"; continue
+                pending.append((current, True))
+                pending.extend((operand, False) for operand in reversed(node.operands) if operand not in values)
+            else:
+                values[current] = (node.op.value, _type_name(node.type), repr(node.value),
+                    tuple(values.get(operand, "UNRESOLVED") for operand in node.operands))
+        import hashlib
+        return hashlib.sha256(repr(values.get(expression)).encode("utf8")).hexdigest()[:16]
 
     def explain_memory_version(self, version: object, *, max_depth: int = 32) -> str:
         """Explain existing memory-version ancestry without issuing queries."""
@@ -513,9 +608,9 @@ class AnalysisDebugInspector:
             )
         return "\n".join(lines)
 
-    def inspect_value(self, value: ValueRef | str):
+    def inspect_value(self, value: ValueRef | str, **limits: object):
         """Return a value report directly for a VS Code Watch expression."""
-        return self.explain_value(value)
+        return self.explain_value(value, **limits)
 
     def inspect_expr(self, expression: SymbolicExprId, **limits: object) -> str:
         """Return a bounded expression report directly for VS Code Watch."""
@@ -524,6 +619,37 @@ class AnalysisDebugInspector:
     def inspect_demand_value(self, demand: object, value: ValueRef) -> str:
         """Return the cached demand report directly for VS Code Watch."""
         return self.explain_demand_value(demand, value)
+
+    def inspect_ida_va(self, ida_va: int) -> str:
+        """Reverse an IDA EA to all recorded instructions, CIR values and SSE nodes."""
+        if self.provenance is None:
+            return "IDA lookup unavailable: no provenance index is attached."
+        translator = getattr(self.engine, "debug_address_translator", None)
+        if translator is None:
+            return "IDA lookup unavailable: configure --debug-ida-image-base."
+        binary = self.provenance.module.binary_sha256
+        rva = translator.to_rva(binary, ida_va)
+        if rva is None:
+            return f"IDA VA 0x{ida_va:x}: NOT_MAPPED (no base or address precedes the configured image base)."
+        records = self.provenance.instructions_for_rva(binary, rva)
+        values = self.provenance.values_for_instruction(binary, rva)
+        lines = [f"IDA VA 0x{ida_va:x} (RVA 0x{rva:x})", f"Instruction records: {len(records)}"]
+        for record in records:
+            lines.append(f"  Origin: {record.origin_id}; statement={record.statement_index}; opcode={record.source_opcode}")
+            lines.append("  VEX: " + (record.vex_statement_text or "NOT_RECORDED"))
+            lines.append("  Assembly: " + (record.assembly_text or "NOT_DECODED"))
+        lines.append(f"CIR ValueRefs: {len(values)}")
+        for value in values:
+            lines.append(f"  {value.id}: {_type_name(value.type)}")
+        dag = getattr(self.engine, "dag", None)
+        matches = []
+        if dag is not None:
+            origin_ids = {item.origin_id for item in records}
+            matches = [reference for reference, node in dag.nodes.items() if node.origin in origin_ids]
+        lines.append(f"SSE expressions sharing these instruction origins: {len(matches)}")
+        for reference in matches:
+            lines.append(f"  {reference.key}: {dag.nodes[reference].op.value}")
+        return "\n".join(lines)
 
     def ida_index(self, image_base: int):
         """Create an explicit IDA address view over the attached provenance."""
