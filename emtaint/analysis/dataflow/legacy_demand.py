@@ -116,6 +116,10 @@ class LegacyDemand:
             origin_id=origin,
             instruction_rva=instruction_rva,
             reason=reason,
+            details=(() if origin is None else (
+                ('source_opcode', self.port.engine.origin_record(origin).source_opcode),
+                ('instruction_rva', str(instruction_rva)),
+            )),
         )
 
     def prove_stack_range(self, cfg):

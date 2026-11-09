@@ -32,6 +32,7 @@ class AnalysisTraceEvent:
     """One rule application connecting existing analysis inputs and outputs."""
 
     sequence: int
+    event_id: str
     rule: str
     function_rva: int
     input_ids: tuple[str, ...]
@@ -39,6 +40,8 @@ class AnalysisTraceEvent:
     origin_id: str | None = None
     instruction_rva: int | None = None
     reason: str | None = None
+    parent_event_id: str | None = None
+    details: tuple[tuple[str, str], ...] = ()
 
 
 class AnalysisTraceRecorder:
@@ -78,6 +81,8 @@ class AnalysisTraceRecorder:
         origin_id: str | None = None,
         instruction_rva: int | None = None,
         reason: str | None = None,
+        parent_event_id: str | None = None,
+        details: Iterable[tuple[str, str]] = (),
     ) -> None:
         """Append one event without invoking an analysis operation."""
 
@@ -96,6 +101,7 @@ class AnalysisTraceRecorder:
             self._events.append(
                 AnalysisTraceEvent(
                     len(self._events) + 1,
+                    "trace-" + str(len(self._events) + 1),
                     rule,
                     function_rva,
                     input_ids,
@@ -103,6 +109,8 @@ class AnalysisTraceRecorder:
                     origin_id,
                     instruction_rva,
                     reason,
+                    parent_event_id,
+                    tuple(details),
                 )
             )
 
@@ -121,6 +129,31 @@ class AnalysisTraceRecorder:
             for event in self.events()
             if key in event.input_ids or key in event.output_ids
         )
+
+    def causal_slice(self, identity: object, *, max_events: int = 512) -> tuple[AnalysisTraceEvent, ...]:
+        """Return the bounded backward dependency slice for an existing identity."""
+
+        if max_events < 1:
+            raise ValueError("max_events must be positive")
+        events = self.events()
+        pending = [trace_identity(identity)]
+        seen_values = set()
+        selected = {}
+        producers = {}
+        for event in events:
+            for output in event.output_ids:
+                producers.setdefault(output, []).append(event)
+        while pending and len(selected) < max_events:
+            current = pending.pop()
+            if current in seen_values:
+                continue
+            seen_values.add(current)
+            for event in reversed(producers.get(current, ())):
+                if event.sequence in selected:
+                    continue
+                selected[event.sequence] = event
+                pending.extend(item for item in event.input_ids if item not in seen_values)
+        return tuple(selected[key] for key in sorted(selected))
 
     def export_jsonl(self, path: str | Path) -> None:
         """Exclusively create a JSONL trace sidecar from the current snapshot."""

@@ -400,6 +400,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Explicit IDA database image base for debug RVA-to-VA display")
     parser.add_argument("--debug-runtime-base", type=lambda value: int(value, 0),
                         help="Optional runtime module base, independent of IDA database base")
+    parser.add_argument("--debug-trace", action="store_true",
+                        help="Record bounded Demand/SSE/Memory rule events for each analyzed function")
+    parser.add_argument("--debug-trace-max-events", type=int, default=50000,
+                        help="Maximum structural trace events per function (default: 50000)")
     parser.add_argument("--function", help="Alias query function name or absolute address")
     parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
     parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
@@ -477,6 +481,8 @@ def build_parser() -> argparse.ArgumentParser:
 def validate_arguments(args: argparse.Namespace) -> None:
     """Reject invalid mode, budget, backend, and diagnostic combinations."""
 
+    if getattr(args, "debug_trace_max_events", 1) < 1:
+        raise ValueError("--debug-trace-max-events must be positive")
     for option_name in ("debug_ida_image_base", "debug_runtime_base"):
         option_value = getattr(args, option_name, None)
         if option_value is not None and option_value < 0:

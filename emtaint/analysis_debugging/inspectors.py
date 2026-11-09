@@ -289,15 +289,55 @@ class AnalysisDebugInspector:
             for event in derivations:
                 reason = f" reason={event.reason}" if event.reason else ""
                 lines.append(
-                    f"    Rule #{event.sequence}: {event.rule}{reason}"
+                    f"    Rule #{event.sequence} [{event.event_id}]: {event.rule}{reason}"
                 )
+            if recorder is not None:
+                causal = recorder.causal_slice(root)
+                lines.append(f"    Causal events: {len(causal)}")
+                for event in causal:
+                    details = "; ".join(f"{key}={value}" for key, value in event.details)
+                    lines.append(
+                        f"      #{event.sequence} {event.rule}: "
+                        f"inputs={list(event.input_ids)} outputs={list(event.output_ids)} "
+                        f"origin={event.origin_id} {details}"
+                    )
         rules = tuple(sorted(getattr(demand, "rules", ())))
         lines.append(
             "Observed rules: " + (", ".join(rules) if rules else "none recorded")
         )
         return "\n".join(lines)
 
-    def inspect_value(self, value: ValueRef | str) -> str:
+    def inspect_memory_version(self, version: object, **limits: object) -> str:
+        """VS Code Watch entry point for a memory-version history report."""
+        return self.explain_memory_version(version, **limits)
+
+    def inspect_memory_read(self, expression: SymbolicExprId) -> str:
+        """VS Code Watch entry point for reaching-store candidates."""
+        return self.explain_memory_read(expression)
+
+    def inspect_alias(self, state: object, left: object, right: object, result: object | None = None) -> str:
+        """VS Code Watch entry point for a cached alias decision."""
+        return self.explain_alias(state, left, right, result)
+
+    def inspect_instruction(self, origin_id: str) -> str:
+        """VS Code Watch entry point for VEX/bytes/assembly provenance."""
+        return self.explain_instruction(origin_id)
+
+    def inspect_trace(self, identity: object, *, max_events: int = 512) -> str:
+        """Render the bounded backward causal slice for one existing identity."""
+        recorder = getattr(self.demand, "_trace_recorder", None)
+        if recorder is None:
+            return "Trace unavailable: --debug-trace was not enabled during analysis."
+        events = recorder.causal_slice(identity, max_events=max_events)
+        lines = [f"CAUSAL TRACE: {identity}", f"Events: {len(events)}", f"Dropped: {recorder.dropped}"]
+        for event in events:
+            lines.append(
+                f"#{event.sequence} {event.event_id} {event.rule}: "
+                f"{list(event.input_ids)} -> {list(event.output_ids)}; origin={event.origin_id}; reason={event.reason}"
+            )
+        return "\\n".join(lines)
+
+    def inspect_value(self, value: ValueRef | str):
         """Return a value report directly for a VS Code Watch expression."""
         return self.explain_value(value)
 

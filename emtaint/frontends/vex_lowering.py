@@ -493,6 +493,8 @@ class VEXLowerer(ARMScalarLowering):
             self.vex, self.tmps, self.effects = chunk.vex, {}, []
             self.constant_values, self.register_constants={}, {}
             self.instruction = chunk.start
+            self.current_instruction_bytes = None
+            self.current_assembly_text = None
             self.truth = Constant(True, ValueType.boolean())
             before = len(self.blocks)
             if chunk.vex is None:

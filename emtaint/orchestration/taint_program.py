@@ -119,6 +119,7 @@ def run_taint(
             write(receipt.with_name(receipt.name+'-start.json'), {'function':fid.rva+store.base, 'round':rounds, 'status':'started'})
             address=fid.rva+store.base
             module, cfg, digest=store.load(address)
+            debug_provenance = store.load_debug_provenance(address, module)
             log_event(LOGGER, 'taint.function.started',
                 **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds,
                 cir_sha256=digest, summary_inputs=len(summaries))
@@ -128,6 +129,7 @@ def run_taint(
             scope=AnalysisScope.from_session(runtime.session, fid, context)
             engine=ImageMemoryEngine(scope, module.architecture, module.origin_map, store.segments,
                 SemanticBudgets(sse_nodes=200000, worklist_iterations=2000000), initial_policy='legacy-loader-snapshot', cache_resolutions=True)
+            engine.debug_provenance = debug_provenance
             # Presentation-only mapping; core analysis identities remain RVAs.
             if getattr(args, 'debug_ida_image_base', None) is not None or getattr(args, 'debug_runtime_base', None) is not None:
                 from emtaint.analysis_debugging import AddressTranslator
