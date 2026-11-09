@@ -315,6 +315,174 @@ class AnalysisDebugInspector:
         )
         return "\n".join(lines)
 
+
+    def explain_memory_version(self, version: object, *, max_depth: int = 32) -> str:
+        """Explain existing memory-version ancestry without issuing queries."""
+        if max_depth < 0:
+            raise ValueError("max_depth must be non-negative")
+        versions = getattr(self.engine, "versions", {})
+        if version not in versions:
+            return f"Memory version {version}: unavailable."
+        lines = [f"MEMORY VERSION: {version.key}"]
+        pending, seen = [(version, 0)], set()
+        while pending and len(seen) < 512:
+            current, depth = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            record = versions.get(current)
+            if record is None:
+                continue
+            definition = record.definition
+            indent = "  " * (depth + 1)
+            lines.append(f"{indent}{type(definition).__name__}: {current.key}")
+            lines.append(f"{indent}Origin: {getattr(definition, 'origin', 'initial')}")
+            if hasattr(definition, "location"):
+                location = self.engine.locations.get(definition.location)
+                if location is not None:
+                    lines.append(f"{indent}Location: object={location.object_id}; range=[{location.offset_lower},{location.offset_upper}]; width={location.width_bits}; endian={location.endian.value}")
+                lines.append(f"{indent}Value: {getattr(definition, 'value', None)}")
+                lines.append(f"{indent}Guard: {getattr(definition, 'guard', None)}")
+                alias = getattr(definition, "alias", None)
+                if alias is not None:
+                    lines.append(f"{indent}Update: {definition.update.value}; alias={alias.kind.value}")
+                    lines.append(f"{indent}Alias evidence: {list(alias.evidence)}")
+                    lines.append(f"{indent}Strong-update preconditions: unique={definition.unique_target}; exact-coverage={definition.exact_coverage}")
+            if hasattr(definition, "regions"):
+                lines.append(f"{indent}Havoc regions: {list(definition.regions)}; reason={definition.reason}")
+            if hasattr(definition, "inputs"):
+                for item in definition.inputs:
+                    lines.append(f"{indent}Join input: version={item.version}; guard={item.guard}")
+            parents = tuple(record.parents)
+            if depth >= max_depth and parents:
+                lines.append(f"{indent}... depth limit {max_depth} reached")
+            else:
+                pending.extend((parent, depth + 1) for parent in reversed(parents))
+        if pending:
+            lines.append("... ancestry node limit 512 reached")
+        reads = [item for item in getattr(self.engine, "reads", ()) if item.state == version]
+        lines.append(f"Reads at this version: {len(reads)}")
+        for item in reads[:64]:
+            lines.append(f"  Read {item.result.key}: location={item.location.key}; guard={item.guard}; origin={item.origin}")
+        return "\n".join(lines)
+
+    def explain_memory_read(self, expression: SymbolicExprId) -> str:
+        """List structurally ancestral candidate stores without new alias queries."""
+        dag = getattr(self.engine, "dag", None)
+        if dag is None or expression not in dag.nodes:
+            return f"Memory read {expression.key}: unavailable."
+        node = dag.nodes[expression]
+        if node.op != SymbolicOp.MEMORY_READ:
+            return f"Expression {expression.key} is not a memory read."
+        location = self.engine.locations.get(node.location)
+        if location is None:
+            return "Memory read location descriptor is missing."
+        lines = [f"MEMORY READ: {expression.key}", f"State: {node.state.key}",
+                 f"Location: {location.id.key}", f"Object/range: {location.object_id}; {location.byte_interval}"]
+        reads = [item for item in self.engine.reads if item.result == expression]
+        if reads:
+            lines.append("Read guards: " + ", ".join(str(item.guard) for item in reads))
+        pending, seen, candidates = [node.state], set(), []
+        while pending and len(seen) < 512:
+            state = pending.pop()
+            if state in seen:
+                continue
+            seen.add(state)
+            record = self.engine.versions.get(state)
+            if record is None:
+                continue
+            definition = record.definition
+            if hasattr(definition, "location") and hasattr(definition, "alias"):
+                store = self.engine.locations.get(definition.location)
+                if store is not None:
+                    same_object = location.object_id is not None and location.object_id == store.object_id
+                    left, right = location.byte_interval, store.byte_interval
+                    overlap = bool(same_object and left and right and max(left[0], right[0]) < min(left[1], right[1]))
+                    uncertain = location.object_id is None or store.object_id is None or left is None or right is None or location.object_id != store.object_id
+                    if overlap or uncertain:
+                        candidates.append((state, definition, store, overlap, uncertain))
+            pending.extend(record.parents)
+        lines.append("Candidate stores (ancestry only; no alias query executed):")
+        if not candidates:
+            lines.append("  No candidate store found in the recorded ancestry.")
+        for state, definition, store, overlap, uncertain in candidates:
+            lines.append(f"  state={state.key}; object={store.object_id}; range={store.byte_interval}; guard={definition.guard}; update={definition.update.value}; recorded-alias={definition.alias.kind.value}; overlap={overlap}; uncertain={uncertain}")
+            lines.append("  evidence=" + "; ".join(definition.alias.evidence or definition.alias.assessment.precision_loss))
+        lines.append("Candidate ancestry is not proof that a store reaches this read; path feasibility and alias precision remain separate obligations.")
+        return "\n".join(lines)
+
+    def explain_alias(self, state: object, left: object, right: object, result: object | None = None) -> str:
+        """Explain a supplied or cached alias answer without issuing a query."""
+        lines = [f"ALIAS QUERY: state={getattr(state, 'key', state)}",
+                 f"Left: {left.id.key}; object={left.object_id}; range={left.byte_interval}",
+                 f"Right: {right.id.key}; object={right.object_id}; range={right.byte_interval}"]
+        if result is None:
+            cache = getattr(getattr(self.demand, "port", None), "_alias_cache", {})
+            for key, cached in cache.items():
+                unknown_pair = left.object_id is None and right.object_id is None and key == (state, "unknown-object")
+                known_pair = key[0] == state and left.object_id is not None and right.object_id is not None and left.object_id in key and right.object_id in key
+                if unknown_pair or known_pair:
+                    result = cached
+                    break
+        if result is None:
+            lines.append("Result: NOT_CACHED; inspector will not execute resolve_alias().")
+        else:
+            lines.append(f"Result: {result.kind.value}; evidence={list(result.evidence)}")
+            lines.append(f"Completeness: {result.assessment.status.value}; precision={result.assessment.precision.value}")
+        return "\n".join(lines)
+
+    def explain_instruction(self, origin_id: str) -> str:
+        """Render captured VEX, bytes, assembly and address for one origin."""
+        if self.provenance is None:
+            return "Instruction provenance unavailable."
+        hint = self.provenance.instruction_record(origin_id)
+        origin = self.provenance.origin_record(origin_id)
+        if hint is None or origin is None:
+            return f"Instruction {origin_id}: NOT_RECORDED."
+        translator = getattr(self.engine, "debug_address_translator", None)
+        lines = [f"ORIGIN: {origin_id}",
+                 "VEX statement: " + (hint.vex_statement_text or "NOT_RECORDED"),
+                 "Machine bytes: " + (hint.instruction_bytes_hex or "NOT_RECORDED"),
+                 "Assembly: " + (hint.assembly_text or "NOT_DECODED"),
+                 "Mode: " + (hint.mode or "unknown")]
+        if translator is not None:
+            lines.append(translator.format_address(self.provenance.module.binary_sha256, hint.instruction_rva, "Instruction"))
+        else:
+            lines.append(f"Instruction RVA: {hint.instruction_rva!r}; IDA VA unavailable")
+        return "\n".join(lines)
+
+    def explain_taint_state(self, *, max_items: int = 64) -> str:
+        """Explain recorded source, sink, guard and query evidence without re-analysis."""
+        if max_items < 1:
+            raise ValueError("max_items must be positive")
+        owner = getattr(self.demand, "taint_owner", None)
+        if owner is None:
+            return "Taint evidence unavailable: no LegacyTaintDemand is attached."
+        lines = ["TAINT ANALYSIS EVIDENCE", f"Function RVA: 0x{owner.function.function_id.rva:x}",
+                 f"Completed sinks: {len(owner.completed_sinks)}"]
+        for sink in owner.completed_sinks[:max_items]:
+            lines.append("  Sink: " + repr(sink))
+        lines.append(f"Source bindings: {len(owner.source_bindings)}")
+        for key, binding in list(owner.source_bindings.items())[:max_items]:
+            lines.append(f"  Source binding {key}: {binding!r}")
+        lines.append(f"Imported source bindings: {len(owner.imported_bindings)}")
+        for key, binding in list(owner.imported_bindings.items())[:max_items]:
+            lines.append(f"  Imported source {key}: {binding!r}")
+        lines.append(f"Unknown evidence items: {len(owner.unknown_evidence)}")
+        for item in sorted(owner.unknown_evidence)[:max_items]:
+            lines.append("  Unknown: " + str(item))
+        lines.append(f"Pending queries: {len(owner.query_pending)}")
+        for key, value in list(owner.query_pending.items())[:max_items]:
+            lines.append(f"  Pending query {key}: {value!r}")
+        lines.append(f"Query history items: {len(owner.query_history)}")
+        for item in owner.query_history[-max_items:]:
+            lines.append("  Query: " + repr(item))
+        lines.append(f"Path-guard cache entries: {len(owner.path_guard_cache)}")
+        for key, value in list(owner.path_guard_cache.items())[:max_items]:
+            lines.append(f"  Call origin {key}: guards={value!r}")
+        lines.append("These are recorded may-evidence and analysis states, not proof of path feasibility or a confirmed vulnerability.")
+        return "\n".join(lines)
+
     def inspect_memory_version(self, version: object, **limits: object) -> str:
         """VS Code Watch entry point for a memory-version history report."""
         return self.explain_memory_version(version, **limits)
