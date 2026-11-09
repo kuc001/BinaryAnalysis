@@ -92,13 +92,9 @@ class AnalysisDebugInspector:
             )
         origins = self.provenance.origins(value_id)
         if not origins:
-            lines.append(
-                "Origins: unavailable (no defining effect references OriginMap)"
-            )
-            return "\n".join(lines)
+            lines.append("Origins: NOT_RECORDED (no defining effect or frontend source hint references OriginMap).")
+            lines.append("Origin Type: SYNTHETIC_OR_UNMAPPED; reason=NO_ORIGIN_RECORD")
         lines.append("Origins:")
-        if len(origins) > 1:
-            lines.append(f"  Multiple source records: {len(origins)} (all retained)")
         for item in origins:
             point = item.origin.point
             instruction = (
@@ -143,6 +139,7 @@ class AnalysisDebugInspector:
                     else "unknown-offset"
                 )
                 lines.append(f"    Register: {register} (VEX offset {offset})")
+                lines.append(f"    Register access: {item.role}; width={declared.type.bits} bits (CIR value type).")
                 lines.append("    Register width/access: NOT_RECORDED_IN_SOURCE_HINT (not inferred).")
         if not origins:
             lines.append("Origin Type: SYNTHETIC_OR_UNMAPPED")
@@ -368,6 +365,9 @@ class AnalysisDebugInspector:
                 lines.append(
                     f"    Rule #{event.sequence} [{event.event_id}]: {event.rule}{reason}"
                 )
+                description = self._rule_description(event.rule)
+                if description:
+                    lines.append("      Action: " + description)
             if recorder is not None:
                 causal = recorder.causal_slice(root)
                 lines.append(f"    Causal events: {len(causal)}")
@@ -396,6 +396,25 @@ class AnalysisDebugInspector:
         )
         return "\n".join(lines)
 
+
+    @staticmethod
+    def _rule_description(rule: str) -> str | None:
+        """Describe only explicitly registered analysis rules."""
+        descriptions = {
+            "DEMAND_CONSTANT": "Materialize a typed CIR constant as an SSE constant leaf.",
+            "DEMAND_VALUE_CACHE_HIT": "Reuse the completed memoized demand result for this CIR ValueRef.",
+            "DEMAND_VALUE_UNDEFINED": "Create an explicit Unknown because the CIR value has no local definition in this demand scope.",
+            "DEMAND_COMPUTE": "Expand the operands of a CIR Compute and apply its recorded ValueOp.",
+            "DEMAND_REGISTER_DEFINITION": "Resolve the register read through the backward register definition chain.",
+            "DEMAND_MEMORY_LOAD": "Resolve the LoadEffect address and enumerate its recorded reaching memory definitions.",
+            "DEMAND_CALL_RETURN": "Instantiate the available callee return summary or preserve an unresolved-return Unknown.",
+            "MEMORY_REACHING_STORE_ALIAS": "Compare one encountered Store location with the requested Load location using the actual alias result.",
+            "MEMORY_REACHING_STORE_UNKNOWN": "Preserve a may-flow Unknown for a non-MUST reaching Store; this is not a confirmed alias.",
+            "MEMORY_READ_QUERY": "Create a versioned memory-read expression at the supplied memory state and location.",
+            "SSE_UNKNOWN_CREATE": "Create an explicit Unknown SSE leaf with the recorded precision-loss reason.",
+            "MEMORY_ALIAS_QUERY": "Record the result of the actual MemoryQueryPort alias decision.",
+        }
+        return descriptions.get(rule)
 
     def _expression_fingerprint(self, expression: SymbolicExprId, *, max_nodes: int = 512) -> str:
         """Return a bounded structural fingerprint without simplifying the DAG."""

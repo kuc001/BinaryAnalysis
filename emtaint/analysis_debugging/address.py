@@ -64,6 +64,16 @@ class AddressTranslator:
             "IDA_IMAGE_BASE_NOT_CONFIGURED" if self.ida_image_base is None else "IDA_ADDRESS_OVERFLOW")
         return AddressView(rva, ida, runtime, reason)
 
+    def address_fields(self, binary: BinaryId | str, rva: int | None) -> dict[str, str | None]:
+        """Return JSON-safe, explicitly named address-space projections."""
+        view = self.view(binary, rva)
+        return {
+            "rva": None if view.rva is None else hex(view.rva),
+            "ida_va": None if view.ida_va is None else hex(view.ida_va),
+            "runtime_va": None if view.runtime_va is None else hex(view.runtime_va),
+            "address_status": view.reason,
+        }
+
     def format_address(self, binary: BinaryId | str, rva: int | None,
                        label: str = "Address") -> str:
         """Format IDA VA first and preserve the canonical RVA."""
