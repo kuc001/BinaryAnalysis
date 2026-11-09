@@ -79,6 +79,45 @@ class LegacyDemand:
             self._debug_inspector = inspector
         return inspector
 
+    def enable_debug_trace(self, recorder=None):
+        """Attach an opt-in structural recorder without changing semantics."""
+
+        if recorder is None:
+            from emtaint.analysis_debugging import AnalysisTraceRecorder
+
+            recorder = AnalysisTraceRecorder(enabled=True)
+        self._trace_recorder = recorder
+        self.port.engine.trace_recorder = recorder
+        return recorder
+
+    def _trace(
+        self,
+        rule: str,
+        inputs: tuple[object, ...] = (),
+        outputs: tuple[object, ...] = (),
+        *,
+        origin: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """Record one rule event using only already-computed values."""
+
+        recorder = getattr(self, '_trace_recorder', None)
+        if recorder is None:
+            return
+        instruction_rva = None
+        if origin is not None:
+            record = self.port.engine.origin_record(origin)
+            instruction_rva = record.point.instruction_rva
+        recorder.record(
+            rule,
+            self.function.function_id.rva,
+            inputs=inputs,
+            outputs=outputs,
+            origin_id=origin,
+            instruction_rva=instruction_rva,
+            reason=reason,
+        )
+
     def prove_stack_range(self, cfg):
         """A frame label alone cannot prove disjointness after SP arithmetic.
 
@@ -189,31 +228,47 @@ class LegacyDemand:
         self.tick(depth)
         p=self.port
         origin=p.engine.origins[0].id
-        if isinstance(operand, Constant):return (p.constant(operand.value, operand.type, origin),)
+        if isinstance(operand, Constant):
+            result=(p.constant(operand.value, operand.type, origin),)
+            self._trace('DEMAND_CONSTANT', (operand,), result, origin=origin)
+            return result
         key=('value', operand.id)
-        if key in self.memo:return self.memo[key]
-        if operand.id not in self.defs:return (p.unknown(operand.type, origin, 'Undefined demand value '+operand.id),)
+        if key in self.memo:
+            result=self.memo[key]
+            self._trace('DEMAND_VALUE_CACHE_HIT', (operand,), result)
+            return result
+        if operand.id not in self.defs:
+            reason='Undefined demand value '+operand.id
+            result=(p.unknown(operand.type, origin, reason),)
+            self._trace('DEMAND_VALUE_UNDEFINED', (operand,), result,
+                        origin=origin, reason=reason)
+            return result
         block, index, effect=self.defs[operand.id]
         origin=effect.origin
         if isinstance(effect, Compute):
             self.rules.add('legacy._update_register/scalar-substitution')
             result=self.operation(effect, depth)
+            trace_rule='DEMAND_COMPUTE'
         elif isinstance(effect, ReadRegister):
             source=effect.source
             result=self.register(block, index, source.register, source.register_width_bits, depth+1)
             if source.bit_offset or source.width_bits!=source.register_width_bits:
                 result=tuple(p.operation(SymbolicOp.EXTRACT, operand.type, (x,), origin,
                     (source.bit_offset+source.width_bits-1, source.bit_offset)) for x in result)
+            trace_rule='DEMAND_REGISTER_DEFINITION'
         elif isinstance(effect, LoadEffect):
             self.rules.add('legacy._find_wrtmp_load_def_v1')
             result=self.union(self.read(block, index, address, effect, depth+1)
                               for address in self.value(effect.address, depth+1))
+            trace_rule='DEMAND_MEMORY_LOAD'
         elif isinstance(effect, CallEffect):
             self.rules.add('legacy._update_expr_from_callees/return')
             summary=self.summaries.get(effect.target.function) if isinstance(effect.target, DirectTarget) else None
             result=(summary.instantiate(self, effect, depth+1) if hasattr(summary, 'instantiate') else summary(self, effect, depth+1)) if summary else (p.unknown(operand.type, origin, 'Unresolved callee return alias'),)
+            trace_rule='DEMAND_CALL_RETURN'
         else:raise TypeError(type(effect))
         if not any(self.contains(x, self.cycles) for x in result):self.memo[key]=result
+        self._trace(trace_rule, (operand,), result, origin=origin)
         return result
 
     def register(self, block, index, name, width, depth):

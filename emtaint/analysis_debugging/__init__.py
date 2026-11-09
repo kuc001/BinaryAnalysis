@@ -7,6 +7,7 @@ from .provenance import (
     ValueOrigin,
 )
 from .inspectors import AnalysisDebugInspector
+from .trace import AnalysisTraceEvent, AnalysisTraceRecorder
 
 __all__ = [
     "ProvenanceIndex",
@@ -14,4 +15,6 @@ __all__ = [
     "ValueDefinition",
     "ValueOrigin",
     "AnalysisDebugInspector",
+    "AnalysisTraceEvent",
+    "AnalysisTraceRecorder",
 ]

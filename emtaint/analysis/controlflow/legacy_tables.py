@@ -6,7 +6,7 @@ snapshot. These are legacy heuristic candidates, never concrete witnesses.
 
 from dataclasses import dataclass
 
-from emtaint.core.contracts import Record, TypeKind, ValueType
+from emtaint.core.contracts import Record, SymbolicExprId, TypeKind, ValueType
 from emtaint.memory import SymbolicOp
 
 
@@ -79,46 +79,131 @@ class LegacyTableCollector:
         self.queries=0
         self.partial_targets=set()
 
-    def evaluate(self, root, index, overrides=None):
-        d=self.port.engine.dag
-        cache=dict(overrides or {})
+    def evaluate(
+        self,
+        root: SymbolicExprId,
+        index: int,
+        overrides: dict[SymbolicExprId, int | bool | None] | None = None,
+    ) -> int | bool | None:
+        """Evaluate one SSE root with the legacy concrete table semantics.
+
+        The traversal is iterative post-order so deep DAGs do not consume the
+        Python call stack.  Existing overrides win, registered demand loads are
+        read from the initial snapshot after their address is evaluated, and
+        ``None`` retains the historical meaning of a non-concrete result.
+        """
+
+        dag=self.port.engine.dag
+        evaluated_values=dict(overrides or {})
         pending=[(root, False)]
         while pending:
-            ref, ready=pending.pop()
-            if ref in cache:continue
-            n=d.nodes[ref]
-            if ref in self.demand.loads:
-                address, width, endian, origin=self.demand.loads[ref]
-                if not ready:
-                    pending.append((ref, True))
-                    pending.append((address, False))
+            expression_id, operands_ready=pending.pop()
+            if expression_id in evaluated_values:
+                continue
+            node=dag.nodes[expression_id]
+            if expression_id in self.demand.loads:
+                address_id, width, endian, origin=self.demand.loads[expression_id]
+                if not operands_ready:
+                    pending.append((expression_id, True))
+                    pending.append((address_id, False))
                     continue
-                absolute=cache[address]
-                binding=self.port.engine.address(absolute) if type(absolute) is int else None
-                if binding:
-                    loc=self.port.engine.location(*binding, width, endian, origin)
-                    value=self.port.read(self.demand.initial.memory, loc,
-                        self.port.constant(True, ValueType.boolean(), origin), origin).value
-                    self.queries+=1
-                    cache[ref]=self.port.concrete(value)
-                else:cache[ref]=None
+                evaluated_values[expression_id]=self._evaluate_load(
+                    evaluated_values[address_id], width, endian, origin
+                )
+                self._record_evaluation(
+                    'TABLE_MEMORY_LOAD_EVALUATE', expression_id,
+                    'concrete' if evaluated_values[expression_id] is not None
+                    else 'unresolved address or value'
+                )
                 continue
-            if not ready and n.operands:
-                pending.append((ref, True))
-                pending.extend((x, False) for x in n.operands)
+            if not operands_ready and node.operands:
+                pending.append((expression_id, True))
+                pending.extend((operand, False) for operand in node.operands)
                 continue
-            a=[cache[x] for x in n.operands]
-            if n.op==SymbolicOp.CONSTANT:result=n.value
-            elif n.op==SymbolicOp.MEMORY_READ:result=self.port.concrete(ref)
-            elif n.op==SymbolicOp.SYMBOL and n.value=='i':result=index
-            elif n.op==SymbolicOp.IF:
-                result=a[1] if a[0] is True else a[2] if a[0] is False else a[1] if a[1]==a[2] else None
-            elif n.op==SymbolicOp.COPY:result=a[0]
-            elif a and all(x is not None for x in a):result=d._calculate(n, a)
-            else:result=None
-            if result is not None and n.type.kind!=TypeKind.BOOL:result%=1<<n.type.bits
-            cache[ref]=result
-        return cache[root]
+            operand_values=[evaluated_values[operand] for operand in node.operands]
+            result=self._evaluate_node(
+                expression_id, node, operand_values, index
+            )
+            if result is not None and node.type.kind!=TypeKind.BOOL:
+                result%=1<<node.type.bits
+            evaluated_values[expression_id]=result
+            self._record_evaluation(
+                'TABLE_EXPRESSION_EVALUATE', expression_id,
+                'concrete' if result is not None else 'symbolic or unsupported'
+            )
+        return evaluated_values[root]
+
+    def _evaluate_load(
+        self,
+        absolute: int | bool | None,
+        width: int,
+        endian: object,
+        origin: str,
+    ) -> int | bool | None:
+        """Read one already-evaluated absolute address from initial memory."""
+
+        binding=(self.port.engine.address(absolute)
+                 if type(absolute) is int else None)
+        if not binding:
+            return None
+        location=self.port.engine.location(*binding, width, endian, origin)
+        read=self.port.read(
+            self.demand.initial.memory,
+            location,
+            self.port.constant(True, ValueType.boolean(), origin),
+            origin,
+        )
+        self.queries+=1
+        return self.port.concrete(read.value)
+
+    def _evaluate_node(
+        self,
+        expression_id: SymbolicExprId,
+        node: object,
+        operands: list[int | bool | None],
+        index: int,
+    ) -> int | bool | None:
+        """Apply the unchanged legacy scalar truth table to one DAG node."""
+
+        if node.op==SymbolicOp.CONSTANT:
+            return node.value
+        if node.op==SymbolicOp.MEMORY_READ:
+            return self.port.concrete(expression_id)
+        if node.op==SymbolicOp.SYMBOL and node.value=='i':
+            return index
+        if node.op==SymbolicOp.IF:
+            return (operands[1] if operands[0] is True
+                    else operands[2] if operands[0] is False
+                    else operands[1] if operands[1]==operands[2]
+                    else None)
+        if node.op==SymbolicOp.COPY:
+            return operands[0]
+        if operands and all(value is not None for value in operands):
+            return self.port.engine.dag._calculate(node, operands)
+        return None
+
+    def _record_evaluation(
+        self,
+        rule: str,
+        expression_id: SymbolicExprId,
+        reason: str,
+    ) -> None:
+        """Trace an evaluation decision without changing its return value."""
+
+        recorder=getattr(self.demand, '_trace_recorder', None)
+        if recorder is None:
+            return
+        node=self.port.engine.dag.nodes[expression_id]
+        origin=self.port.engine.origin_record(node.origin)
+        recorder.record(
+            rule,
+            self.demand.function.function_id.rva,
+            inputs=node.operands,
+            outputs=(expression_id,),
+            origin_id=node.origin,
+            instruction_rva=origin.point.instruction_rva,
+            reason=reason,
+        )
 
     def indexed(self, root, overrides=None):
         d=self.port.engine.dag

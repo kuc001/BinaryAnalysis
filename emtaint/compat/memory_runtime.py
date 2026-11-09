@@ -118,6 +118,35 @@ class MemoryRuntimePort:
             offset=offset,
         )
 
+    def _record_trace(
+        self,
+        rule: str,
+        *,
+        inputs: Sequence[object] = (),
+        outputs: Sequence[object] = (),
+        origin: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """Record an optional event from already-computed port values."""
+
+        recorder = getattr(self.engine, "trace_recorder", None)
+        if recorder is None:
+            return
+        instruction_rva = None
+        if origin is not None:
+            instruction_rva = self.engine.origin_record(
+                origin
+            ).point.instruction_rva
+        recorder.record(
+            rule,
+            self.scope.function.rva,
+            inputs=inputs,
+            outputs=outputs,
+            origin_id=origin,
+            instruction_rva=instruction_rva,
+            reason=reason,
+        )
+
     def constant(
         self,
         value: int | bool,
@@ -140,6 +169,9 @@ class MemoryRuntimePort:
             type=str(type_),
             origin=origin,
         )
+        self._record_trace(
+            "SSE_CONSTANT_CREATE", outputs=(result,), origin=origin
+        )
         return result
 
     def symbol(
@@ -158,6 +190,9 @@ class MemoryRuntimePort:
             name=name,
             type=str(type_),
             origin=origin,
+        )
+        self._record_trace(
+            "SSE_SYMBOL_CREATE", outputs=(result,), origin=origin, reason=name
         )
         return result
 
@@ -180,6 +215,12 @@ class MemoryRuntimePort:
             "sse.unknown.created",
             expression=_key(result),
             type=str(type_),
+            origin=origin,
+            reason=reason,
+        )
+        self._record_trace(
+            "SSE_UNKNOWN_CREATE",
+            outputs=(result,),
             origin=origin,
             reason=reason,
         )
@@ -212,6 +253,12 @@ class MemoryRuntimePort:
             type=str(type_),
             origin=origin,
             params=list(params),
+        )
+        self._record_trace(
+            "SSE_OPERATION_" + operation.value.upper(),
+            inputs=args,
+            outputs=(result,),
+            origin=origin,
         )
         return result
 
@@ -399,6 +446,13 @@ class MemoryRuntimePort:
             precision=result.assessment.precision.value,
             origin=origin,
         )
+        self._record_trace(
+            "MEMORY_READ_QUERY",
+            inputs=(state, location.id, guard),
+            outputs=(result.value, result.state),
+            origin=origin,
+            reason=result.assessment.status.value,
+        )
         return result
 
     def write(
@@ -445,6 +499,13 @@ class MemoryRuntimePort:
             origin=origin,
             completeness=result.assessment.status.value,
             precision=result.assessment.precision.value,
+        )
+        self._record_trace(
+            "MEMORY_WRITE_QUERY",
+            inputs=(state, location.id, value, guard),
+            outputs=(result.state,),
+            origin=origin,
+            reason=request.update.value,
         )
         return result
 
@@ -524,6 +585,13 @@ class MemoryRuntimePort:
             completeness=result.assessment.status.value,
             precision=result.assessment.precision.value,
         )
+        self._record_trace(
+            "MEMORY_ALIAS_QUERY",
+            inputs=(state, left.id, right.id),
+            outputs=(),
+            origin=left.origin,
+            reason=result.kind.value,
+        )
 
     def havoc(
         self,
@@ -553,6 +621,13 @@ class MemoryRuntimePort:
             origin=origin,
             guard=_key(guard),
         )
+        self._record_trace(
+            "MEMORY_HAVOC",
+            inputs=(state, *regions, guard),
+            outputs=(result,),
+            origin=origin,
+            reason=reason,
+        )
         return result
 
     def definitions(self, read: ReadMemory) -> DefinitionResult:
@@ -571,6 +646,13 @@ class MemoryRuntimePort:
             completeness=result.assessment.status.value,
             precision=result.assessment.precision.value,
             origin=read.origin,
+        )
+        self._record_trace(
+            "MEMORY_DEFINITION_QUERY",
+            inputs=(read.state, read.location, read.result, read.guard),
+            outputs=result.definitions,
+            origin=read.origin,
+            reason=result.assessment.status.value,
         )
         return result
 

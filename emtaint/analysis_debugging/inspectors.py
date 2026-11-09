@@ -227,6 +227,20 @@ class AnalysisDebugInspector:
 
         cache_key = ("value", value.id)
         roots = demand.memo.get(cache_key)
+        recorder = getattr(demand, "_trace_recorder", None)
+        value_events = recorder.events_for(value.id) if recorder is not None else ()
+        if roots is None and self.engine is not None:
+            traced_keys = tuple(
+                output
+                for event in value_events
+                if event.rule.startswith("DEMAND_")
+                for output in event.output_ids
+            )
+            roots = tuple(
+                reference
+                for reference in self.engine.dag.nodes
+                if reference.key in traced_keys
+            ) or None
         lines = [f"Demand value {value.id}"]
         if roots is None:
             lines.append(
@@ -257,6 +271,16 @@ class AnalysisDebugInspector:
                     lines.append(
                         f"    Created at: unresolved origin {node.origin}"
                     )
+            derivations = [
+                event
+                for event in value_events
+                if root.key in event.output_ids
+            ]
+            for event in derivations:
+                reason = f" reason={event.reason}" if event.reason else ""
+                lines.append(
+                    f"    Rule #{event.sequence}: {event.rule}{reason}"
+                )
         rules = tuple(sorted(getattr(demand, "rules", ())))
         lines.append(
             "Observed rules: " + (", ".join(rules) if rules else "none recorded")
