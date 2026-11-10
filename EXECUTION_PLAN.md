@@ -1,17 +1,17 @@
-# BinaryAnalysis execution plan — A2 proposal
+# BinaryAnalysis execution plan — owner decisions and milestone gates
 
-2026-11-10. Milestones are bounded approval gates, not P1–P7 package boundaries. A2 is a committed design proposal; all ADRs remain Proposed. B0 was requested as preflight only. The governance enhancement is documentation-only and does not approve B1 migration, B2 deletion or B3 CLI/packaging changes. Stage descriptions below are plans, not completion claims.
+2026-11-10. Milestones are bounded approval gates, not P1–P7 package boundaries. The owner Accepted ADR-001–008 and ADR-010–012 in their stated directions; ADR-009 remains Proposed. The owner revoked B1-GUARD authorization and removed WriteGuard/ProbeWriteGuard/ForbiddenMutation/Legacy Readonly Bootstrap from the target architecture. This round revises only documentation; the revised B1 cleanup plan requires owner approval before any production edit. No B2 deletion or Git submission is authorized. Stage descriptions below are plans, not completion claims.
 
 ## Status ledger
 
-Use only `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED`, `REVIEWED`, `APPROVED`. Meanings, transitions and gate evidence are defined in `CODEX_WORKFLOW.md`. `IMPLEMENTED` records a deliverable, not acceptance. Only the project owner may set `APPROVED`; proposed ADRs and a Git commit do not imply approval. Update this ledger with evidence links whenever status changes.
+Active milestones use `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED`, `REVIEWED`, `APPROVED`. Meanings, transitions and gate evidence are defined in `CODEX_WORKFLOW.md`. `CANCELLED` records the owner's withdrawal of B1-GUARD as a task disposition in `BACKLOG.md`, not completion or a new active milestone state. `IMPLEMENTED` records a deliverable, not acceptance. Only the project owner may set `APPROVED`; proposed ADRs and a Git commit do not imply approval. Update this ledger with evidence links whenever status changes.
 
 | Milestone | Status | Evidence / next gate |
 |---|---|---|
 | A | IMPLEMENTED | `REPOSITORY_AUDIT.md`; owner review remains unrecorded |
-| A2 | IMPLEMENTED | `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `DECISIONS.md`; ADR-001–012 remain Proposed |
-| B0 | IMPLEMENTED | `RESET_MANIFEST.md` and audit/plan revisions; owner review of manifest remains |
-| B1 | NOT_STARTED | Needs approved B1 task spec, reset scope and relevant ADRs |
+| A2 | IMPLEMENTED | Architecture direction accepted for ADR-001–008/010–012; detailed contract freeze and ADR-009 remain open |
+| B0 | IMPLEMENTED | `RESET_MANIFEST.md` and technical review revised for owner guard-removal decision; new cleanup scope awaits approval |
+| B1 | PLANNED | B1-GUARD CANCELLED; B1-CLI/SOLVER/LEGACY/ACQUIRE/SOURCE cleanup specifications await owner approval; code NOT_STARTED |
 | B2 | NOT_STARTED | Needs B1 evidence, per-file deletion approval and protected-data review |
 | B3 | NOT_STARTED | Needs B2 evidence and applicable C/D contracts |
 | C | PLANNED | Depends on approved architecture/data-contract boundaries |
@@ -23,21 +23,27 @@ Use only `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VER
 
 The task queue and task-level dependencies are in `BACKLOG.md`; exact commands, results and skipped checks belong in `BUILD_LOG.md`. The seven gate names and their entry/exit criteria are in `CODEX_WORKFLOW.md`. A milestone may have IMPLEMENTED documentation while its design gate is still pending owner decision.
 
+### B0 review to B1 authorization boundary
+
+The B0 technical review in `RESET_MANIFEST.md` confirms dynamic CLI imports, solver subprocess launch, source-file hashes, the old-Python child bootstrap and the still-needed acquisition producer. `DECISIONS.md` records the owner’s accepted ADR directions, open ADR-009 and cancellation of B1-GUARD. `BACKLOG.md` now owns the B1 cleanup dependency graph: CLI, SOLVER, LEGACY and ACQUIRE remove guard-only calls while preserving their business paths; SOURCE follows executable and receipt choices; B2 deletes obsolete helpers only after verified decoupling and exact-file owner approval. Full Acquisition replacement remains D after C; B2 cannot remove `p7_acquire.py` before a verified compatible producer.
+
+Before any B1 code change, submit bounded task specifications and modification plans for the revised cleanup. The legacy child still uses `_p0b_bootstrap.py` for parser and analysis work, so the replacement entry and plan/resume compatibility must be decided without a new guard. CLI, Solver and Acquisition need explicit output folders, file creation policy and failure receipts after guard removal. The B1-GUARD migration specification and its package API are withdrawn; no production code is authorized by this documentation round. `BUILD_LOG.md` will record actual implementation evidence only after work begins.
+
 ## A — Repository audit
 
 Goal: inspect production code, imports, schemas, CLI, scripts/tests dependencies and classify value. Input: current checkout and product requirements. Output: `REPOSITORY_AUDIT.md` with facts, inference, recommendations and limits. Acceptance: key paths traced to code and unresolved decisions listed. Current audit exists but is not owner-approved; A2 corrects stale findings. Risk: static inspection misses runtime/external CI behavior. Document: audit and decision register.
 
 ## A2 — Architecture Decision & Design Freeze
 
-Goal: independently verify A evidence and specify HIR/CIR, CTree export, memory, provenance, confidence and acquisition/result boundaries. Input: A audit, source code, TASK_1/2, product and engineering constraints. Output: revised `REPOSITORY_AUDIT.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `DECISIONS.md`, this plan. Modules inspected: CIR/wire, core contracts/identity, frontends/FunctionStore, memory, dataflow/alias/demand/taint, orchestration, CLI, scripts and packaging. Risk: deployed IDA API/version unknown and proposed schema not yet exercised. Acceptance: A/B HIR/CIR comparison, explicit HIR/CIR/memory/provenance contracts, ADR-001–012 Proposed, B–H dependencies and gates, source-backed corrections. Verification: static reads and doc/diff review only; **no tests, code changes, commit or push**. Exit: owner reviews and explicitly approves or requests revisions. Until then B is blocked by governance, not by technical progress.
+Goal: independently verify A evidence and specify HIR/CIR, CTree export, memory, provenance, confidence and acquisition/result boundaries. Input: A audit, source code, TASK_1/2, product and engineering constraints. Output: revised `REPOSITORY_AUDIT.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `DECISIONS.md`, this plan. Modules inspected: CIR/wire, core contracts/identity, frontends/FunctionStore, memory, dataflow/alias/demand/taint, orchestration, CLI, scripts and packaging. Risk: deployed IDA API/version unknown and proposed schema not yet exercised. Acceptance: A/B HIR/CIR comparison, explicit HIR/CIR/memory/provenance contracts, ADR register, B–H dependencies and gates, source-backed corrections. Verification: static reads and doc/diff review only; **no tests, code changes, commit or push** in A2. Exit: owner has accepted eleven architecture directions; exact contracts and ADR-009 remain open and are not silently frozen.
 
 ## B0 — Repository Reset Preflight (current, documentation only)
 
 Goal: turn the A/A2 audit into a file-by-file reset decision. Input: current checkout, A2 proposal, script/test/output inventory and call sites. Output: `RESET_MANIFEST.md`, corrected audit, architecture/acquisition clarifications and this plan. Dependencies: A2 design available for review; no ADR is self-approved. Modules inspected: `scripts/*`, `tests/*`, generated roots, CLI, solver, FunctionStore, entrypoints. Risk: unseen external CI or user data. Acceptance: every script/test file classified, production consumers and prerequisites recorded, protected data named, no deletion or code edit. Document: six B0 documents. Exit: owner reviews manifest and authorizes a specific B1 scope.
 
-## B1 — Production script dependency migration
+## B1 — Remove auxiliary guard dependencies while preserving production flows
 
-Goal: make current supported execution independent of `scripts/` without changing approved semantics. Input: owner-reviewed B0 manifest, decisions on legacy mode/verification, approved contracts. Output: package-owned write guard and solver worker, source fingerprint replacement, optional legacy adapter; compatible acquisition producer or explicit retention of `p7_acquire.py` until D. Dependencies: B0 approval and relevant ADR approval. Modules: CLI, solver process port, application/acquisition adapters, script callers. Risk: broken subprocess protocol, legacy behavior or FunctionStore input production. Acceptance: approved replacement cases verify each migrated call path and receipt; no supported path references a removed script; old generator remains until replacement validated. Document: migration mapping, decisions and build evidence. Exit: owner approves exact B2 deletion list.
+Goal: remove WriteGuard, ProbeWriteGuard, ForbiddenMutation and guard-specific bootstrap dependencies from supported execution without removing Solver, Acquisition, CLI or supported Legacy Backend behavior. Input: owner-approved revised B0 manifest and bounded B1 task specifications; ADR-009 retirement remains open. Output: guard-free CLI/worker/acquisition/legacy paths with explicit output destinations, coherent receipts and source fingerprints. B1 may retain `p1_solver_worker.py`, `p7_acquire.py` and necessary non-guard legacy capability; it does not require wholesale `scripts/` relocation. Dependencies: owner approval of the new cleanup plan, then B1-CLI/SOLVER/LEGACY/ACQUIRE followed by B1-SOURCE; legacy plan/hash changes are coordinated. Modules: CLI, solver worker/process port, acquisition producer, legacy target/old-Python launch and source manifest. Risk: broken subprocess protocol, old-Python parser/analysis, historical receipts or FunctionStore production. Acceptance: no live guard import/lifecycle/violations or `_p0b_bootstrap.py` dependency; each supported data flow and its output/error path verified; no guard reimplementation. Document: exact migration mapping and build evidence. Exit: owner reviews exact B2 deletion list separately.
 
 ## B2 — Historical tests/scripts/output cleanup
 
