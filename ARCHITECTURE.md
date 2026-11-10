@@ -1,225 +1,75 @@
-# BinaryAnalysis Architecture --- Proposed target
+# BinaryAnalysis architecture — A2 design proposal
 
-> Proposed design based on TASK_1/TASK_2 requirements. Not a claim about
-> the current repository implementation; actual audit evidence must be
-> added to REPOSITORY_AUDIT.md.
+Status: **Proposed**, 2026-11-10. This document specifies target contracts for owner review; no ADR is approved and no implementation is claimed. Existing behavior is evidenced in `REPOSITORY_AUDIT.md`. Names below are logical contracts, not instructions to create packages.
 
-## 1. Direction
+## 1. System overview and dependency rules
 
-BinaryAnalysis becomes a multi-representation binary program analysis
-framework.
-
-``` text
-Project / Input Manifest
-        |
-Acquisition Orchestrator
-        |
-  +-----+-------------------+
-  |                         |
-Binary Frontends       Decompiler Frontends
-  |                         |
-Instruction/CFG         Hex-Rays CTree
-VEX / Microcode              |
-  |                          v
-  |                     Frontend HIR
-  |                          |
-  +--------------------------+
-                 |
-       Canonical Analysis IR
-                 |
-       Program + Memory Model
-                 |
-      +----------+----------+
-      |          |          |
-   Dataflow    Alias       Solver
-      |          |          |
-      +----------+----------+
-                 |
-        Interprocedural Analysis
-                 |
-       Taint / Vulnerability / Evidence
-                 |
-       Result Store + Debug/Provenance
+```text
+CLI -> application use cases -> project/input resolver
+                            -> acquisition service -> frontend adapters -> source exports
+                                                   -> HIR (CTree only) -> CIR lowering
+                                                   -> CIR (VEX, future Microcode)
+                                                   -> immutable artifact store/cache index
+                            -> program/CFG + shared CIR and memory query contracts
+                            -> dataflow/demand/alias/SSE/solver -> summaries/CG/ICFG
+                            -> taint -> vulnerability assessment -> result store/cache
+                            -> read-only debug/evidence inspectors
+provenance graph links source exports, HIR, CIR, machine evidence and results
 ```
 
-## 2. Layers and responsibilities
+Dependencies flow from use cases toward pure contracts. Frontend SDK imports remain inside adapters; HIR/CIR, program, memory, analyses and wire schemas cannot import IDA/angr runtime types. Storage validates bytes and references, not semantic truth. Debug reads recorded results and evidence; a new query requires an explicit analysis use case. No directory split until a contract has a real consumer. Preserve the `emtaint` import path pending ADR-006.
 
-### Project/Input Management
+## 2. Layer responsibilities and principal data flow
 
-Owns project identity, binary and metadata inputs, hashes,
-architecture/load configuration, frontend selection and user display
-settings. No analysis algorithms.
+Project/input owns binary content identity, architecture, ABI, loader/relocation configuration, frontend selection and typed address conversions. Acquisition resolves inputs and publishes source, HIR, CIR and provenance artifacts. Frontends export only serializable records. CIR is the **proposed common executable effect contract** for CFG, def/use, memory, demand and security analyses. Program owns function/block/callsite identity and graph revisions. Analysis computes versioned results; evidence records reasons and uncertainty. A source call hint is acquisition data, whereas resolved CG edges are analysis results.
 
-### Frontends
+Contract ownership: project defines `BinaryId`, `FunctionId`, address domain and conversion evidence; representations define HIR/CIR/source/provenance identities; memory defines object, path, location, alias and version semantics; analysis defines query/result assessment. Consumers may reference these contracts by ID but may not mutate artifacts.
 
--   Binary: IDA disassembly/CFG, IDA Microcode (planned), angr/VEX
-    (optional).
--   Decompiler: IDA Hex-Rays CTree first.
--   A frontend exports serializable source artifacts and normalized
-    contracts. The main analysis process must not depend on live
-    IDA/Hex-Rays objects.
+## 3. HIR versus CIR decision
 
-### HIR
+| Route | Semantic retention | Shared analysis | Complexity/long-term cost |
+|---|---|---|---|
+| A: CTree→HIR→CIR; VEX/Microcode→CIR | HIR keeps declarations, lvalues, layout hypotheses and structured control; CIR keeps effects; unsupported lowering stays explicit | One CIR/memory/dataflow engine | One lowering boundary and two serializable schemas; demands careful mapping and selective rebuild |
+| B: CTree→HIR and VEX/Microcode→CIR, then unified analysis model | High-level detail available directly | A third model or dual-dispatch algorithms needed for memory/alias/def-use | More translators, duplicated semantics and persistent cross-model synchronization; useful only if CIR cannot be evolved without unacceptable loss |
 
-A frontend-independent high-level representation for: -
-Functions/parameters/local/global variables. - Variable storage
-metadata. - Arrays, structures, members, pointers, dereferences. - Calls
-and indirect call target expressions. - Arithmetic, casts,
-comparisons. - If/switch/loops/returns. - Strings/constants. - Types,
-type origin/confidence. - Original source node identity and location.
+**Recommendation (ADR-001/002/012): A.** Current `ir/canonical/model.py` already models ordered Compute, Load/Store, Call, Branch, Return, Havoc and Unknown effects. `core/contracts.py` ValueType is scalar bool/BV/pointer; ValueRef is a string ID plus type, Origin holds one ProgramPoint; CIRModule embeds MemorySnapshot. Thus CIR v1 cannot faithfully represent declarations, variable use/definition identity, array/structure layout or type provenance. Evolve to versioned CIR v2 and retain HIR as a separate immutable source semantic artifact. CIR remains the unified **analysis** representation, not the sole preservation format. B remains a fallback if the first CTree slice demonstrates unavoidable loss despite explicit effect/object/provenance contracts. Owner decides.
 
-HIR must not contain `cexpr_t`, `cinsn_t`, `lvar_t` or other live
-Hex-Rays objects. It is versioned and serializable. Preserve raw
-pseudocode for display, not as primary semantic input.
+HIR function record: `schema_version, binary_id, function_id, frontend_artifact_id, node_table, variable_table, type_table, entry, assessment`. Node IDs are local to a function and immutable within an export fingerprint. Nodes have kind, ordered child IDs, source-node references, value/lvalue role, type-ref with origin, evaluation order, optional guard, and completeness. Statement kinds include block, assignment, declaration/initialization, if, loop, switch, goto/break/continue and return; expression kinds include variable, constant/string, address-of, dereference, index, member, cast, arithmetic/comparison, conditional and call. An opaque node retains original opcode, ordered known children, possible reads/writes/control effects and reason. Variable identity includes function, decompiler local index **within this export**, storage descriptor, parameter role and optional name; name is display metadata, not identity. HIR retains high-level control and type hypotheses without copying CIR effects or MemorySnapshot.
 
-### Canonical Analysis IR
+HIR lowering emits CIR definitions for variable reads/writes, scalar Computes, explicit memory Load/Store, Call target/args/results/footprint, guards, CFG edges and Return. Loop/switch become CFG with guard edges while HIR retains their structured form. Variable definitions use a versioned, function-scoped definition identity; CIR value identity is distinct from HIR node identity. Lowering references HIR nodes through the provenance graph rather than embedding a duplicate AST. Every supported HIR node has zero or more CIR outputs plus an explicit coverage record. A node with no effect still has a mapping reason; unsupported effects yield UnknownEffect/Havoc with conservative read/write/control footprint and PARTIAL or UNSUPPORTED assessment. A partial expression cannot silently become a known constant or no-op. Existing CIR wire v1 is read-only historical input until a documented v2 migration is approved; never relabel v1 bytes as v2.
 
-CIR may remain canonical only if audit confirms it can represent
-variable definitions, memory effects, access paths, calls, guards,
-confidence, partial semantics and source-origin sets. If not, evolve
-contracts/schema deliberately. Do not create a second analysis engine
-around HIR.
+## 4. CTree frontend and IDA boundary
 
-Proposed lowering:
+The IDA-side exporter opens the target database in a licensed, compatible Hex-Rays environment, checks decompiler availability and records IDA, SDK, Hex-Rays, Python, processor, maturity and export configuration. It calls documented `ida_hexrays.decompile(ea)`, traverses `cfunc_t.body` (`cinsn_t`) and `cexpr_t` children with a version-gated visitor or explicit ordered traversal, and exports local variables and type information. The main process consumes only schema-validated bytes. No live `cfunc_t`, `lvar_t` or `tinfo_t` object crosses the boundary; pseudocode text is a separate display field.
 
-``` text
-Hex-Rays CTree -> HIR -> CIR
-IDA Microcode  ----------> CIR adapter
-VEX            ----------> CIR adapter
-angr VEX       ----------> CIR adapter
-```
+Source node identity is `(binary, function, export fingerprint, traversal path, node kind)`; path is a tuple of typed child slots, not EA or a Python pointer. Repeated or synthetic nodes and BADADDR/no-EA remain distinct. `lvar_t` identity uses the export's local index plus function/export identity, with storage and user annotations as evidence; index stability across re-decompilation is **not assumed**. Type serialization records canonical kind/width/signedness/pointee/array count/field offsets/calling convention where supported, original display spelling, source (user, decompiler, debug data), and unknown fields. A printed type is not sufficient serialization. Record global identity separately from local identity.
 
-Keep source artifacts even after lowering.
+For calls retain the complete callee expression (including casts), arguments in evaluation order, ABI hypothesis, direct/external/indirect/unknown target and side-effect uncertainty. For index/member/deref retain base, index/field, byte offset and layout source separately; an absent or contradictory layout gives symbolic offset. For if/loops/switch/goto/return retain conditions, case labels, ordered body/targets and fallthrough; CFG lowering records uncertain edges when structure cannot be resolved. Export unsupported opcodes as opaque records with raw opcode and children, not a text parse. Export failure is per-function with diagnostics.
 
-### Program model
+Official API references establish the **API family**, not this project's deployed version: [ida_hexrays reference](https://python.docs.hex-rays.com/ida_hexrays/index.html), [CTree visitor](https://python.docs.hex-rays.com/classida__hexrays_1_1ctree__visitor__t.html), [type API](https://python.docs.hex-rays.com/ida__typeinf_8py.html). Target IDA/Hex-Rays version, license and exact Python field behavior remain unverified; an IDA-side read-only compatibility probe and supported-version matrix are a gate before implementation. Microcode is a later independent source export with maturity/version and machine mapping; it lowers directly to CIR and does not override CTree evidence.
 
-Owns module/function/block/instruction identity, CFG, callsites, CG/ICFG
-and interprocedural references. Must not depend on IDA or angr runtime
-objects.
+## 5. Program, memory and shared engines
 
-### Memory model
+Program records modules, function/block/callsite IDs, ABI, CFG and call hints. Confirmed and candidate CG edges are separate; interprocedural summaries and ICFG are analysis results keyed by graph revision. Address values carry an explicit tag: RVA, IDA EA/VA, runtime VA or file offset. Conversion requires image base, segment and relocation context; no implicit numeric equality.
 
-Owns stack/global/heap/unknown objects, access paths, field/index/offset
-segments, memory versions, read/write ranges, guards, alias contracts
-and evidence. CTree `v2[3]` and a low-level stack-relative access may
-map to a common candidate object while retaining separate source
-evidence/confidence.
+Memory object identity uses `(binary, kind, allocation-or-frame/global anchor, context if needed)`: STACK(frame/function/slot hypothesis), GLOBAL(symbol/segment/range), HEAP(allocation site/context), UNKNOWN(region). Object identity does not assert uniqueness of concrete locations. An access path is root plus Offset, Index(stride and symbolic index), Member(field/layout hypothesis), Deref(pointer width/address space) or UnknownOffset; location is object candidate plus byte range, width, endian, guard and assessment. Types and offset derivations have separate source/confidence references. The current `memory/access_path.py` has Offset/Index/Deref/UnknownOffset and APG records; `state.py` already has byte intervals, AliasKind and strong-update preconditions; `engine.py` has conservative points_to and interval-based alias. Member and object reconciliation are proposed additions, not current features.
 
-### Shared analysis engines
+CTree `v2[3]` resolves to a local object candidate with index 3 and stride from a *hypothesized* element layout. Low-level `[SP+offset]` resolves to stack-frame candidates using verified frame/ABI/SP deltas. They may be the same object only when frame, lifetime, address interval and mapping evidence support it; otherwise retain two candidates with a may-correspond relation. `_DWORD[5]` or a decompiler name alone cannot prove element size or stack equality. Conflicting inferred stride and machine byte access produce a semantic conflict, conservative offset/range and no MustAlias.
 
-Dataflow, Def-Use/Use-Def, demand-driven Alias/APG, Memory,
-symbolic/solver, summaries, Taint and Vulnerability consume common
-contracts. No per-frontend duplicate engines.
+MemoryVersion is analysis state: Initial, guarded Write, Join or Havoc; reads bind a version and location. Partial overlap is byte-range aware and may require extract/concat or weak update. Strong update requires proved MustAlias, unique live target, exact coverage and sufficient guard/path evidence; otherwise weak update retains previous definitions. NoAlias needs explicit complete evidence; unknown object, unknown offset, budget exhaustion and differing address spaces without separation proof stay UNKNOWN/MAY. The single MemoryQueryPort serves CIR-based dataflow, demand, alias, APG, SSE, interprocedural summaries and taint. Solver refinement can narrow candidates but cannot upgrade evidence beyond its assumptions. Taint paths are candidates until callee behavior, guards and sink conditions are established; vulnerability results carry separate validation.
 
-### Provenance and Evidence
+## 6. Provenance, confidence and conflict
 
-Many-to-many mappings:
-`CTree Node ↔ HIR Node ↔ CIR Definition/Value ↔ VEX/Microcode ↔ Machine Instruction`
+Use a versioned multigraph of identity-qualified nodes (CTree, HIR, CIR effect/definition/value, VEX, Microcode, instruction, synthetic). Each edge records source/target IDs, binary/function IDs, mapping method, relation kind, confidence, completeness, frontend/version, artifact IDs and evidence/reason. Many-to-many is required in both directions; unmatched/no-EA/synthetic/ambiguous/partial mappings are first-class records. Instruction ranges and all address-space conversions are typed. Never pair by sequential ID or nearby EA.
 
-Support partial/ambiguous mappings, synthetic nodes, conflicts and no-EA
-nodes. Record mapping method, frontend/version, confidence and
-completeness.
+Confidence labels: BINARY_CONFIRMED, DECOMPILER_RECOVERED, DECOMPILER_INFERRED, USER_ANNOTATED, ANALYSIS_DERIVED, UNKNOWN. Labels are provenance categories, **not** a total trust order; each fact also has precision/completeness and evidence. A 32-bit machine Store confirms width/effect, not the decompiler's `int *` pointee type. Persist both facts and a conflict record with affected queries. Binary-backed width permits byte-range memory analysis; disputed pointer type/layout yields conservative candidate objects and weak updates; queries requiring exact pointee layout return UNKNOWN. User annotations remain scoped assumptions, never silently binary-confirmed. Conflict resolution may refine under explicit evidence, never overwrite the losing source.
 
-## 3. Confidence model
+## 7. Storage, cache, debugging, CLI and partial semantics
 
-Recommended labels: - `BINARY_CONFIRMED` - `DECOMPILER_RECOVERED` -
-`DECOMPILER_INFERRED` - `USER_ANNOTATED` - `ANALYSIS_DERIVED` -
-`UNKNOWN`
+Acquisition/Artifact Store, Acquisition Cache, Analysis Result Store/Cache and Debug/Evidence Store are separate lifecycles; see `ACQUISITION_DESIGN.md` for schemas, fingerprints, DAG and publication. Debug inspection reads stored provenance and result IDs; it reports unavailable evidence instead of triggering new analysis. Proposed application flow for `python -m emtaint analyze --project project.yaml`: resolve project → reuse or acquire valid source/HIR/CIR/provenance → run requested analysis → persist results/evidence. `acquire` remains explicit. These are target commands, not current CLI claims.
 
-Keep confidence separate from semantic value. Do not treat inferred
-local-variable types or structure layouts as binary truth. Conflicts
-must remain visible.
+Every function and result carries `COMPLETE | PARTIAL | UNSUPPORTED | FAILED` (with UNKNOWN semantic outcome as appropriate), affected nodes, conservative footprint, diagnostics and budget limits. Unsupported control or memory effects invalidate claims of complete negative results. Recovery can continue unaffected functions, while dependent summaries/results remain partial. Error never masquerades as no finding. Schema compatibility is explicit and versioned; immutable artifacts are not rewritten in place.
 
-## 4. CTree extraction
+## 8. Worked semantic slice: sub_117F8
 
-Use actual Hex-Rays structured APIs such as `cfunc_t`, `cinsn_t`,
-`cexpr_t`, `lvar_t`, `tinfo_t`, subject to the supported IDA SDK
-version. Export stable node IDs, node kinds/opcodes, operands/children,
-EA if available, local-variable identity, type serialization, call
-target expression, arguments, array/member/pointer details and
-extraction completeness.
-
-Unsupported nodes must be preserved as typed partial/opaque records. Do
-not silently drop them.
-
-## 5. Example: sub_117F8
-
-Given a decompiler view with: - `v2[0] = "ca_manage"` - `v2[1] = "-n"` -
-`v2[2] = "new"` - `v2[3] = unk_A0178` -
-`eval(v2, ">/dev/console", 0, 0)`
-
-HIR should represent separate local-variable definitions, array-element
-stores, a global read, and a call through the full casted
-function-pointer target expression.
-
-The potential path:
-
-``` text
-ReadGlobal(unk_A0178)
- -> Store(ArrayElement(v2, 3))
- -> AddressOf(v2) passed to eval argument 0
- -> possible callee read of v2[3]
- -> possible sensitive operation
-```
-
-is a candidate only. It is not a confirmed taint flow or vulnerability
-until the callee behavior and relevant conditions are established.
-
-Array byte offsets must derive from recorded type/layout and/or machine
-evidence; never hardcode an assumed element size.
-
-## 6. IDA Microcode
-
-Plan Microcode as complementary to CTree: - CTree: high-level control
-and data semantics. - Microcode: lower-level operations, memory/register
-effects and instruction mapping. - Both retain independent artifacts and
-provenance. - Both lower to shared contracts/CIR where sound. -
-Conflicts are explicit.
-
-## 7. Proposed package structure
-
-``` text
-emtaint/
-  application/          # use-case orchestration
-  project/              # manifest, identity, configuration
-  acquisition/          # service, artifacts, fingerprints, cache
-  frontends/
-    contracts.py
-    ida/
-      disassembly/
-      hexrays/
-      microcode/        # planned
-    angr/vex/
-  representations/
-    hir/
-    cir/
-    provenance/
-  program/              # functions, blocks, CFG, CG, callsites
-  memory/               # objects, APG, versions, alias
-  analysis/
-    dataflow/
-    symbolic/
-    interprocedural/
-    taint/
-    vulnerability/
-  solver/
-  storage/              # artifact/result storage
-  debugging/            # inspectors, traces, address mapping
-  cli/
-```
-
-This is a target map, not a mandate to create every directory
-immediately. Retain/merge existing packages until the audit proves a
-boundary is needed.
-
-## 8. Decisions before implementation
-
--   Keep/evolve/replace CIR?
--   Is HIR needed for all inputs or only decompiler inputs?
--   What lowers directly to CIR?
--   How are inferred types and conflicts represented?
--   Which raw frontend artifacts are retained?
--   What is the artifact granularity?
--   How is IDA-side extraction invoked?
--   Is `emtaint` package naming retained temporarily?
--   What is the post-reset verification policy?
+The supplied pseudocode is a design fixture, not verified binary evidence. Export separate CTree IDs for each `v2[i]` lvalue, global `unk_A0178` read, call target cast and `eval` call; HIR records local array/parameter hypotheses, four assignments, conditional and return. Lowering makes address computations and stores with index-specific paths, a global load, indirect CallEffect and return, linking each output to zero or more source nodes. `v2[3]` offset is `3 × stride` only if the stride source is recorded; otherwise symbolic. The apparent pointer/string assignments to `_DWORD` are a type/width conflict until machine and ABI evidence resolves them. `global read → element store → v2 passed to eval` is a candidate dependency, not proof that eval reads element 3 or reaches a sensitive sink.

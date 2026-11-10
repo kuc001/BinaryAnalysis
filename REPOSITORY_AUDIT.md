@@ -2,17 +2,18 @@
 
 > 标签：**SOURCE_CONFIRMED** = 本仓库源代码或 Git 证据；**REQUIREMENT** = TASK/项目约束；**RECOMMENDATION** = 本轮设计建议；**OPEN_QUESTION** = 需要负责人或运行环境确认。静态阅读不等于运行验证。本轮没有运行测试。
 
+> A2 勘误：第 1–9 节保留上轮审计的历史叙述；与当前状态或目标设计冲突时，以标明 **A2 复核** 的修正和第 10 节为准。当前目标规范见 `ARCHITECTURE.md`、`ACQUISITION_DESIGN.md` 和 `EXECUTION_PLAN.md`，均为待批准提案。
+
 ## 1. Metadata、范围和文档关系
 
-- **SOURCE_CONFIRMED** 2026-11-10，根目录 `D:/works/dataflow/EmTaint/BinaryAnalysis-worktrees/icall`，分支 `codex/icall`，HEAD `278402ede9e6b060c494648e10f21fdd5e5439f8`，`git status --short` 为空（审计写入前）。另有 `main`（`e79e206`）和 `codex/vuln`（`53f1f4c`）两个 worktree。未切换分支或更改 Git 状态。
+- **SOURCE_CONFIRMED (A2 复核)** 2026-11-10，本轮起始分支 `codex/icall`，HEAD `aed0446831d5d3ff96c8233dd70ad957a0e8da98`；起始工作区已有 `docs/Task02.md` 修改，本轮未触碰。此前 HEAD `278402e...` 和“工作区为空”仅是上轮审计快照，不能作为当前状态。上轮所列其他 worktree HEAD 本轮未复核。
 - **SOURCE_CONFIRMED** 指定的 12 份文件都位于当前项目根目录，并已完整阅读：`AGENTS.md`、`00_CODEX_INS.md`、`CODEX_TASK.md`、`ARCHITECTURE.md`、`ACQUISITION_DESIGN.md`、`ENGINEERING_STANDARDS.md`、`EXECUTION_PLAN.md`、`REPOSITORY_AUDIT_TEMPLATE.md`、`DECISIONS_TEMPLATE.md`、`CODEX_WORKFLOW.md`、`TASK_1.md`、`TASK_2.md`。模板给出交付格式；TASK_1/2 和 CODEX_TASK 是需求；AGENTS/ENGINEERING_STANDARDS 是约束；ARCHITECTURE/ACQUISITION_DESIGN 是尚待审计验证的目标提案；EXECUTION_PLAN 是实施顺序。
 - **SOURCE_CONFIRMED** 文档冲突/歧义：`TASK_2.md` 称“新增 HIR”且结语预设统一 CIR；`CODEX_TASK.md` 与 `ARCHITECTURE.md` 则要求审计后决定 HIR 范围及 CIR 是否适合。建议将 HIR 作为 CTree 必需的结构化交换层，CIR 的最终契约列为待批准决策。`CODEX_WORKFLOW.md` 称 `ARCHITECTURE.md` 为“Approved”，其正文却明言 Proposed；本轮按提案处理。`EXECUTION_PLAN.md` 的 A 交付写“approved ARCHITECTURE.md”，而本轮禁止修改该文件；本轮仅提交待批准设计到审计/决策文件。`AGENTS.md` 的常规“实现→验证→提交”协议被本轮明确的只审计禁令覆盖。`CODEX_WORKFLOW.md` 表中的 `CODEX_INS.md` 与实际 `00_CODEX_INS.md` 名称不一致。
 - **REQUIREMENT** 旧 EmTaint 仅作只读参考；本轮不改生产代码、不删除、不运行测试、不提交。
 
 ## 2. 完整结构与入口
 
-- **SOURCE_CONFIRMED** 根目录含 `.debug/`、`.p1-work/`、`.p7-work/`、`.venv/`、`.vscode/`、`datas/`、`docs/`、`emtaint/`、`scripts/`、`tests/`，以及 `main.py`、`setup.py`、`pyproject.toml`、`requirements.lock`、配置/设计文档。`rg --files` 得到 203 个 `emtaint` Python 文件、79 个 scripts 文件、92 个 tests 文件；忽略目录中的生成数据未逐文件计数。未发现嵌套 AGENTS.md 或 `.github` CI 配置；这是当前 checkout 的发现，不代表外部 CI 不存在。
-- **SOURCE_CONFIRMED** `pyproject.toml` 声明 distribution `binaryanalysis`、Python `>=3.12,<3.13`，锁定 angr/pyvex/claripy、networkx、z3、psutil 等；`setup.py` 又声明 distribution `emtaint` 并 `find_packages()`，二者包元数据冲突。没有发现 `[project.scripts]`。执行入口是 `main.py` 和 `python -m emtaint` → `emtaint.cli.main`；`emtaint/main.py` 是另一条旧 `EmProgram`/PAG 入口。
+- **SOURCE_CONFIRMED (A2 复核)** 根目录的 `setup.py` 已不存在（`Test-Path setup.py` 为 False）；现以 `pyproject.toml` 的 distribution `binaryanalysis` 为准，import package 仍为 `emtaint`。旧审计关于当前双重打包声明的结论已失效。旧文件数和根目录清单是上轮快照，本轮未重新全量计数。当前 `pyproject.toml` 声明 Python `>=3.12,<3.13`；没有发现 `[project.scripts]`。执行入口为 `main.py` 和 `python -m emtaint` → `emtaint.cli.main`。
 - **SOURCE_CONFIRMED** `emtaint/` 下：`core/` 身份/程序/会话/契约，`frontends/` IDA 元数据和 angr VEX、共同 lowering、已存 CIR 读取，`frontend/angr/` 旧 VEX 包装，`ir/canonical/` CIR/JSON wire，`ir/expressions|statements/` 旧 VEX 类层次，`graph/` 新图，`analysis/graph|pag|variables/` 旧图/PAG，`memory/` APG/状态/引擎，`analysis/dataflow|sse|aliasing|taint|framework|controlflow|bugfinder/` 分析，`solver/` 求解，`orchestration/` 跨函数执行，`results/` 存档，`analysis_debugging/` 解释/地址/追踪，`compat/` 与 `procedures/` 旧接口/规则，`assembly/` 旧基本块，`cli.py` 编排。
 
 ## 3. 真实依赖图与循环
@@ -116,3 +117,13 @@ CLI -> application use cases (acquire/analyze/inspect), not directly to scripts
 | **OPEN_QUESTION** | CTree 推断类型与 VEX/机器事实冲突时的默认查询保守策略。 | 规定证据优先和冲突暴露规则，不暗改事实。 |
 
 **RECOMMENDATION** 第一实施切片是“一个 CTree 函数的结构化导出→独立 HIR 序列化→支持子集 lowering 到 CIR→多对多 provenance→一次共享 def-use/memory 查询”，但只有负责人批准契约后开始。本轮到此停止。
+
+## 10. A2 二次核对：事实、推论与新增建议
+
+- **SOURCE_CONFIRMED** `emtaint/ir/canonical/model.py` 的 `Compute`、`LoadEffect`、`StoreEffect`、`CallEffect`、`BranchEffect`、`ReturnEffect`、`UnknownEffect` 是有序 effect；`CIRFunction` 有 values/blocks/entry/ABI，`CIRModule` 有单一 `origin_map` 和 `memory_snapshots`。`core/contracts.py` 的 `ValueType` 是 bool/BV/pointer、`ValueRef` 是字符串 ID 加类型、`Origin` 是单个 ProgramPoint/Producer/opcode、`SymbolicExprId` 从 scoped ID 继承且绑定 AnalysisScope。这支持“已有低层效果契约”，不支持“已有高层变量定义/聚合类型/跨表示多对多映射”。后一句是由字段缺口作出的**审计推论**，需纵向切片进一步验证。
+- **SOURCE_CONFIRMED** `memory/access_path.py` 当前段类型是 Offset/Deref/Index/UnknownOffset，没有具名 Struct Member；`access_graph.py` 负责路径图和摘要；`state.py` 有 byte_interval、MUST/MAY/NO/UNKNOWN、强更新前置条件和版本定义；`engine.py` 的 `resolve_alias` 用对象身份、显式不相交证明、区间与 singleton 条件，`points_to` 返回注册对象并注明未知空间；`memory_version.py` 反向解析定义；`query_port.py` 有读写/alias/points-to/definition 协议及未实现占位。**审计推论**：当前没有足以自动证明 CTree 数组与 SP 偏移同一对象的桥接证据。**新增建议**：给对象对应关系、布局和 offset 各自保留证据/可信度，禁止由推断类型升级 MustAlias。
+- **SOURCE_CONFIRMED** `analysis/dataflow/fast.py` 切片 CIR effects，`accurate.py` 转移 CIR effects；`analysis/taint/demand.py` 的 ProcedureDemand 继承 LegacyDemand，并读取内存定义/调用信息；`analysis/aliasing/query.py` 分类 alias；`analysis/aliasing/program.py` 含 live angr 获取及查询编排。**审计推论**：共享 CIR/memory 边界可复用，但需要拆开 live frontend 获取与分析编排；不能声称已有完整统一引擎。
+- **SOURCE_CONFIRMED** `frontends/function_store.py` 构造时读 report/loader、校验 hash，可选择加载 angr PLT；`load` 构造 CIR/CFG 并补 local/IDA 边，可选补 tail calls；`program_index` 构 Program/CG；`load_debug_provenance` 读侧车。因此文件的 “Pure reader” docstring **不是完整职责描述**。它既读 acquisition，又作派生图/调用变换，且不是通用 Artifact Store。
+- **SOURCE_CONFIRMED** `frontends/ida_vex/frontend.py` 的 `from_metadata` 读 IDA CFG JSON，`lift` 用 ELF bytes 与 pyvex，再调用共享 VEXLowerer；`angr_vex/frontend.py` 是另一条 VEX 入口。本轮搜索生产代码未找到 `ida_hexrays`、`cfunc_t`、`cexpr_t` 或 Microcode exporter 调用；这是“当前 checkout 未发现”，不是对外部 IDA 环境的断言。IDA/Hex-Rays 实际版本与许可仍 **OPEN_QUESTION**。官方 [ida_hexrays API](https://python.docs.hex-rays.com/ida_hexrays/index.html) 可确认 API 家族，但精确字段可用性需在目标版本探测。
+- **SOURCE_CONFIRMED** `solver/process_port.py` 仍执行 `scripts/p1_solver_worker.py`；CLI 与 `scripts/p1_runtime.py` / legacy backend 的依赖以及 `p7_acquire.py` 的生成职责沿用上轮审计结论，本轮通过路径搜索与相关代码复核。**新增建议**：先迁移这些生产依赖再执行未来清理，见 ADR-005/009。
+- **验证限制**：本轮仅静态阅读、路径/符号搜索及官方 API 文档核对；没有运行测试、基准或 IDA。不存在 IDA 目标版本的实测结果。A2 文档是 **RECOMMENDATION**，非已批准实现。

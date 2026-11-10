@@ -1,101 +1,41 @@
-# BinaryAnalysis Reset and Rebuild --- Living Execution Plan
+# BinaryAnalysis execution plan — A2 proposal
 
-This is a delivery sequence, not a replacement P1--P7 architecture. Each
-milestone needs explicit approval.
+2026-11-10. Milestones are bounded approval gates, not P1–P7 package boundaries. A2 is design only; all ADRs remain Proposed. No B work starts until the owner approves A2 and the affected architecture decisions. Stage descriptions below are **plans**, not completion claims.
 
-## Milestone A --- Repository audit and design decisions
+## A — Repository audit
 
-Inventory packages, CLI, schemas, dependencies, persistence, CI, docs
-and all production code. Trace imports from `scripts/`; map old tests
-and reusable fixtures; assess modules KEEP/REFACTOR/REPLACE/REMOVE;
-decide CIR/HIR and CTree integration; design artifact/cache lifecycles.
+Goal: inspect production code, imports, schemas, CLI, scripts/tests dependencies and classify value. Input: current checkout and product requirements. Output: `REPOSITORY_AUDIT.md` with facts, inference, recommendations and limits. Acceptance: key paths traced to code and unresolved decisions listed. Current audit exists but is not owner-approved; A2 corrects stale findings. Risk: static inspection misses runtime/external CI behavior. Document: audit and decision register.
 
-Deliver: `REPOSITORY_AUDIT.md`, approved `ARCHITECTURE.md`,
-`ACQUISITION_DESIGN.md`, `DECISIONS.md`.
+## A2 — Architecture Decision & Design Freeze
 
-Exit: no classification based only on filenames; removal impact
-documented; unresolved decisions visible; owner approves reset.
+Goal: independently verify A evidence and specify HIR/CIR, CTree export, memory, provenance, confidence and acquisition/result boundaries. Input: A audit, source code, TASK_1/2, product and engineering constraints. Output: revised `REPOSITORY_AUDIT.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `DECISIONS.md`, this plan. Modules inspected: CIR/wire, core contracts/identity, frontends/FunctionStore, memory, dataflow/alias/demand/taint, orchestration, CLI, scripts and packaging. Risk: deployed IDA API/version unknown and proposed schema not yet exercised. Acceptance: A/B HIR/CIR comparison, explicit HIR/CIR/memory/provenance contracts, ADR-001–012 Proposed, B–H dependencies and gates, source-backed corrections. Verification: static reads and doc/diff review only; **no tests, code changes, commit or push**. Exit: owner reviews and explicitly approves or requests revisions. Until then B is blocked by governance, not by technical progress.
 
-### 2026-11-10 audit result (awaiting owner review)
+## B — Safe repository reset
 
-- **SOURCE_CONFIRMED** Audited the 12 requested root documents, Git/worktrees, production package entrypoints and code paths, script dependencies, test/fixture inventory, CIR/memory/analysis/debug contracts. See `REPOSITORY_AUDIT.md` for paths, symbols, dependency graph, classifications and limitations. No tests were run and no code or Git state was changed.
-- **SOURCE_CONFIRMED** Production CLI imports `scripts/p1_runtime.py` and optionally `scripts/p7_legacy_reference.py`; the solver process executes `scripts/p1_solver_worker.py`. Existing acquisition is `scripts/p7_acquire.py`, bound to a fixed firmware/metadata path and `.p7-work`. Deleting scripts now would break supported paths.
-- **SOURCE_CONFIRMED** Current IDA path uses CFG JSON plus ELF/VEX; no production Hex-Rays CTree/Microcode exporter was found. CIR v1 has useful typed effects but lacks the required high-level types and many-to-many provenance contract.
-- **RECOMMENDATION** Resolve ADR-001 through ADR-010 in `DECISIONS.md`, including CIR/HIR boundary, CTree export, artifact identity/granularity, legacy mode, package name, provenance and replacement verification policy. Treat `ARCHITECTURE.md` and `ACQUISITION_DESIGN.md` as proposals pending approval; neither was edited in this audit.
-- **OPEN_QUESTION** Owner approval and the target IDA/Hex-Rays version/environment remain outstanding. Milestone A is **not approved/closed**; milestones B–H must not start from this audit alone.
+Goal: remove historical phase scaffolding only after preserving supported production behavior. Input: approved A2/ADRs, script import/call map and owner verification policy. Output: package-owned probe/solver/optional legacy capabilities, removal impact record, cleaned scripts/tests/docs per approved scope; retain `p7_acquire.py` until D provides a compatible acquisition replacement or migrate its generator in B under the approved contract. Dependencies: A2, ADR-005/006/009/010. Modules: `cli.py`, `solver/process_port.py`, `scripts/*`, legacy orchestration, packaging. Risks: CLI regression, lost solver worker/fixtures, external CI references. Acceptance: no production imports/exec of **removed** scripts; agreed CLI modes run via package; new verification strategy and replacement fixtures are explicit before deletion. Document: audit, decisions, build log and migration notes.
 
-## Milestone B --- Safe repository reset
+## C — Stable identities and representation contracts
 
-Migrate any production functionality out of `scripts/`; inspect
-CI/CLI/docs/packaging references; remove legacy tests/scripts and P1--P7
-artifacts only after approval; preserve package/entry points; update
-ignore rules and docs.
+Goal: freeze serializable project/function/source/HIR/CIR/provenance/confidence/address/partial contracts before consumers. Input: approved A2, representative VEX and CTree export specimens. Output: schema versions, typed identity and conversion rules, HIR v1/CIR v2, compatibility/migration adapters and contract fixtures. Dependencies: B migration safety, ADR-001/002/008/011/012. Modules: `core/identity.py`, `core/contracts.py`, `ir/canonical/*`, frontend contracts, wire. Risks: old artifact breakage and unstable no-EA/local identity. Acceptance: round-trip across process without SDK objects; explicit unsupported and many-to-many mappings; typed address conversion; historical wire handled only through declared adapter. Document: architecture/schema/decision changes and verification evidence.
 
-Exit: no production imports or supported commands depend on deleted
-scripts; no stale normative P1--P7 instructions; verification policy
-approved.
+## D — Acquisition and stores
 
-## Milestone C --- Stable contracts
+Goal: project-level multi-frontend build and reuse. Input: C contracts, project manifest, binary/metadata. Output: immutable module/function source/HIR/CIR/provenance artifacts, dependency DAG, store/cache services and explicit acquire/automatic analyze use cases. Dependencies: C, ADR-004/010. Modules: current `frontends/function_store.py`, `saved_cir.py`, `scripts/p7_acquire.py` replacement, storage/application. Risks: stale cache, races, incomplete publication, overly broad invalidation. Acceptance: exact reuse and selective invalidation, concurrent single publication, corrupt/partial/incompatible detection, crash recovery, no hardcoded firmware/P7 path. Document: acquisition schema and operational recovery guide.
 
-Define project/input identity, frontend contract, address spaces,
-artifact manifest, schema versions, provenance, confidence/completeness,
-HIR/CIR boundary.
+## E — Frontend and HIR vertical slice
 
-Exit: ownership, serialization and compatibility are explicit; no SDK
-object leaks into shared contracts.
+Goal: export one representative CTree function structurally, serialize/reload HIR outside IDA, lower supported subset to shared CIR; maintain existing VEX path. Input: C/D contracts and target IDA/Hex-Rays compatibility probe. Output: IDA exporter, CTree source artifact, HIR, lowering diagnostics and provenance; Microcode export contract only. Dependencies: C/D, ADR-003/007/012 and target IDA environment approval. Modules: `frontends/ida_vex`, new adapter only when consumed, HIR/CIR, provenance. Risks: API version differences, inaccurate type/layout, missing EA, unsupported opcodes. Acceptance: call target, local/array/member/pointer, control and no-EA cases preserved; unsupported footprint explicit; one CTree and VEX case feed the same CIR query contract. Document: supported-version matrix, exporter schema and coverage report.
 
-## Milestone D --- Acquisition and Artifact Store
+## F — Unified program and memory semantics
 
-Implement input resolution, frontend selection, fingerprinting, artifact
-build, staging/atomic publish, integrity checks, concurrent
-coordination, partial recovery, artifact inspection, automatic reuse
-from analyze.
+Goal: reconcile high/low candidate objects and run one memory/alias/dataflow/demand pipeline. Input: E CIR/provenance and C memory contracts. Output: object/path reconciliation, byte-range overlap, MemoryVersion, CFG/CG/ICFG and summary dependencies, shared query API. Dependencies: E, ADR-001/008/011/012. Modules: `memory/*`, `graph/*`, `analysis/dataflow/*`, `analysis/aliasing/*`, `analysis/framework/*`, `solver/*`. Risks: false MustAlias, unsound strong updates, solver budget effects. Acceptance: CTree `v2[3]` and `[SP+offset]` can be related only by evidence; MayAlias stays May; partial overlap and unknown propagation observable; no frontend-specific memory engine. Document: memory contract, soundness limits, result schema and evidence.
 
-Exit: identical semantic inputs reuse artifacts; changed dependencies
-invalidate correct descendants; partial/corrupt artifacts are not
-treated as valid.
+## G — Shared security and interprocedural analysis
 
-## Milestone E --- Frontends and HIR
+Goal: use F contracts for summaries, taint and vulnerability assessment across representations. Input: function CIR, graphs, memory/def-use/alias results, policies. Output: versioned summaries, taint candidates and separately validated findings with evidence dependencies. Dependencies: F and conflict policy ADR-011. Modules: `analysis/taint/*`, `analysis/bugfinder/*`, `orchestration/*`, `procedures/*`. Risks: candidate paths mistaken for vulnerabilities, callee effects lost, recursive invalidation. Acceptance: both frontend paths share algorithms; unresolved call/guard/unsupported propagates partial; changing policy invalidates security results without reacquiring; cross-function dependencies explicit. Document: policy/summary/result contracts and representative case evidence.
 
-Stabilize binary frontend adapters; implement IDA-side structured CTree
-export; define serializable HIR; preserve local-variable identity,
-types, call target expressions, source locations and unsupported nodes.
+## H — Debugging and evaluation
 
-Exit: CTree is structurally extracted; HIR independent of Hex-Rays
-runtime; decompilation errors and partial extraction explicit.
+Goal: make outputs inspectable and measure correctness, performance and reuse. Input: D–G artifacts/results and representative binary/decompiler scenarios. Output: read-only cross-representation inspector, address mapping, causal trace, reports, comparison/benchmark evidence and recovery observations. Dependencies: D–G, approved replacement verification policy. Modules: `analysis_debugging/*`, result storage, CLI application use cases. Risks: inspection accidentally runs queries, provenance holes, misleading negative findings. Acceptance: every finding links to stored evidence where available; ambiguous/unmapped links visible; inspection read-only; address domains distinct; verification commands/results and limitations recorded. Document: user/debug guide, build log, updated audit and plan.
 
-## Milestone F --- CIR and provenance
-
-Audit/evolve CIR; implement HIR-to-CIR and VEX-to-CIR contracts; plan
-Microcode adapter; implement many-to-many provenance and
-confidence/conflict records.
-
-Exit: common analysis API accepts selected frontend outputs; no silent
-semantic loss; provenance can be traversed both directions where
-recorded.
-
-## Milestone G --- Shared analysis
-
-Rebuild/retain program graph, dataflow, memory objects/access paths,
-on-demand alias, solver, interprocedural summaries, taint and
-vulnerability evidence on approved contracts.
-
-Exit: no frontend-specific analysis engines; uncertainty and evidence
-retained.
-
-## Milestone H --- Debugging and evaluation
-
-Cross-representation inspectors, causal events, address translation,
-artifact/result CLI, human reports, representative binary and decompiler
-scenarios, performance and incremental reuse evaluation.
-
-Exit: findings trace to source evidence where available; inspection
-read-only; address spaces explicit; verification evidence reported
-honestly.
-
-## Execution rules
-
-One milestone has one approved scope. Parallelize only independent
-research or isolated adapters after contracts are stable. Keep
-`DECISIONS.md` and `BUILD_LOG.md` current. Commit coherent units after
-review. Stop at major owner decisions.
+Each milestone starts only with explicit owner approval for its architecture boundaries. Implement a bounded vertical slice, verify it, review the diff and update decisions/docs before any permitted commit. A2 explicitly stops after documentation review.

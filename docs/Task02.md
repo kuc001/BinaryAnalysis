@@ -72,7 +72,7 @@ Milestone A 已经完成第一轮仓库审计。
 
 发现不准确的地方，修正审计报告。
 
-特别注意：pyproject.toml 和 setup.py 的 distribution name 不一致，目前只能确认声明不一致，不能在未构建验证时断言最终 wheel 的实际行为。
+特别注意：pyproject.toml 和 setup.py 的 distribution name 不一致，目前已经删除 setup.py，以pyproject.toml为主。
 
 审计中必须区分：
 

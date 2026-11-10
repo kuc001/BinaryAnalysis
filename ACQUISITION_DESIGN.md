@@ -1,126 +1,52 @@
-# Acquisition, Artifact, Cache and Analysis Result Design
+# Acquisition, artifacts and caches — A2 proposal
 
-## 1. Keep the concepts separate
+Status: **Proposed**, pending ADR-004/010/012 and owner approval. Current `scripts/p7_acquire.py` and `frontends/function_store.py` are fixed-layout acquisition/reader implementations, not this service.
 
-**Acquisition** is the reproducible process that resolves inputs,
-invokes selected frontends, normalizes their outputs, captures
-provenance and builds persistent analysis-input artifacts.
+## 1. Ownership and interfaces
 
-**Artifact** is an immutable, versioned, integrity-checked
-representation produced by acquisition or analysis.
+Acquisition Service resolves project inputs, selects independent or joint frontends, requests exports, validates/lower representations and publishes **analysis inputs**. Frontend Export is immutable IDA CFG/VEX, CTree or future Microcode source data with producer/version and completeness. HIR Artifact stores structured high-level semantics; CIR Artifact stores common effects; Provenance Artifact stores mapping edges/conflicts. Module metadata contains binary/loader/segments/symbol/type input facts. Artifact Store holds immutable bytes and manifests. Acquisition Cache maps semantic build keys to validated artifact IDs; it is an index, not a source of truth.
 
-**Cache** is the mechanism that reuses an artifact/result when its
-dependency fingerprint is still valid.
+Analysis Result Store holds computed CFG refinements/CG, def-use, MemoryVersion, alias, summaries, taint and vulnerability results with exact input IDs and algorithm configuration. Analysis Result Cache keys those computations. Debug/Evidence Store holds trace, query events, provenance projections and explanations linked to result IDs. Neither Analysis Results nor Debug artifacts are inputs to Acquisition. A stored source CFG hint is acquisition data; a resolved CG edge is an analysis result.
 
-**Analysis Result** is computed by an analysis algorithm, e.g. CG,
-Alias, Dataflow, Taint or Vulnerability.
+Logical typed interfaces: `resolve(ProjectSpec)->ResolvedInputs`; `acquire(ResolvedInputs, FrontendSelection)->AcquisitionRef`; `load(AcquisitionRef, FunctionId)->FunctionInputs`; `analyze(FunctionInputs, AnalysisSpec)->ResultRef`; `inspect(ref)->StoredEvidence`. Each returns status/diagnostics, never silently launches analysis from inspect. Package placement follows actual consumers after contract approval.
 
-**Debug/Evidence Artifact** records provenance, rule events, causal
-dependencies and explanations.
+## 2. Identity and manifest schema
 
-Acquisition is not merely a cache. Cache is one capability around
-artifacts.
+Module manifest contains `manifest_schema_version`, project/binary content ID, format/architecture/endian/ABI, loader and relocation inputs, typed address conversion metadata, selected frontends and exact exporter/IDA/Hex-Rays/angr/lowering versions, source/HIR/CIR/provenance schema versions, build key, function table, module metadata references, dependency edges, completeness, unsupported/failed function list, diagnostics and publish generation. Each function entry contains FunctionId, source export IDs, HIR ID when applicable, CIR ID, provenance ID, CFG input ID, all content hashes and dependency IDs. The manifest does not pretend every function has every frontend.
 
-## 2. Lifecycle
+Artifact identity is `(kind, schema version, content hash)` plus manifest dependency references. The hash covers deterministic canonical bytes; cross-version hashes never imply semantic compatibility. Function identity uses binary ID and RVA with explicit non-address identities for synthetic functions; source node IDs also include export fingerprint and function scope. Module symbols/types/relocations are separate chunks to avoid needless per-function copying. A failed function has an explicit status record, never a missing row interpreted as complete.
 
-``` text
-Project Inputs
-   -> Input Resolution
-   -> Fingerprint
-   -> valid Acquisition Artifact?
-       yes -> load
-       no  -> run Frontends -> normalize HIR/CIR -> capture provenance
-             -> validate -> staging -> atomic publish
-   -> Analysis Engine
-       -> Analysis Result Store/Cache
-       -> Debug/Evidence Store
+## 3. Fingerprints and dependency graph
+
+Per-function source fingerprint includes binary content hash, relevant code bytes/relocations, loader mapping, function boundaries/IDA metadata or IDB export hash, frontend exact version/maturity/options, and module-level symbol/type dependencies actually read. CTree exports additionally include database state relevant to decompilation, user type/rename annotations and target SDK version. If dependencies cannot be enumerated safely, conservatively depend on the whole source database/export hash. Presentation-only pseudocode styling is a separate display artifact; IDA image base enters keys whenever it affects exported address mapping.
+
+HIR key = source export ID + HIR schema/normalizer version. CIR key = HIR or VEX/Microcode source ID + lowering/ABI/schema versions. Provenance key = all mapped source IDs + mapping algorithm/version and address conversion inputs. Module manifest key = selected function artifact IDs and module metadata IDs. Analysis result key = exact acquisition IDs + algorithm/policy/budget/version + dependent summary/result IDs. Debug/evidence key = result/source IDs + trace schema/options, and does not change analysis truth.
+
+```text
+binary/loader/IDA metadata -> frontend export -> HIR -> CIR -> analysis result
+                                      |             |         |
+                                      +-- provenance+---------+-> evidence
+module symbols/types ------> affected function exports/HIR/CIR
+callee summary ------------> caller summary/CG/taint result
+taint policy ---------------> taint/vulnerability only
 ```
 
-`analyze` should reuse a valid artifact or trigger Acquisition
-automatically. An explicit `acquire` command remains useful for
-precomputation and diagnosis.
+Changes invalidate descendants only. Cross-function dependencies record callee ID, summary version, callsite, global/type references and uncertainty. Unknown dependency scope triggers conservative module-level invalidation. A frontend change need not rebuild an unrelated frontend export; policy change never reruns lifting. Recompute cyclic summary SCCs to a bounded fixed point and mark budget exhaustion partial.
 
-## 3. Manifest
+## 4. Multi-frontend acquisition and compatibility
 
-Proposed manifest fields (not finalized): - manifest/artifact schema
-version - project and binary identity/hash - binary format,
-architecture, endian, loader configuration - external input hashes (IDA
-CFG, IDB/export metadata, symbols/types) - frontend
-name/version/configuration fingerprint - HIR/CIR/provenance schema
-versions - artifact chunk IDs and hashes - completeness:
-requested/acquired functions, unsupported nodes, partial functions -
-build diagnostics and timestamps
+Frontends independently publish source exports, then the service assembles a function's available representations. CTree→HIR→CIR and VEX→CIR may coexist; neither silently replaces the other. Future Microcode→CIR follows the same contract. A combined view is an analysis selection referencing immutable per-frontend CIR IDs and a reconciliation/provenance result; conflicting effects remain explicit. One selected primary CIR per query plus corroborating evidence is the initial implementation recommendation; multi-CIR fusion requires its own approved semantics.
 
-## 4. Fingerprints
+Compatibility checks require matching binary ID, architecture/ABI, address conversion context, accepted schema major versions and an explicit converter for older minor versions. Historical CIR-Wire-v1 and P7 acquisition may be imported through a versioned migration adapter only after validation; they cannot be declared compatible by filename or hash alone. Schema mismatch returns INCOMPATIBLE. Display pseudocode is retained for people but not parsed for semantics.
 
-Acquisition fingerprint includes semantic inputs: - binary content
-hash - loader/relocation config - relevant metadata hashes - frontend
-name and exact version - frontend config - normalization/lowering
-version - HIR/CIR/provenance schema versions
+## 5. Atomic publish, concurrency and recovery
 
-Do not include presentation-only IDA display base if it does not affect
-stored canonical semantics.
+For a key, acquire a scoped lock/lease with owner and expiry; recheck cache after lock. Write chunks into unique staging, fsync/close as supported by the filesystem, validate schema, references and hashes, write manifest last, then atomically rename the completed generation into the content store and update the cache pointer atomically. Never overwrite a valid generation. A lease loser reuses the winning validated generation. On crash, staging is inspected by hashes/dependency IDs: resume only deterministic compatible chunks; otherwise quarantine/discard staging. Expired lease can be stolen only after validating the incumbent state. Partial manifests are explicitly published only for requested partial operation and never satisfy a complete request.
 
-Analysis result fingerprint additionally includes: - input artifact
-IDs - algorithm/version - budgets/options - summaries and summary
-version - source/sink/policy configuration - dependency result IDs
+Load distinguishes MISSING, STALE, CORRUPT, INCOMPATIBLE, PARTIAL and VALID. Corruption is quarantined and rebuilt when inputs are available; no cache hit bypasses hash/schema validation. Garbage collection retains referenced generations and in-flight leases. Per-function rebuild publishes a new module manifest generation; readers pin the old generation until the new one is complete.
 
-Use a dependency DAG for invalidation. A taint policy change should not
-rerun VEX lifting; a frontend/lowering change should invalidate
-dependent CIR and downstream results.
+## 6. CLI/use case and acceptance
 
-## 5. Granularity
+Target `python -m emtaint analyze --project project.yaml`: resolve project and requested frontend/analysis, validate acquisition cache, acquire missing or stale function artifacts, pin a manifest generation, then compute/reuse analysis results and link evidence. Target explicit `python -m emtaint acquire --project project.yaml` performs the same acquisition without analysis. Names are design targets; current CLI does not implement them. Acquisition never depends on P1–P7 paths or fixed firmware.
 
-Consider binary/module metadata, segments, frontend export bundles,
-per-function HIR/CIR, per-function provenance, module-level
-types/symbols/relocations, and derived analysis results. Do not create
-one file per tiny object without a concrete need. Preserve
-cross-function consistency.
-
-## 6. Persistence/recovery
-
--   Write to a unique staging location.
--   Validate schema and hashes.
--   Write manifest last.
--   Atomically publish completed artifact.
--   Coordinate concurrent builds for same fingerprint with a lock/lease.
--   Never mutate a valid artifact in place.
--   Distinguish missing, stale, corrupt, partial and incompatible
-    artifacts.
--   Document resume/discard behavior for interrupted builds.
--   Garbage collection must respect dependency references and retention
-    policy.
-
-## 7. IDA/Hex-Rays boundary
-
-Run Hex-Rays extraction in an IDA-compatible environment or exporter.
-The analysis process consumes serialized interchange artifacts, not live
-Hex-Rays objects. Preserve IDA/Hex-Rays version, database/input
-identity, function EA, node identity, type serialization, extraction
-errors and unsupported nodes. Do not pickle SDK objects.
-
-## 8. Analysis Result Cache
-
-Examples: - CG result: acquisition program/callsite artifact + call
-resolution config/version. - Alias result: memory/program artifact +
-alias algorithm version + query + budget. - Taint result: relevant
-dataflow/memory artifacts + summaries + source/sink policy + taint
-version. - Vulnerability result: analysis evidence + rule version +
-validation config.
-
-Every result identifies exact dependency artifact IDs and algorithm
-versions.
-
-## 9. Proposed interfaces
-
-``` text
-binaryanalysis acquire --project project.yaml
-binaryanalysis analyze --project project.yaml --analysis taint
-binaryanalysis artifact inspect <artifact-id>
-binaryanalysis cache list --project project.yaml
-binaryanalysis cache prune --project project.yaml
-binaryanalysis debug explain <object-id>
-```
-
-Names are provisional and should be reconciled with current CLI during
-audit.
+Acceptance for later implementation: unchanged inputs reuse exact IDs; a changed type invalidates affected functions and dependents; changed taint policy retains acquisition IDs; concurrent identical requests publish one valid generation; interrupted staging never appears valid; schema/corruption/partial states are observable; independently acquired CTree and VEX survive reload outside IDA; inspection performs no analysis query. No tests were run in A2.

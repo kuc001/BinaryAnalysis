@@ -1,18 +1,42 @@
-# BinaryAnalysis 架构决策登记（全部待确认）
+# BinaryAnalysis architecture decision register
 
-> 2026-11-10。本文件只记录提案，**无一项标记为已批准**。证据和备选方案见 `REPOSITORY_AUDIT.md`。标签沿用 SOURCE_CONFIRMED / REQUIREMENT / RECOMMENDATION / OPEN_QUESTION。
+2026-11-10 A2 review. **All ADRs are Proposed; none is Accepted.** SOURCE_CONFIRMED denotes current source evidence, RECOMMENDATION a target design, OPEN_QUESTION an owner decision. See `REPOSITORY_AUDIT.md` for current-code paths. Approval must name the ADR and chosen alternative.
 
-| ID / 状态 | 待决问题与源代码证据 | 建议及替代方案 | 负责人决定 |
+| ADR | Current evidence / context | Recommendation and alternatives | Tradeoff, migration and owner decision |
 |---|---|---|---|
-| ADR-001 / Proposed | **SOURCE_CONFIRMED** `ir/canonical/model.py` 有 typed non-SSA effects，`core/contracts.py` 的 `ValueType` 仅标量、`Origin` 一点来源，`CIRModule` 混入 memory snapshot。 | **RECOMMENDATION** 保留效果语义，演化为新版本 canonical CIR；备选是全新 IR 或维持 v1。需要 schema/迁移政策。 | **OPEN_QUESTION** 待批准 |
-| ADR-002 / Proposed | **REQUIREMENT** CTree 高级语义和类型来源须保留；现有代码无 HIR。 | **RECOMMENDATION** 对 CTree 强制独立可序列化 HIR；VEX/Microcode 可直接到 CIR；备选是所有 frontend 都造 HIR。 | **OPEN_QUESTION** 待批准 |
-| ADR-003 / Proposed | **SOURCE_CONFIRMED** `IdaVexFrontend` 读取 IDA CFG JSON 和 ELF，不调用 Hex-Rays。 | **RECOMMENDATION** IDA 内结构化 exporter→独立交换 artifact→HIR；伪代码文本仅展示。需确定支持的 IDA SDK/Hex-Rays 版本与运行方式。 | **OPEN_QUESTION** 待批准 |
-| ADR-004 / Proposed | **SOURCE_CONFIRMED** `p7_acquire.py` 已按函数写 CIR，但固定路径、无通用 manifest/原子 publish。 | **RECOMMENDATION** module 元数据 + per-function source/HIR/CIR/provenance chunks；内容 hash、函数依赖 DAG、staging/原子发布、lease/恢复。备选整模块 artifact，增量成本较高。 | **OPEN_QUESTION** 待批准 |
-| ADR-005 / Proposed | **REQUIREMENT** 后续清理旧 tests/scripts；**SOURCE_CONFIRMED** CLI/solver 仍调用 scripts，tests 含语义 fixtures。 | **RECOMMENDATION** 先迁移生产能力，再删历史套件，建立全新契约/语义/差分/端到端验证。备选永久无自动化验证须记录风险。 | **OPEN_QUESTION** 待批准 |
-| ADR-006 / Proposed | **SOURCE_CONFIRMED** distribution 名 `binaryanalysis`，import 包 `emtaint`，`setup.py` 又用 `emtaint` distribution。 | **RECOMMENDATION** 先保留 import 路径并统一包元数据，确定兼容窗口；备选立即改名。 | **OPEN_QUESTION** 待批准 |
-| ADR-007 / Proposed | **SOURCE_CONFIRMED** 无生产 Microcode exporter；CTree 和 VEX 也未建立交叉证据。 | **RECOMMENDATION** 先冻结 Microcode adapter/provenance 契约，待首个 CTree 纵向切片后实现。备选并行实现但会增加未稳定契约风险。 | **OPEN_QUESTION** 待批准 |
-| ADR-008 / Proposed | **SOURCE_CONFIRMED** `Origin`/`ProvenanceIndex` 无完整多对多跨表示关系。 | **RECOMMENDATION** 独立版本化 provenance graph、源/目标命名空间、映射方法/完整度/冲突/置信标签；不按 EA 近邻自动配对。 | **OPEN_QUESTION** 待批准 |
-| ADR-009 / Proposed | **SOURCE_CONFIRMED** `p7_legacy_reference.py` 是 CLI legacy backend，`process_port.py` 执行 script worker。 | **RECOMMENDATION** 决定 legacy 模式存续与迁移期；solver worker 若保留必须进入正式 package。 | **OPEN_QUESTION** 待批准 |
-| ADR-010 / Proposed | **SOURCE_CONFIRMED** `FunctionStore` 的读取/补边和 `CIRModule.memory_snapshots` 混合 acquisition 与分析。 | **RECOMMENDATION** 分离输入 artifact、分析结果、缓存索引、debug/evidence；变更 provenance/语义依赖时选择性失效。 | **OPEN_QUESTION** 待批准 |
+| 001 — CIR evolution | SOURCE_CONFIRMED `ir/canonical/model.py` has ordered typed effects and UnknownEffect; `core/contracts.py` ValueType lacks aggregate types, Origin is one ProgramPoint; CIRModule contains MemorySnapshot. | Evolve effect contract as CIR v2. Alternatives: keep v1 unchanged, or replace IR wholesale. | v2 preserves consumer value but requires wire/identity migration. Owner: v2 shape and v1 compatibility window? |
+| 002 — HIR scope | SOURCE_CONFIRMED no production HIR or CTree implementation. Requirement: preserve decompiler structured semantics. | CTree→serializable HIR→CIR; VEX and future Microcode→CIR. Alternative: force all frontends through HIR. | Extra HIR schema/lowering is justified for CTree; artificial HIR from VEX adds cost. Owner: approve mandatory CTree HIR and source retention? |
+| 003 — CTree exporter | SOURCE_CONFIRMED `IdaVexFrontend` reads IDA CFG JSON and ELF bytes, then pyvex; it does not use Hex-Rays. | Version-gated IDA-side structured exporter with independent artifact. Alternative: live SDK bridge or pseudocode text parser. | Needs target IDA/Hex-Rays environment and compatibility probe; live bridge leaks SDK state. Owner: supported versions, license and invocation? |
+| 004 — artifact granularity | SOURCE_CONFIRMED `scripts/p7_acquire.py` writes per-function CIR plus module loader/report, fixed to P7 paths. | Module manifest/metadata with per-function source/HIR/CIR/provenance chunks. Alternative: monolithic module artifact. | Incrementality adds dependency tracking and atomic publish complexity. Owner: granularity and partial publication policy? |
+| 005 — verification after reset | SOURCE_CONFIRMED CLI/solver still depend on scripts; existing tests contain semantic cases. | Move production dependencies first, then remove historical tests/scripts under a new contract and scenario suite. Alternative: retain legacy suite or accept no repeatable verification. | Cleanup before migration breaks paths. Owner: reset sequence and verification policy? |
+| 006 — package identity | SOURCE_CONFIRMED only `pyproject.toml` currently declares distribution `binaryanalysis`; `setup.py` is absent; import package remains `emtaint`. Earlier dual-declaration evidence is historical. | Keep `emtaint` import temporarily with one pyproject distribution; document compatibility period. Alternative: rename immediately. | Avoids simultaneous identity/IR migration. Owner: public import/CLI naming and sunset? |
+| 007 — Microcode timing | SOURCE_CONFIRMED no production CTree or Microcode exporter found. | Freeze source/provenance boundary, implement Microcode after first CTree slice. Alternative: concurrent exporters. | Sequencing lowers contract churn but delays cross-checking. Owner: timing and target maturity? |
+| 008 — provenance | SOURCE_CONFIRMED Origin and ProvenanceIndex do not form a cross-representation many-to-many graph. | Versioned mapping graph with namespaces, explicit method/completeness/conflicts and typed addresses. Alternative: extend single-Origin tuple or infer from EA. | New IDs and migration needed; EA inference is unsound. Owner: identity and unmapped semantics? |
+| 009 — legacy execution | SOURCE_CONFIRMED CLI calls `scripts.p7_legacy_reference`; solver process runs `scripts/p1_solver_worker.py`. | Decide supported legacy period, migrate needed worker into package, then remove scripts. Alternative: retire legacy immediately with approved behavior loss. | Scope affects CLI compatibility. Owner: retained modes and deadline? |
+| 010 — acquisition/result separation | SOURCE_CONFIRMED FunctionStore derives CFG edges/tail calls on load; CIRModule embeds MemorySnapshot; `wire.py` registers snapshots. | Separate source/acquisition artifacts, immutable analysis results, cache indexes and debug/evidence. Alternative: one mixed store. | Requires explicit migrations and dependency keys. Owner: stored-result retention and importer policy? |
 
-在上述核心身份、IR、artifact 决策获批准之前，不进入实现或仓库清理。
+## ADR-011 — Multi-Representation Semantic Conflict Resolution
+
+**Status:** Proposed.
+
+**Context:** CTree variable type/layout and VEX/machine width/effects may disagree. Evidence categories are not a total trust ranking; an instruction can prove a 32-bit store without proving `int *` type or array stride. Cross-frontend use must avoid turning hypotheses into facts.
+
+**Current source evidence:** `core/contracts.py` has ValueType and Assessment but no fact-level source/conflict record. `memory/engine.py:resolve_alias` uses object IDs, exact intervals and explicit disjoint proofs; `points_to` conservatively returns registered objects plus unknown. `analysis/aliasing/query.py` consumes these results. No production CTree/Microcode comparison exists.
+
+**Alternatives:** (A) frontend priority overwrite; (B) keep parallel facts and conflict records, refine only with explicit evidence; (C) reject any function with conflict. **Recommendation: B.** A loses evidence and can overstate MustAlias; C throws away useful byte-level facts. Represent conflict as `fact IDs, compared property, source artifact IDs, relation, affected queries, resolution evidence/status`. Preserve BINARY_CONFIRMED, DECOMPILER_RECOVERED, DECOMPILER_INFERRED, USER_ANNOTATED, ANALYSIS_DERIVED, UNKNOWN on each fact. Continue width-bounded memory effects when proven; use may-object/weak-update for disputed layout; return UNKNOWN for exact-layout queries; mark affected analysis results partial. Do not upgrade user annotations or decompiler types silently. Candidate taint path remains candidate.
+
+**Technical tradeoff/migration:** More facts and query-specific assessment, but one shared Alias/Memory engine. Existing Origin/Assessment and result formats need a v2 conflict link and explicit invalidation. **Owner approval needed:** whether explicit user assumptions may override a conflict for a scoped query, and which conditions allow a conflict to be resolved as binary-confirmed.
+
+## ADR-012 — Unified Analysis Model Boundary
+
+**Status:** Proposed.
+
+**Context:** CTree contains declarations/control/types absent from CIR v1, while VEX supplies lower-level effects. Shared Dataflow/Alias/Taint must have one semantic query boundary without discarding CTree evidence.
+
+**Current source evidence:** `ir/canonical/model.py` defines Compute, Load/Store/Call/Branch/Return/Unknown and CIRFunction/Module; `core/contracts.py` ValueRef is typed scalar ID and Origin is one point; `memory/state.py` MemoryVersion and `memory/query_port.py` MemoryQueryPort are analysis contracts; `analysis/dataflow/fast.py` and `accurate.py` consume CIR. `frontends/ida_vex/frontend.py` feeds VEX lowering. No production HIR exists.
+
+**Alternatives:** A: CTree→HIR→CIR, VEX/Microcode→CIR, with HIR retained as source semantic artifact. B: CTree→HIR and low-level→CIR feeding a third unified analysis model. C: dual HIR/CIR analysis engines. **Recommendation: A**, conditional on the first vertical slice demonstrating conservative lowering. A adds HIR schema, lowering and provenance but reuses CIR/MemoryQueryPort and avoids B's third synchronization boundary or C's duplicate algorithms. HIR holds declarations, lvalues, aggregate/type hypotheses and structured control. CIR v2 holds ordered scalar/memory/call/control effects, definition IDs, object/path references, guards and partial footprints. Provenance links HIR nodes to zero/many CIR definitions/values; no full AST copy in CIR. Unsupported HIR maps to UnknownEffect/Havoc and coverage diagnostics. Analysis consumes CIR+program+memory contracts only.
+
+**Technical tradeoff/migration:** Requires CIR v2 identity/schema and historical artifact adapter; HIR remains independently reloadable. If the representative slice cannot preserve essential semantics with explicit uncertainty, revisit B before broad rollout. **Owner approval needed:** approve CIR as common analysis boundary, exact v2 identity/migration policy, and criteria for reopening the decision.
+
+Do not begin Milestone B until A2 and the relevant ADRs are approved by the owner.
