@@ -20,32 +20,24 @@
 
             // emtaint模块接收的命令行参数
             "args": [
-                "-a",
+                "-i",
                 "-f",
-                "D:\\works\\dataflow\\EmTaint\\emtaint-migration\\Test-Suite-master\\Binaries\\cs_tests\\cs15.c.elf",
-
-                "--discover-alias-calls",
+                "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+                "--site",
+                "0x1D688",
 
                 "--output",
-                "D:\\works\\dataflow\\EmTaint\\emtaint-migration\\BinaryAnalysis\\.debug\\cs15",
+                "datas\\icall\\httpd\\0x1d688-debug",
 
-                "--observe-call",
-                "NOALIAS",
-
-                "--observe-call",
-                "MAYALIAS",
-
-                "--observe-call",
-                "MUSTALIAS",
-
-                "--observe-call",
-                "PARTIALALIAS",
-
-                "--observe-call",
-                "EXPECTEDFAIL_MAYALIAS",
-
-                "--observe-call",
-                "EXPECTEDFAIL_NOALIAS"
+                "--log-level",
+                "DEBUG",
+                "--log-file",
+                "runtime-debug.json",
+                "--log-format",
+                "jsonl",
+                "--log-console",
+                "--log-console-level",
+                "INFO"
             ],
 
             // 工作目录

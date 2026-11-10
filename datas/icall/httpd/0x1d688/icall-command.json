@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\emtaint\\__main__.py",
+    "-i",
+    "-f",
+    "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+    "--site",
+    "0x1D688"
+  ],
+  "executable": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\.venv\\Scripts\\python.exe",
+  "python": "3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]",
+  "source_unchanged_during_run": true,
+  "source_manifest": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688\\.runs\\2aa125083a274dd98caf9e9647267d1e\\cache\\source-start.json",
+  "run_id": "2aa125083a274dd98caf9e9647267d1e",
+  "run_directory": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688\\.runs\\2aa125083a274dd98caf9e9647267d1e",
+  "output_directory": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688",
+  "wall_seconds": 141.7029999999795,
+  "violations": [],
+  "packages": {
+    "angr": "9.3.4",
+    "claripy": "9.3.4",
+    "pyvex": "9.3.4",
+    "cle": "9.3.4",
+    "archinfo": "9.3.4",
+    "z3-solver": "4.13.0.0",
+    "psutil": "7.2.2"
+  },
+  "process_peak_rss_bytes": 373121024,
+  "process_rss_at_receipt_bytes": 353345536,
+  "rss_scope": "Whole CLI process, including frontend and analysis; peak_wset is the Windows process high-water mark"
+}

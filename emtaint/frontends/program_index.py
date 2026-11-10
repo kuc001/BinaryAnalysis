@@ -34,7 +34,15 @@ def build_program_index(module, specifications, image_base, *, input_sites=(), n
                 if isinstance(effect, CallEffect):
                     location=(function.function_id, effect.site.point.instruction_rva)
                     native_sites[location]=effect.site
-                    sites[effect.site]=CallSite(effect.site, CallKind.INDIRECT if isinstance(effect.target, IndirectTarget) else CallKind.DIRECT)
+                    indirect=isinstance(effect.target, IndirectTarget)
+                    sites[effect.site]=CallSite(effect.site, CallKind.INDIRECT if indirect else CallKind.DIRECT)
+                    if isinstance(effect.target, DirectTarget):
+                        declared.add(effect.target.function)
+                        edges.add(CallEdge(effect.site, effect.target.function, TargetKind.CONFIRMED,
+                            'Native CIR direct call target'))
+                    elif indirect:
+                        edges.add(CallEdge(effect.site, None, TargetKind.UNKNOWN,
+                            'Native CIR indirect call; unresolved remainder'))
     points={}
     for origin in module.origin_map:
         if origin.point.instruction_rva is not None:points.setdefault((origin.point.function, origin.point.instruction_rva), origin.point)
@@ -99,7 +107,7 @@ def build_program_index(module, specifications, image_base, *, input_sites=(), n
             cfgs.append(ControlFlowGraph(fid, frozenset(mapped.values()), frozenset(
                 FlowEdge(mapped[a], mapped[b], FlowKind.UNKNOWN, 'Original IDA CFG metadata; body not lifted') for a, b in spec.edges), entry))
     program=Program(binary, module.architecture, module.functions[0].abi, tuple(functions), tuple(sites.values()), image_base,
-        Completeness.INCOMPLETE, ('All IDA function/call dependencies imported; unrequested bodies and external effects remain explicit',))
+        Completeness.INCOMPLETE, ('Frontend function/call dependencies imported; unrequested bodies and external effects remain explicit',))
     cg=CallGraph(frozenset(declared), frozenset(edges), Completeness.INCOMPLETE,
-                 'Original IDA static dependencies plus explicit unknown/native-only calls; no historical target seed')
+                 'Frontend static dependencies plus explicit unknown/native-only calls; no historical target seed')
     return ProgramIndex(program, cg, tuple(cfgs), tuple(external), tuple(native_only))

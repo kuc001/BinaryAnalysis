@@ -1,4 +1,4 @@
-#!D:\works\dataflow\EmTaint\emtaint-migration\BinaryAnalysis\.venv\Scripts\python.exe
+#!D:\works\dataflow\EmTaint\BinaryAnalysis-worktrees\icall\.venv\Scripts\python.exe
 #-------------------------------------------------------------------------------
 # scripts/readelf.py
 #

@@ -1,0 +1,2936 @@
+[
+  {
+    "binary": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+    "event": "cli.started",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "memory_engine": "apg",
+    "mode": "icall",
+    "output": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688",
+    "requested_site": "0x1d688",
+    "run_id": "4b79cbcb521243428380be20d4f6819f",
+    "selected_functions": null,
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 652,
+    "timestamp": "2026-11-09T02:48:20.683965+00:00"
+  }
+,
+  {
+    "acquisition": null,
+    "event": "cli.frontend.started",
+    "ida_data": null,
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 683,
+    "timestamp": "2026-11-09T02:48:33.295914+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 11.125,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:48:44.437491+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 21.140000000130385,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:48:54.443106+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 31.140000000130385,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:04.450519+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 41.15599999995902,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:14.456712+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 51.17200000002049,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:24.473151+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 61.17200000002049,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:34.482716+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 71.18699999991804,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:44.495563+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 81.26500000013039,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:49:54.572144+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 91.26500000013039,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:04.577101+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 101.29700000002049,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:14.597275+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 111.92200000002049,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:25.232235+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 121.95299999997951,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:35.255604+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 131.9529999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:45.262851+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 142.0470000000205,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T02:50:55.353853+00:00"
+  }
+,
+  {
+    "event": "icall.sites.discovered",
+    "frontend": "angr-vex",
+    "functions": 1,
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_caller": "0x1d330",
+    "requested_site": "0x1d688",
+    "sites": 1,
+    "source_file": "cli.py",
+    "source_function": "run_icall",
+    "source_line": 166,
+    "timestamp": "2026-11-09T02:51:00.622110+00:00"
+  }
+,
+  {
+    "cfgs": 7,
+    "event": "icall.index.building",
+    "frontend_functions": 7,
+    "functions": 7,
+    "input_sites": 1,
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "source_file": "cli.py",
+    "source_function": "run_icall",
+    "source_line": 183,
+    "timestamp": "2026-11-09T02:51:00.780803+00:00"
+  }
+,
+  {
+    "callsites": 47,
+    "cg_edges": 47,
+    "event": "icall.recovery.started",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "program_functions": 28,
+    "source_file": "cli.py",
+    "source_function": "run_icall",
+    "source_line": 199,
+    "timestamp": "2026-11-09T02:51:00.794804+00:00"
+  }
+,
+  {
+    "event": "icall.runtime.ready",
+    "functions": 7,
+    "initial_cfgs": 7,
+    "initial_cg_edges": 47,
+    "input_sites": 1,
+    "level": "INFO",
+    "logger": "emtaint.orchestration.icall_program",
+    "max_rounds": 4,
+    "source_file": "icall_program.py",
+    "source_function": "recover_icalls",
+    "source_line": 95,
+    "summary_functions": 6,
+    "timestamp": "2026-11-09T02:51:00.802801+00:00"
+  }
+,
+  {
+    "event": "icall.fixed_point.started",
+    "functions": 7,
+    "level": "INFO",
+    "logger": "emtaint.orchestration.icall_program",
+    "max_rounds": 4,
+    "source_file": "icall_program.py",
+    "source_function": "recover_icalls",
+    "source_line": 234,
+    "timestamp": "2026-11-09T02:51:00.803805+00:00"
+  }
+,
+  {
+    "event": "icall.search.started",
+    "functions": 7,
+    "level": "INFO",
+    "logger": "emtaint.orchestration.program_search",
+    "max_rounds": 4,
+    "source_file": "program_search.py",
+    "source_function": "run",
+    "source_line": 94,
+    "timestamp": "2026-11-09T02:51:00.803805+00:00"
+  }
+,
+  {
+    "event": "icall.search.round.started",
+    "function_rvas": [
+      "0x15330",
+      "0x168a8",
+      "0x169ac",
+      "0x16a0c",
+      "0x1bdc4",
+      "0x21590",
+      "0x269b4"
+    ],
+    "function_vas": [
+      "0x1d330",
+      "0x1e8a8",
+      "0x1e9ac",
+      "0x1ea0c",
+      "0x23dc4",
+      "0x29590",
+      "0x2e9b4"
+    ],
+    "functions": [
+      "0x15330",
+      "0x168a8",
+      "0x169ac",
+      "0x16a0c",
+      "0x1bdc4",
+      "0x21590",
+      "0x269b4"
+    ],
+    "level": "INFO",
+    "logger": "emtaint.orchestration.program_search",
+    "pending_before": 0,
+    "round": 1,
+    "source_file": "program_search.py",
+    "source_function": "run",
+    "source_line": 111,
+    "timestamp": "2026-11-09T02:51:00.804804+00:00",
+    "worklist": 7
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x116c4",
+    "timestamp": "2026-11-09T02:51:02.717990+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x1178c",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x11c64",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x16fcc",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x17324",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x17524",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x175dc",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x238c0",
+    "timestamp": "2026-11-09T02:51:02.718991+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x238f0",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x23920",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x239e8",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x23b48",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x23ca0",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x23eb8",
+    "timestamp": "2026-11-09T02:51:02.719996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x23f80",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x240a0",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24178",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2423c",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x243d4",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24598",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x248fc",
+    "timestamp": "2026-11-09T02:51:02.720996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x249c0",
+    "timestamp": "2026-11-09T02:51:02.721996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24ae0",
+    "timestamp": "2026-11-09T02:51:02.721996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24b60",
+    "timestamp": "2026-11-09T02:51:02.721996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24ca0",
+    "timestamp": "2026-11-09T02:51:02.721996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24dc0",
+    "timestamp": "2026-11-09T02:51:02.721996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24e64",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x24f98",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x25080",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x251dc",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x25294",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x25494",
+    "timestamp": "2026-11-09T02:51:02.722996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x256a4",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2587c",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x25904",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x259d4",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x260c4",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x26294",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x26398",
+    "timestamp": "2026-11-09T02:51:02.723996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x27288",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x27ec8",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x27f38",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28060",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28124",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28688",
+    "timestamp": "2026-11-09T02:51:02.724997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28748",
+    "timestamp": "2026-11-09T02:51:02.725996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28908",
+    "timestamp": "2026-11-09T02:51:02.725996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x28d04",
+    "timestamp": "2026-11-09T02:51:02.725996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x290f0",
+    "timestamp": "2026-11-09T02:51:02.725996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x293b4",
+    "timestamp": "2026-11-09T02:51:02.725996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x29784",
+    "timestamp": "2026-11-09T02:51:02.726997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2b7d8",
+    "timestamp": "2026-11-09T02:51:02.726997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2cfe8",
+    "timestamp": "2026-11-09T02:51:02.726997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2d0fc",
+    "timestamp": "2026-11-09T02:51:02.726997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2ea64",
+    "timestamp": "2026-11-09T02:51:02.726997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2ebb4",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2f06c",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2f390",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2f4f4",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2f684",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x2f7b4",
+    "timestamp": "2026-11-09T02:51:02.727995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x32938",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x34288",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3441c",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x35914",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x35964",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x35a68",
+    "timestamp": "2026-11-09T02:51:02.728995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x35cfc",
+    "timestamp": "2026-11-09T02:51:02.729995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x37030",
+    "timestamp": "2026-11-09T02:51:02.729995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x37154",
+    "timestamp": "2026-11-09T02:51:02.729995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x37b04",
+    "timestamp": "2026-11-09T02:51:02.729995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x38c08",
+    "timestamp": "2026-11-09T02:51:02.729995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x39848",
+    "timestamp": "2026-11-09T02:51:02.730999+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x39aa8",
+    "timestamp": "2026-11-09T02:51:02.730999+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x39e38",
+    "timestamp": "2026-11-09T02:51:02.730999+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x39fbc",
+    "timestamp": "2026-11-09T02:51:02.731997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3a838",
+    "timestamp": "2026-11-09T02:51:02.731997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3b64c",
+    "timestamp": "2026-11-09T02:51:02.731997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3bb1c",
+    "timestamp": "2026-11-09T02:51:02.731997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3bf9c",
+    "timestamp": "2026-11-09T02:51:02.732996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3c478",
+    "timestamp": "2026-11-09T02:51:02.732996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3c6b0",
+    "timestamp": "2026-11-09T02:51:02.732996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3c770",
+    "timestamp": "2026-11-09T02:51:02.732996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3ccfc",
+    "timestamp": "2026-11-09T02:51:02.732996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3cfcc",
+    "timestamp": "2026-11-09T02:51:02.733994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3d094",
+    "timestamp": "2026-11-09T02:51:02.733994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3d880",
+    "timestamp": "2026-11-09T02:51:02.733994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3dbf0",
+    "timestamp": "2026-11-09T02:51:02.733994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3deb8",
+    "timestamp": "2026-11-09T02:51:02.733994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3e008",
+    "timestamp": "2026-11-09T02:51:02.734995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3e238",
+    "timestamp": "2026-11-09T02:51:02.734995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3e2c4",
+    "timestamp": "2026-11-09T02:51:02.734995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3e424",
+    "timestamp": "2026-11-09T02:51:02.734995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3f34c",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x3fab0",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x40240",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x41c40",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x47d3c",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x47dac",
+    "timestamp": "2026-11-09T02:51:02.735995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x47ea8",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x486b0",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x491d8",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x493c0",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4a354",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4ab44",
+    "timestamp": "2026-11-09T02:51:02.736995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4b0f0",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4bc24",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4dd4c",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4e624",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x4ebf4",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5121c",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x51498",
+    "timestamp": "2026-11-09T02:51:02.737996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x51a98",
+    "timestamp": "2026-11-09T02:51:02.738997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x51e90",
+    "timestamp": "2026-11-09T02:51:02.738997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x52228",
+    "timestamp": "2026-11-09T02:51:02.738997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x52628",
+    "timestamp": "2026-11-09T02:51:02.738997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x52988",
+    "timestamp": "2026-11-09T02:51:02.738997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x53e94",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x544dc",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x54758",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x549cc",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x54c40",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x56904",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x577f8",
+    "timestamp": "2026-11-09T02:51:02.739995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5849c",
+    "timestamp": "2026-11-09T02:51:02.740993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x588e4",
+    "timestamp": "2026-11-09T02:51:02.740993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x58b70",
+    "timestamp": "2026-11-09T02:51:02.740993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x58c18",
+    "timestamp": "2026-11-09T02:51:02.740993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x58cb8",
+    "timestamp": "2026-11-09T02:51:02.740993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5a9a8",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5ad1c",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5b134",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5b45c",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5b7bc",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5be40",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5c610",
+    "timestamp": "2026-11-09T02:51:02.741993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5c910",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5cb10",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5d7ac",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5de7c",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5e0c8",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5f5b8",
+    "timestamp": "2026-11-09T02:51:02.742993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5f7ac",
+    "timestamp": "2026-11-09T02:51:02.743994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x5f9a4",
+    "timestamp": "2026-11-09T02:51:02.743994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x60138",
+    "timestamp": "2026-11-09T02:51:02.743994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x60958",
+    "timestamp": "2026-11-09T02:51:02.743994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x60ce0",
+    "timestamp": "2026-11-09T02:51:02.743994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x61080",
+    "timestamp": "2026-11-09T02:51:02.744997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x61df0",
+    "timestamp": "2026-11-09T02:51:02.744997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x61f64",
+    "timestamp": "2026-11-09T02:51:02.744997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x62108",
+    "timestamp": "2026-11-09T02:51:02.746003+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6270c",
+    "timestamp": "2026-11-09T02:51:02.746003+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x62828",
+    "timestamp": "2026-11-09T02:51:02.746003+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63408",
+    "timestamp": "2026-11-09T02:51:02.746003+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63a44",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63bb4",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63c40",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63cac",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63d08",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63d64",
+    "timestamp": "2026-11-09T02:51:02.746993+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63db4",
+    "timestamp": "2026-11-09T02:51:02.747997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63e24",
+    "timestamp": "2026-11-09T02:51:02.747997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x63f0c",
+    "timestamp": "2026-11-09T02:51:02.747997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x64088",
+    "timestamp": "2026-11-09T02:51:02.749007+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6484c",
+    "timestamp": "2026-11-09T02:51:02.749007+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x64940",
+    "timestamp": "2026-11-09T02:51:02.749997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x64a34",
+    "timestamp": "2026-11-09T02:51:02.749997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x653f4",
+    "timestamp": "2026-11-09T02:51:02.749997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x653fc",
+    "timestamp": "2026-11-09T02:51:02.750996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x663e4",
+    "timestamp": "2026-11-09T02:51:02.750996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x67294",
+    "timestamp": "2026-11-09T02:51:02.750996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6a538",
+    "timestamp": "2026-11-09T02:51:02.750996+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6abf0",
+    "timestamp": "2026-11-09T02:51:02.751997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6b79c",
+    "timestamp": "2026-11-09T02:51:02.751997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6bda4",
+    "timestamp": "2026-11-09T02:51:02.751997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6c3fc",
+    "timestamp": "2026-11-09T02:51:02.751997+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6c728",
+    "timestamp": "2026-11-09T02:51:02.752995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6cc74",
+    "timestamp": "2026-11-09T02:51:02.752995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6d394",
+    "timestamp": "2026-11-09T02:51:02.752995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6d6f0",
+    "timestamp": "2026-11-09T02:51:02.752995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6d834",
+    "timestamp": "2026-11-09T02:51:02.753994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6d920",
+    "timestamp": "2026-11-09T02:51:02.753994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6e570",
+    "timestamp": "2026-11-09T02:51:02.753994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6f34c",
+    "timestamp": "2026-11-09T02:51:02.753994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6f740",
+    "timestamp": "2026-11-09T02:51:02.754995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6f8a8",
+    "timestamp": "2026-11-09T02:51:02.754995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x6fb8c",
+    "timestamp": "2026-11-09T02:51:02.754995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x70974",
+    "timestamp": "2026-11-09T02:51:02.754995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x71510",
+    "timestamp": "2026-11-09T02:51:02.754995+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x716e0",
+    "timestamp": "2026-11-09T02:51:02.755994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x721fc",
+    "timestamp": "2026-11-09T02:51:02.755994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x727b8",
+    "timestamp": "2026-11-09T02:51:02.755994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x72968",
+    "timestamp": "2026-11-09T02:51:02.755994+00:00"
+  }
+,
+  {
+    "event": "graph.target.unmapped",
+    "kind": "icall",
+    "level": "WARNING",
+    "logger": "emtaint.analysis.controlflow.targets",
+    "origin": "f15330:o1905",
+    "source_file": "targets.py",
+    "source_function": "apply",
+    "source_line": 75,
+    "target": "0x7ce80",
+    "timestamp": "2026-11-09T02:51:02.756996+00:00"
+  }
+,
+  {
+    "affected": 0,
+    "event": "icall.search.round.completed",
+    "level": "INFO",
+    "logger": "emtaint.orchestration.program_search",
+    "new_runtime_events": [],
+    "next_worklist": 0,
+    "round": 1,
+    "source_file": "program_search.py",
+    "source_function": "run",
+    "source_line": 145,
+    "target_facts": 1,
+    "target_values": 194,
+    "timestamp": "2026-11-09T02:51:02.757993+00:00",
+    "total_invocations": 7
+  }
+,
+  {
+    "event": "icall.search.completed",
+    "exhausted": false,
+    "invocations": 7,
+    "level": "INFO",
+    "logger": "emtaint.orchestration.program_search",
+    "pending": 0,
+    "results": 7,
+    "rounds": 1,
+    "source_file": "program_search.py",
+    "source_function": "run",
+    "source_line": 166,
+    "timestamp": "2026-11-09T02:51:02.757993+00:00",
+    "wall_seconds": 1.952999999979511
+  }
+,
+  {
+    "event": "icall.fixed_point.completed",
+    "final_cg_edges": 47,
+    "invocations": 7,
+    "level": "INFO",
+    "logger": "emtaint.orchestration.icall_program",
+    "pending": 0,
+    "rounds": 1,
+    "runtime_events": 0,
+    "source_file": "icall_program.py",
+    "source_function": "recover_icalls",
+    "source_line": 250,
+    "timestamp": "2026-11-09T02:51:02.757993+00:00",
+    "unmapped_targets": 194,
+    "wall_seconds": 1.9690000000409782
+  }
+,
+  {
+    "analyzed_functions": 7,
+    "event": "icall.recovery.completed",
+    "invalidation_events": 0,
+    "invocations": 7,
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "pending_functions": 0,
+    "rounds": 1,
+    "source_file": "cli.py",
+    "source_function": "run_icall",
+    "source_line": 215,
+    "timestamp": "2026-11-09T02:51:02.758993+00:00"
+  }
+,
+  {
+    "artifacts": 10,
+    "event": "icall.artifacts.writing",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "logical_cg_edges": 32,
+    "observed_sites": 1,
+    "source_file": "cli.py",
+    "source_function": "run_icall",
+    "source_line": 402,
+    "status": "candidate_fixed_point",
+    "target_entries": 194,
+    "timestamp": "2026-11-09T02:51:02.759994+00:00"
+  }
+,
+  {
+    "event": "cli.completed",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 731,
+    "status": "candidate_fixed_point",
+    "timestamp": "2026-11-09T02:51:02.974035+00:00",
+    "wall_seconds": 162.31300000008196,
+    "write_violations": 0
+  }
+]

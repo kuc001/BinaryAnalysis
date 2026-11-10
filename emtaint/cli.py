@@ -1,4 +1,4 @@
-"""Python CLI with explicit inputs and isolated, append-only phase outputs."""
+"""Python CLI for bounded single-site iCall and taint analysis."""
 
 from __future__ import annotations
 
@@ -21,12 +21,9 @@ from emtaint.debugging import (
     log_event,
     progress_heartbeat,
 )
-from emtaint.frontends.function_store import FunctionStore
-from emtaint.frontends.inputs import read_ida_cfg
 from emtaint.frontends.program_index import build_program_index
-from emtaint.ir.canonical import CIRModule
-from emtaint.memory.engine import combine
 from emtaint.orchestration.icall_program import recover_icalls
+from emtaint.orchestration.icall_policy import dependency_policy
 
 
 LOGGER = logging.getLogger(__name__)
@@ -41,15 +38,68 @@ SOURCE_SCRIPTS = (
 
 
 def write(path: Path, value: object) -> None:
-    """Create one JSON receipt without overwriting an existing artifact.
+    """Atomically create or replace one JSON artifact.
 
     Args:
         path: Destination file. Its parent must already exist.
         value: JSON-compatible value. Unsupported leaves are converted to text.
     """
 
-    with path.open("x", encoding="utf8") as stream:
-        json.dump(value, stream, indent=2, default=str)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="utf8") as stream:
+            json.dump(value, stream, indent=2, default=str)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+class OutputLock:
+    """Prevent concurrent writers from corrupting one deterministic output."""
+
+    def __init__(self, folder: Path, run_id: str) -> None:
+        self.path = folder / ".icall.lock"
+        self.run_id = run_id
+        self.acquired = False
+
+    def acquire(self) -> None:
+        payload = {
+            "pid": os.getpid(),
+            "run_id": self.run_id,
+            "started_unix": time.time(),
+        }
+        try:
+            with self.path.open("x", encoding="utf8") as stream:
+                json.dump(payload, stream, indent=2)
+        except FileExistsError as error:
+            try:
+                existing = json.loads(self.path.read_text(encoding="utf8"))
+                import psutil
+
+                active = psutil.pid_exists(int(existing["pid"]))
+            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                active = True
+            if active:
+                raise ValueError(f"Output directory has an active lock: {self.path}") from error
+            self.path.unlink()
+            with self.path.open("x", encoding="utf8") as stream:
+                json.dump(payload, stream, indent=2)
+        self.acquired = True
+
+    def release(self) -> None:
+        if not self.acquired:
+            return
+        try:
+            existing = json.loads(self.path.read_text(encoding="utf8"))
+            if existing.get("run_id") == self.run_id:
+                self.path.unlink()
+        except FileNotFoundError:
+            pass
+        finally:
+            self.acquired = False
 
 
 def source_manifest(root: Path) -> dict[str, str]:
@@ -104,102 +154,39 @@ def process_metadata() -> dict[str, object]:
 
 def run_icall(
     args: argparse.Namespace,
-    store: FunctionStore,
+    store: object,
     folder: Path,
 ) -> dict[str, object]:
-    """Run the bounded iCall phase and write append-only evidence artifacts.
+    """Run one bounded iCall query and atomically write its evidence."""
 
-    Args:
-        args: Validated CLI arguments for an ``-i`` execution.
-        store: Immutable per-function CIR acquisition reader.
-        folder: Newly created output directory beneath ``.p7-work``.
+    from emtaint.frontends.function_provider import combine_provider_modules
 
-    Returns:
-        The iCall phase manifest also written to ``icall.json``.
-    """
-
-    metadata = Path(args.ida_data)
-    block_info = json.loads(
-        (metadata / "httpd_block_info.json").read_text(encoding="utf8")
-    )
-    sites = sorted(
-        (int(function, 16), row[0])
-        for function, blocks in block_info.items()
-        for rows in blocks.values()
-        for row in rows
-        if row[-1] == "iCall"
-    )
-    # for function, site in sites:
-    #     print(f"iCall site: {hex(function)} -> {hex(site)}")
+    caller = store.resolved.caller
+    sites = [(caller, args.site)]
     log_event(
         LOGGER,
         "icall.sites.discovered",
         level=logging.INFO,
-        sites=len(sites),
-        functions=len({function for function, _ in sites}),
-        metadata=str(metadata.resolve()),
+        sites=1,
+        functions=1,
+        frontend=store.frontend,
+        requested_site=hex(args.site),
+        requested_caller=hex(caller),
     )
 
-    # This dependency plan was independently validated for the approved P6
-    # target. It selects bodies to compute and is not a Golden target list.
-    approved_binary = "334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787"
-    if store.report["binary_sha256"] != approved_binary:
-        raise ValueError("No validated iCall dependency policy for this binary")
-
-    selected = {function for function, _ in sites}
-    selected.update({0x1EA0C, 0x1E9AC, 0x1E8A8, 0x23DC4, 0x29590, 0x2E9B4})
-    modules = []
-    cfgs = []
-    body_hashes = {}
-    for address in sorted(selected):
-        log_event(
-            LOGGER,
-            "icall.function.loading",
-            **function_address_fields(
-                address - store.base,
-                store.base,
-                legacy_field="va",
-            ),
-            loaded=len(modules),
-            total=len(selected),
-        )
-        function_module, cfg, digest = store.load(address)
-        modules.append(function_module)
-        cfgs.append(cfg)
-        body_hashes[function_module.functions[0].function_id] = digest
-        log_event(
-            LOGGER,
-            "icall.function.loaded",
-            **function_address_fields(
-                address - store.base,
-                store.base,
-                legacy_field="va",
-            ),
-            cir_sha256=digest,
-            blocks=len(cfg.nodes),
-            loaded=len(modules),
-            total=len(selected),
-        )
-
-    first = modules[0]
-    module = CIRModule(
-        first.producer,
-        first.architecture,
-        first.endian,
-        first.binary_sha256,
-        tuple(function for item in modules for function in item.functions),
-        tuple(origin for item in modules for origin in item.origin_map),
-        first.capabilities,
-        combine(item.assessment for item in modules),
+    dependencies = dependency_policy(
+        store.report["binary_sha256"], caller, args.site
     )
-    specifications = read_ida_cfg(metadata / "httpd_cfg.json")
+    selected = {caller, *dependencies}
+    module, cfgs, body_hashes = combine_provider_modules(store, selected)
+    specifications = store.specifications
     log_event(
         LOGGER,
         "icall.index.building",
         level=logging.INFO,
         functions=len(module.functions),
         cfgs=len(cfgs),
-        ida_functions=len(specifications),
+        frontend_functions=len(specifications),
         input_sites=len(sites),
     )
     index = build_program_index(
@@ -236,7 +223,9 @@ def run_icall(
         invalidation_events=len(runtime.events),
     )
 
-    targets: dict[str, dict[str, list[int]]] = {}
+    targets: dict[str, dict[str, list[int]]] = {
+        str(caller): {str(args.site): []}
+    }
     facts = []
     coverage = []
     for function_id, outcome in result.results:
@@ -262,6 +251,8 @@ def run_icall(
             )
         for fact in outcome.targets:
             site_address = fact.site.point.instruction_rva + store.base
+            if site_address != args.site:
+                continue
             targets.setdefault(str(function_address), {})[str(site_address)] = list(
                 fact.targets
             )
@@ -324,9 +315,22 @@ def run_icall(
         "engine": "python",
         "memory_engine": "apg",
         "binary_sha256": module.binary_sha256,
-        "acquisition": str(store.folder.resolve()),
-        "metadata": str(metadata.resolve()),
+        "acquisition_mode": store.acquisition_mode,
+        "acquisition_path": store.acquisition_path,
+        "metadata": store.provenance.get("metadata_path"),
         "status": status,
+        "requested_site": args.site,
+        "requested_site_hex": hex(args.site),
+        "requested_caller": caller,
+        "requested_caller_hex": hex(caller),
+        "requested_site_found": True,
+        "frontend": store.frontend,
+        "frontend_fingerprint": store.frontend_fingerprint,
+        "analyzed_site_count": 1,
+        "analyzed_functions": len(result.results),
+        "dependency_functions": list(dependencies),
+        "output_directory": str(folder.resolve()),
+        "run_id": args.run_id,
         "input_sites": len(sites),
         "observed_sites": len(coverage),
         "target_entries": target_entries,
@@ -338,6 +342,43 @@ def run_icall(
         "certainty": "MAY; runtime memory/guard remainder retained",
         "gate_a": "NOT_EVALUATED",
         "plt_sha256": store.plt_sha256,
+    }
+    generated_artifacts = [
+        "icall-targets.json",
+        "target-facts.json",
+        "site-coverage.json",
+        "cg-logical-edges.json",
+        "invalidation-events.json",
+        "invocations.json",
+        "cir-transformations.json",
+        "plt-mapping.json",
+        "frontend.json",
+        "icall.json",
+        "icall-command.json",
+    ]
+    manifest["generated_artifacts"] = generated_artifacts
+    frontend_receipt = {
+        "run_id": args.run_id,
+        **store.provenance,
+        "frontend": store.frontend,
+        "frontend_fingerprint": store.frontend_fingerprint,
+        "image_base": store.base,
+        "requested_site": args.site,
+        "requested_caller": caller,
+        "lifted_functions": sorted(selected),
+        "function_body_hashes": {
+            hex(function.rva + store.base): digest
+            for function, digest in body_hashes.items()
+        },
+        "sections": store.loader["sections"],
+        "segments": [
+            {"base": base, "size": size, "flags": flags,
+             "sha256": hashlib.sha256(data).hexdigest()}
+            for base, data, size, flags in store.segments
+        ],
+        "plt_sha256": store.plt_sha256,
+        "acquisition_mode": store.acquisition_mode,
+        "acquisition_path": store.acquisition_path,
     }
     artifacts = (
         ("icall-targets", targets),
@@ -355,6 +396,7 @@ def run_icall(
                 "sha256": store.plt_sha256,
             },
         ),
+        ("frontend", frontend_receipt),
         ("icall", manifest),
     )
     log_event(
@@ -395,9 +437,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--ida-data")
     parser.add_argument("--acquisition")
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output")
     parser.add_argument("--function", help="Alias query function name or absolute address")
-    parser.add_argument("--site", type=lambda value: int(value, 0), help="Absolute callsite address")
+    parser.add_argument(
+        "--site",
+        type=lambda value: int(value, 0),
+        help="Absolute indirect callsite address",
+    )
     parser.add_argument("--left", help="Binary value locator, e.g. arg:0")
     parser.add_argument("--right", help="Binary value locator, e.g. arg:1")
     parser.add_argument("--discover-alias-calls", action="store_true")
@@ -446,7 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--log-file",
-        help="New log filename inside --output; existing files are never overwritten",
+        help="Log filename inside --output; tool-owned existing logs are replaced",
     )
     parser.add_argument(
         "--log-format",
@@ -474,6 +520,8 @@ def validate_arguments(args: argparse.Namespace) -> None:
     """Reject invalid mode, budget, backend, and diagnostic combinations."""
 
     if args.alias_check:
+        if args.output is None:
+            raise ValueError("Alias mode requires --output")
         if args.discover_alias_calls:
             if not args.observe_call or any(
                     value is not None for value in
@@ -485,8 +533,12 @@ def validate_arguments(args: argparse.Namespace) -> None:
         if args.memory_engine != "apg" or args.legacy_plan or args.legacy_resume_prepared:
             raise ValueError("Alias mode uses the shared native memory engine")
         return
-    if not all((args.firmware_name, args.firmware_version, args.ida_data, args.acquisition)):
-        raise ValueError("-i/-t require firmware identity, IDA data and acquisition")
+    if args.icall_check and args.site is None:
+        raise ValueError("-i requires one absolute --site")
+    if args.taint_check and args.site is not None:
+        raise ValueError("--site is an -i/alias option")
+    if args.taint_check and not all((args.output, args.ida_data, args.acquisition)):
+        raise ValueError("-t requires --output, --ida-data and --acquisition")
     if args.function_seconds < 1 or not 1 <= args.taint_rounds <= 15:
         raise ValueError("Positive function deadline and 1..15 taint rounds required")
     if args.icall_check and args.taint_functions:
@@ -507,15 +559,32 @@ def validate_arguments(args: argparse.Namespace) -> None:
 def prepare_output(args: argparse.Namespace, root: Path) -> Path:
     """Validate the write boundary and prepare the requested phase directory."""
 
-    folder = Path(args.output).resolve()
-    folder.relative_to(root)
-    folder.relative_to(root / ".p7-work")
+    datas = (root / "datas").resolve()
+    datas.mkdir(parents=True, exist_ok=True)
+    if args.output is None:
+        if not args.icall_check:
+            raise ValueError("This mode requires --output")
+        binary_name = "".join(
+            character if character.isalnum() or character in "._-" else "_"
+            for character in Path(args.binary_file).name
+        )
+        folder = datas / "icall" / binary_name / hex(args.site)
+    else:
+        candidate = Path(args.output)
+        folder = (root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+    try:
+        folder.relative_to(datas)
+    except ValueError as error:
+        raise ValueError(
+            f"Output path escapes the project datas directory: "
+            f"resolved={folder}, allowed_root={datas}"
+        ) from error
     if args.icall_check:
         if args.legacy_resume_prepared:
             if not folder.is_dir() or (folder / "icall.json").exists():
                 raise ValueError("No unstarted prepared legacy output directory")
         else:
-            folder.mkdir(exist_ok=False)
+            folder.mkdir(parents=True, exist_ok=True)
     elif not folder.is_dir() or not (folder / "icall.json").is_file():
         raise ValueError("-t requires the same completed -i output directory")
     return folder
@@ -541,6 +610,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_alias_cli(args)
     root = Path(__file__).resolve().parents[1]
     folder = prepare_output(args, root)
+    run_id = uuid.uuid4().hex
+    args.run_id = run_id
 
     if args.memory_engine == "legacy":
         sys.path.insert(0, str(root / "scripts"))
@@ -548,9 +619,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         return execute(args, folder)
 
-    cache_name = "cache-i" if args.icall_check else f"cache-t-{uuid.uuid4().hex[:8]}"
-    cache = folder / cache_name
-    cache.mkdir(exist_ok=False)
+    lock = OutputLock(folder, run_id)
+    lock.acquire()
+    run_folder = folder / ".runs" / run_id
+    cache = run_folder / "cache"
+    cache.mkdir(parents=True, exist_ok=False)
     for key in ("TEMP", "TMP", "TMPDIR"):
         os.environ[key] = str(cache)
     tempfile.tempdir = str(cache)
@@ -567,6 +640,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if Path(args.log_file).name != args.log_file:
                 raise ValueError("--log-file must be a filename, not a path")
             log_path = folder / args.log_file
+            if log_path.exists():
+                log_path.unlink()
         configure_logging(
             args.log_level,
             log_path,
@@ -583,6 +658,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             binary=str(Path(args.binary_file).resolve()),
             memory_engine=args.memory_engine,
             selected_functions=args.taint_functions,
+            requested_site=None if args.site is None else hex(args.site),
+            run_id=run_id,
         )
 
         log_event(
@@ -600,51 +677,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             receipt=str(source_receipt),
         )
 
-        acquisition = str(Path(args.acquisition).resolve())
-        log_event(
-            LOGGER,
-            "cli.acquisition.started",
-            level=logging.INFO,
-            acquisition=acquisition,
-        )
-        with progress_heartbeat(
-            LOGGER,
-            "cli.acquisition.heartbeat",
-            acquisition=acquisition,
-        ):
-            store = FunctionStore(args.acquisition, binary=args.binary_file)
-        log_event(
-            LOGGER,
-            "cli.acquisition.completed",
-            level=logging.INFO,
-            base=hex(store.base),
-            binary_sha256=store.report["binary_sha256"],
-            metadata_sha256=store.report["metadata_sha256"],
-            plt_sha256=store.plt_sha256,
-        )
-
-        log_event(LOGGER, "cli.inputs.validating", level=logging.INFO)
-        binary_sha = hashlib.sha256(Path(args.binary_file).read_bytes()).hexdigest()
-        metadata_path = Path(args.ida_data) / "httpd_cfg.json"
-        metadata_sha = hashlib.sha256(metadata_path.read_bytes()).hexdigest()
-        if binary_sha != store.report["binary_sha256"]:
-            raise ValueError("Binary/acquisition hash mismatch")
-        if metadata_sha != store.report["metadata_sha256"]:
-            raise ValueError("IDA CFG/acquisition hash mismatch")
-        log_event(
-            LOGGER,
-            "cli.inputs.validated",
-            level=logging.INFO,
-            binary_sha256=binary_sha,
-            metadata_sha256=metadata_sha,
-        )
-
         if args.icall_check:
+            from emtaint.frontends.function_provider import build_function_provider
+
+            log_event(
+                LOGGER,
+                "cli.frontend.started",
+                level=logging.INFO,
+                acquisition=args.acquisition,
+                ida_data=args.ida_data,
+                requested_site=hex(args.site),
+            )
+            with progress_heartbeat(
+                LOGGER,
+                "cli.frontend.heartbeat",
+                requested_site=hex(args.site),
+            ):
+                store = build_function_provider(
+                    args.binary_file,
+                    args.site,
+                    ida_data=args.ida_data,
+                    acquisition=args.acquisition,
+                )
+            print(f"Binary: {Path(args.binary_file).resolve()}", flush=True)
+            print(f"Requested iCall: {hex(args.site)}", flush=True)
+            print(f"Frontend: {store.frontend}", flush=True)
+            print(f"Output: {folder}", flush=True)
+            print(f"Run ID: {run_id}", flush=True)
             manifest = run_icall(args, store, folder)
             command_name = "icall-command.json"
         else:
+            from emtaint.frontends.function_store import FunctionStore
             from emtaint.orchestration.taint_program import run_taint
 
+            store = FunctionStore(args.acquisition, binary=args.binary_file)
             manifest = run_taint(args, store, folder)
             command_name = f"taint-command-{uuid.uuid4().hex[:8]}.json"
 
@@ -654,6 +720,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "python": sys.version,
             "source_unchanged_during_run": sources == source_manifest(root),
             "source_manifest": str(source_receipt),
+            "run_id": run_id,
+            "run_directory": str(run_folder),
+            "output_directory": str(folder),
             "wall_seconds": time.monotonic() - started,
             "violations": guard.violations,
             **process_metadata(),
@@ -692,8 +761,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise
     finally:
         guard.restore()
+        lock.release()
 
     print(json.dumps(manifest, default=str), flush=True)
+    if args.icall_check:
+        print(f"Caller: {manifest['requested_caller_hex']}", flush=True)
+        print(f"Site: {manifest['requested_site_hex']}", flush=True)
+        print(f"Targets: {manifest['target_entries']}", flush=True)
+        print(f"Status: {manifest['status']}", flush=True)
+        print(f"Pending: {len(manifest['graph_pending'])}", flush=True)
+        print(f"Output: {folder}", flush=True)
     if guard.violations or manifest["status"] in ("failed", "incomplete"):
         return 2
     return 0

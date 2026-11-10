@@ -1,0 +1,546 @@
+[
+  {
+    "binary": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+    "event": "cli.started",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "memory_engine": "apg",
+    "mode": "icall",
+    "output": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688-debug",
+    "requested_site": "0x1d688",
+    "run_id": "392c9e9b60c9443194965ebdebff22ba",
+    "selected_functions": null,
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 652,
+    "timestamp": "2026-11-09T08:47:13.346106+00:00"
+  }
+,
+  {
+    "event": "cli.source_manifest.started",
+    "level": "DEBUG",
+    "logger": "emtaint.cli",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 665,
+    "source_root": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\emtaint",
+    "timestamp": "2026-11-09T08:47:13.349063+00:00"
+  }
+,
+  {
+    "event": "cli.source_manifest.completed",
+    "files": 209,
+    "level": "DEBUG",
+    "logger": "emtaint.cli",
+    "receipt": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\icall\\datas\\icall\\httpd\\0x1d688-debug\\.runs\\392c9e9b60c9443194965ebdebff22ba\\cache\\source-start.json",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 673,
+    "timestamp": "2026-11-09T08:47:13.524197+00:00"
+  }
+,
+  {
+    "acquisition": null,
+    "event": "cli.frontend.started",
+    "ida_data": null,
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 683,
+    "timestamp": "2026-11-09T08:47:13.576571+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1095.0,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:05:28.573222+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1105.03199999989,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:05:38.605981+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1419.8129999998491,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:10:53.381560+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1446.8909999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:11:20.462178+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1456.9529999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:11:30.529399+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1467.0,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:11:40.563307+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1477.03199999989,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:11:50.596062+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1487.0779999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:00.650232+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1497.1409999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:10.709987+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1507.2189999998081,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:20.793726+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1517.28199999989,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:30.848279+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1527.4219999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:40.995713+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1537.53199999989,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:12:51.094695+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1547.5469999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:01.124053+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1557.6719999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:11.237175+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1568.2029999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:21.773190+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1578.4689999998081,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:32.044193+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1588.53199999989,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:42.108857+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1598.875,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:13:52.448353+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1609.25,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:14:02.815850+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1619.5779999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:14:13.152340+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1726.0629999998491,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:15:59.637295+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1736.1719999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:16:09.748585+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1746.3129999998491,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:16:19.880631+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1756.375,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:16:29.947676+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1766.3909999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:16:39.962630+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1776.4219999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:16:49.995984+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1786.4529999999795,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:00.023822+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1796.4849999998696,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:10.057100+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1806.5159999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:20.084872+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1816.5629999998491,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:30.127316+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1826.5939999998081,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:40.168789+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1836.625,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:17:50.190480+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1846.6719999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:00.236669+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1856.6879999998491,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:10.256040+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1866.75,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:20.326016+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1876.7969999997877,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:30.373883+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1887.0159999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:40.590989+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1897.375,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:18:50.946141+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1907.6409999998286,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:19:01.210130+00:00"
+  }
+,
+  {
+    "elapsed_seconds": 1917.8439999998081,
+    "event": "cli.frontend.heartbeat",
+    "level": "INFO",
+    "logger": "emtaint.cli",
+    "requested_site": "0x1d688",
+    "source_file": "cli.py",
+    "source_function": "main",
+    "source_line": 691,
+    "timestamp": "2026-11-09T09:19:11.408618+00:00"
+  }
+]
