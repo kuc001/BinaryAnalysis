@@ -31,8 +31,22 @@ def main():
         from emtaint.frontends.inputs import read_ida_cfg
         from emtaint.frontends.loader_image import relocated_image
         from emtaint.ir.canonical.wire import dumps
-        binary=TARGET.parent/'EmTaint/firmware-binaries/rv130_v44/httpd'
-        metadata=TARGET.parent/'EmTaint/data/ida_data/rv130_1_0_3_44/httpd_cfg.json'
+        project_root = TARGET.parents[1]
+
+        binary = (
+            project_root
+            / "firmware-binaries"
+            / "rv130_v44"
+            / "httpd"
+        )
+
+        metadata = (
+            project_root
+            / "data"
+            / "ida_data"
+            / "rv130_1_0_3_44"
+            / "httpd_cfg.json"
+        )
         specs=read_ida_cfg(metadata);specs=tuple(s for s in specs if args.functions is None or s.address in args.functions)
         frontend=IdaVexFrontend(binary);segments,loader=relocated_image(binary)
         for i,(base,data,memsz,flags) in enumerate(segments):
