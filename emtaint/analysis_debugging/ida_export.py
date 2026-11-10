@@ -47,6 +47,10 @@ class IdaAddressRecord:
     value_ids: tuple[str, ...]
     vex_temporaries: tuple[int, ...]
     registers: tuple[tuple[int | None, str | None], ...]
+    vex_statement_text: str | None = None
+    instruction_bytes_hex: str | None = None
+    assembly_text: str | None = None
+    mode: str | None = None
 
 
 class IdaAddressIndex:
@@ -88,6 +92,7 @@ class IdaAddressIndex:
                     "" if item[1] is None else item[1],
                 ),
             ))
+            instruction = provenance.instruction_record(origin.id)
             records.append(IdaAddressRecord(
                 point.function.binary.sha256,
                 point.function.rva,
@@ -100,6 +105,10 @@ class IdaAddressIndex:
                 tuple(value.id for value in values),
                 temporaries,
                 registers,
+                None if instruction is None else instruction.vex_statement_text,
+                None if instruction is None else instruction.instruction_bytes_hex,
+                None if instruction is None else instruction.assembly_text,
+                None if instruction is None else instruction.mode,
             ))
         self._records = tuple(sorted(
             records,
@@ -122,6 +131,8 @@ class IdaAddressIndex:
         """Look up all statements and CIR values at a BinaryId/RVA pair."""
 
         binary_sha256 = _binary_sha256(binary)
+        if type(instruction_rva) is not int or instruction_rva < 0:
+            raise ValueError('Instruction RVA must be a non-negative integer')
         return tuple(
             record
             for record in self._records

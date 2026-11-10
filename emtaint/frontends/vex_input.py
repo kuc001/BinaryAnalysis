@@ -81,20 +81,22 @@ def collect_chunks(
                     vex = lift(cursor, data, block.mode)
                 except pyvex.PyVEXError as error:
                     chunks.append(NativeChunk(function, block.start, block.end, cursor, block.end,
-                        block.mode, None, digest, type(error).__name__ + ': ' + str(error)))
+                        block.mode, None, digest, type(error).__name__ + ': ' + str(error), data=data))
                     break
                 if vex.size <= 0 or vex.size > len(data):
                     chunks.append(NativeChunk(function, block.start, block.end, cursor, block.end,
-                        block.mode, None, digest, 'VEX made no bounded decoding progress'))
+                        block.mode, None, digest, 'VEX made no bounded decoding progress', data=data))
                     break
                 end = cursor + vex.size
-                chunks.append(NativeChunk(function, block.start, block.end, cursor, end, block.mode, vex,
-                                           hashlib.sha256(data[:vex.size]).hexdigest()))
+                chunks.append(NativeChunk(
+                    function, block.start, block.end, cursor, end, block.mode, vex,
+                    hashlib.sha256(data[:vex.size]).hexdigest(), data=data[:vex.size]
+                ))
                 cursor = end
                 if vex.jumpkind == 'Ijk_NoDecode' and cursor < block.end:
                     chunks.append(NativeChunk(function, block.start, block.end, cursor, block.end,
                         block.mode, None, hashlib.sha256(image.read(cursor, block.end - cursor)).hexdigest(),
-                        'Undecoded tail after Ijk_NoDecode'))
+                        'Undecoded tail after Ijk_NoDecode', data=image.read(cursor, block.end - cursor)))
                     break
     return chunks
 

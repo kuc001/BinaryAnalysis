@@ -46,12 +46,23 @@ def main():
             with (output/'function.json').open('xb') as stream:stream.write(data)
             with (output/'origins.jsonl').open('x',encoding='utf8') as stream:
                 for origin in module.origin_map:stream.write(dumps(origin)+'\n')
+            provenance = result.provenance
+            source_hints = () if provenance is None else provenance.source_hints
+            instruction_hints = () if provenance is None else provenance.instruction_hints
+            source_text = ''.join(json.dumps(asdict(item), sort_keys=True) + chr(10) for item in source_hints)
+            instruction_text = ''.join(json.dumps(asdict(item), sort_keys=True) + chr(10) for item in instruction_hints)
+            for filename, content in (('debug-provenance.jsonl', source_text), ('debug-instructions.jsonl', instruction_text)):
+                with (output/filename).open('x', encoding='utf8') as stream:stream.write(content)
+            source_sha = hashlib.sha256(source_text.encode('utf8')).hexdigest()
+            instruction_sha = hashlib.sha256(instruction_text.encode('utf8')).hexdigest()
             for name,value in (('architecture',module.architecture),('producer',module.producer),('assessment',module.assessment)):
                 with (output/(name+'.json')).open('x',encoding='utf8') as stream:stream.write(dumps(value,max_nodes=8000000,max_bytes=256*1024*1024))
             diagnostics=result.report();diagnostics['cfgs']=[{'edges':[(e.source.token,e.target.token,e.kind.value,e.label) for e in cfg.edges]} for cfg in result.cfgs()]
             write(output/'frontend.json',diagnostics)
             rows.append({'function':spec.address,'directory':output.name,'blocks':len(function.blocks),
                 'source_blocks':len(spec.blocks),'cir_sha256':hashlib.sha256(data).hexdigest(),
+                'debug_provenance_sha256':source_sha,'debug_instruction_sha256':instruction_sha,
+                'debug_provenance_records':len(source_hints),'debug_instruction_records':len(instruction_hints),
                 'unsupported':module.assessment.unsupported_ops,'wall_seconds':time.monotonic()-tick})
             if len(rows)%25==0:print('ACQUIRED='+str(len(rows))+'/'+str(len(specs)),flush=True)
         report.update(functions=len(rows),rows=rows,binary_sha256=frontend.image.sha256,

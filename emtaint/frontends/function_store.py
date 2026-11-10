@@ -6,6 +6,7 @@ from emtaint.ir.canonical.wire import loads
 from emtaint.ir.canonical import CIRModule
 from emtaint.graph import ControlFlowGraph, FlowEdge, FlowKind
 from emtaint.analysis.controlflow.local_constants import local_constant_edges, ida_metadata_edges
+from emtaint.analysis_debugging import InstructionHint, ProvenanceIndex, SourceHint
 
 
 class FunctionStore:
@@ -53,6 +54,32 @@ class FunctionStore:
             self.transformations[address]={'acquired_sha256':row['cir_sha256'], 'derived_sha256':derived, 'tail_calls':receipts}
             return module, cfg, derived
         return module, cfg, row['cir_sha256']
+
+    def load_debug_provenance(self, address, module):
+        """Load exact frontend provenance; older acquisitions remain readable."""
+        row = self.rows[address]
+        folder = self.folder / row['directory']
+
+        def records(filename, record_type, expected_hash):
+            path = folder / filename
+            if not path.is_file():
+                if expected_hash is not None:
+                    raise FileNotFoundError('Required debug sidecar is missing: ' + str(path))
+                return ()
+            raw = path.read_bytes()
+            if expected_hash is not None and hashlib.sha256(raw).hexdigest() != expected_hash:
+                raise ValueError('Debug sidecar hash mismatch: ' + filename)
+            return tuple(record_type(**json.loads(line)) for line in raw.decode('utf8').splitlines() if line.strip())
+
+        sources = records('debug-provenance.jsonl', SourceHint, row.get('debug_provenance_sha256'))
+        instructions = records('debug-instructions.jsonl', InstructionHint, row.get('debug_instruction_sha256'))
+        expected_sources = row.get('debug_provenance_records')
+        expected_instructions = row.get('debug_instruction_records')
+        if expected_sources is not None and len(sources) != expected_sources:
+            raise ValueError('Debug source-hint record count mismatch')
+        if expected_instructions is not None and len(instructions) != expected_instructions:
+            raise ValueError('Debug instruction-hint record count mismatch')
+        return ProvenanceIndex(module, sources, instructions)
 
     def program_index(self, specifications):
         """Stream body headers into P2 metadata; retain no whole-program CIR."""

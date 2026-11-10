@@ -1,6 +1,8 @@
 """Read-only provenance, inspection, trace, and address-export helpers."""
 
+from .address import AddressTranslator, AddressView
 from .provenance import (
+    InstructionHint,
     ProvenanceIndex,
     SourceHint,
     ValueDefinition,
@@ -16,6 +18,9 @@ from .ida_export import (
 )
 
 __all__ = [
+    "AddressTranslator",
+    "AddressView",
+    "InstructionHint",
     "ProvenanceIndex",
     "SourceHint",
     "ValueDefinition",

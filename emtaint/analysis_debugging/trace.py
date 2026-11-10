@@ -32,6 +32,7 @@ class AnalysisTraceEvent:
     """One rule application connecting existing analysis inputs and outputs."""
 
     sequence: int
+    event_id: str
     rule: str
     function_rva: int
     input_ids: tuple[str, ...]
@@ -39,6 +40,9 @@ class AnalysisTraceEvent:
     origin_id: str | None = None
     instruction_rva: int | None = None
     reason: str | None = None
+    parent_event_id: str | None = None
+    parent_event_ids: tuple[str, ...] = ()
+    details: tuple[tuple[str, str], ...] = ()
 
 
 class AnalysisTraceRecorder:
@@ -59,6 +63,7 @@ class AnalysisTraceRecorder:
         self.rules = frozenset(rules or ())
         self.identities = frozenset(identities or ())
         self._events: list[AnalysisTraceEvent] = []
+        self._last_producer: dict[str, str] = {}
         self._dropped = 0
         self._lock = Lock()
 
@@ -78,6 +83,8 @@ class AnalysisTraceRecorder:
         origin_id: str | None = None,
         instruction_rva: int | None = None,
         reason: str | None = None,
+        parent_event_id: str | None = None,
+        details: Iterable[tuple[str, str]] = (),
     ) -> None:
         """Append one event without invoking an analysis operation."""
 
@@ -93,9 +100,16 @@ class AnalysisTraceRecorder:
             if len(self._events) >= self.max_events:
                 self._dropped += 1
                 return
-            self._events.append(
-                AnalysisTraceEvent(
+            parent_ids = tuple(dict.fromkeys(
+                self._last_producer[value]
+                for value in input_ids
+                if value in self._last_producer
+            ))
+            if parent_event_id is not None and parent_event_id not in parent_ids:
+                parent_ids = (parent_event_id, *parent_ids)
+            event = AnalysisTraceEvent(
                     len(self._events) + 1,
+                    "trace-" + str(len(self._events) + 1),
                     rule,
                     function_rva,
                     input_ids,
@@ -103,8 +117,13 @@ class AnalysisTraceRecorder:
                     origin_id,
                     instruction_rva,
                     reason,
+                    parent_event_id or (parent_ids[-1] if parent_ids else None),
+                    parent_ids,
+                    tuple(details),
                 )
-            )
+            self._events.append(event)
+            for output in output_ids:
+                self._last_producer[output] = event.event_id
 
     def events(self) -> tuple[AnalysisTraceEvent, ...]:
         """Return an immutable snapshot in sequence order."""
@@ -122,10 +141,49 @@ class AnalysisTraceRecorder:
             if key in event.input_ids or key in event.output_ids
         )
 
-    def export_jsonl(self, path: str | Path) -> None:
-        """Exclusively create a JSONL trace sidecar from the current snapshot."""
+    def causal_slice(self, identity: object, *, max_events: int = 512) -> tuple[AnalysisTraceEvent, ...]:
+        """Return the bounded backward dependency slice for an existing identity."""
+
+        if max_events < 1:
+            raise ValueError("max_events must be positive")
+        events = self.events()
+        pending = [trace_identity(identity)]
+        seen_values = set()
+        selected = {}
+        producers = {}
+        for event in events:
+            for output in event.output_ids:
+                producers.setdefault(output, []).append(event)
+        while pending and len(selected) < max_events:
+            current = pending.pop()
+            if current in seen_values:
+                continue
+            seen_values.add(current)
+            for event in reversed(producers.get(current, ())):
+                if event.sequence in selected:
+                    continue
+                selected[event.sequence] = event
+                pending.extend(item for item in event.input_ids if item not in seen_values)
+        return tuple(selected[key] for key in sorted(selected))
+
+    def export_jsonl(
+        self,
+        path: str | Path,
+        *,
+        address_translator: object | None = None,
+        binary_id: object | None = None,
+    ) -> None:
+        """Create JSONL trace and attach explicit IDA/runtime projections."""
 
         destination = Path(path)
-        with destination.open("x", encoding="utf8", newline="\n") as stream:
+        with destination.open("x", encoding="utf8", newline="\\n") as stream:
             for event in self.events():
-                stream.write(json.dumps(asdict(event), sort_keys=True) + "\n")
+                row = asdict(event)
+                if address_translator is not None and binary_id is not None:
+                    row["function_address"] = address_translator.address_fields(
+                        binary_id, event.function_rva
+                    )
+                    row["instruction_address"] = address_translator.address_fields(
+                        binary_id, event.instruction_rva
+                    )
+                stream.write(json.dumps(row, sort_keys=True) + "\\n")

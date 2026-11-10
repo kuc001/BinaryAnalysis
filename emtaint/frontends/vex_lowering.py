@@ -14,7 +14,7 @@ from emtaint.ir.canonical import (Compute, ValueOp, LoadEffect, StoreEffect, Reg
     RegisterWritePolicy, ReadRegister, WriteRegister, CallEffect, CallFootprint,
     DirectTarget, IndirectTarget, ExternalTarget, BranchEffect, JumpEffect, ReturnEffect,
     UnknownEffect, CIRBlock, CIRFunction, CIRModule)
-from emtaint.analysis_debugging import ProvenanceIndex, SourceHint
+from emtaint.analysis_debugging import InstructionHint, ProvenanceIndex, SourceHint
 from .inputs import FunctionInput, InputError
 from .arm_scalar import ARMScalarLowering
 
@@ -36,6 +36,7 @@ class NativeChunk:
     vex: object | None
     byte_sha256: str
     failure: str = ''
+    data: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,9 @@ class VEXLowerer(ARMScalarLowering):
                 ('rbx', 'rbp', 'r12', 'r13', 'r14', 'r15', 'rsp'))
         self.origins, self.coverage, self.mappings = [], [], []
         self.source_hints: list[SourceHint] = []
+        self.instruction_hints: list[InstructionHint] = []
+        self.current_instruction_bytes: bytes | None = None
+        self.current_assembly_text: str | None = None
         self.unsupported = set()
         self.expression_histogram = Counter()
         self.native_control = []
@@ -483,6 +487,37 @@ class VEXLowerer(ARMScalarLowering):
             raise UnsupportedVEX(statement.tag, 'Atomic/helper/barrier/indexed-register effect lacks exact CIR v1 semantics; havoc all state')
         return 'lowered'
 
+    def _instruction_bytes(self, chunk: NativeChunk, statement: object) -> bytes | None:
+        """Extract exact instruction bytes from the retained native chunk."""
+        if chunk.data is None:
+            return None
+        address = getattr(statement, 'addr', None)
+        length = getattr(statement, 'len', None)
+        if type(address) is not int or type(length) is not int or length <= 0:
+            return None
+        offset = address - chunk.start
+        if offset < 0 or offset + length > len(chunk.data):
+            return None
+        return chunk.data[offset:offset + length]
+
+    def _disassemble_instruction(self, address: int, raw: bytes, mode: str) -> str | None:
+        """Disassemble one exact instruction using the configured Capstone decoder."""
+        decoder_name = 'capstone_thumb' if mode == 'thumb' else 'capstone'
+        decoder = getattr(self.native_arch, decoder_name, None)
+        if decoder is None:
+            return None
+        if callable(decoder) and not hasattr(decoder, 'disasm'):
+            decoder = decoder()
+        if not hasattr(decoder, 'disasm'):
+            return None
+        try:
+            instruction = next(iter(decoder.disasm(raw, address)), None)
+        except Exception:
+            return None
+        if instruction is None or instruction.address != address or instruction.size != len(raw):
+            return None
+        return (instruction.mnemonic + ' ' + instruction.op_str).strip()
+
     def lower_function(self, specification, chunks):
         self.fid = FunctionId(self.binary, self.rva(specification.address))
         self.values, self.blocks, self.external_stubs = [], [], {}
@@ -493,6 +528,8 @@ class VEXLowerer(ARMScalarLowering):
             self.vex, self.tmps, self.effects = chunk.vex, {}, []
             self.constant_values, self.register_constants={}, {}
             self.instruction = chunk.start
+            self.current_instruction_bytes = None
+            self.current_assembly_text = None
             self.truth = Constant(True, ValueType.boolean())
             before = len(self.blocks)
             if chunk.vex is None:
@@ -505,7 +542,18 @@ class VEXLowerer(ARMScalarLowering):
                 for index, statement in enumerate(chunk.vex.statements):
                     if isinstance(statement, pyvex.stmt.IMark):
                         self.instruction = statement.addr
+                        self.current_instruction_bytes = self._instruction_bytes(chunk, statement)
+                        self.current_assembly_text = (
+                            None if self.current_instruction_bytes is None
+                            else self._disassemble_instruction(statement.addr, self.current_instruction_bytes, chunk.mode)
+                        )
                     self.set_origin(statement.tag, index)
+                    self.instruction_hints.append(InstructionHint(
+                        self.origin.id, self.fid.rva, self.current_id.rva, index,
+                        self.origin.point.instruction_rva, statement.tag, str(statement),
+                        None if self.current_instruction_bytes is None else self.current_instruction_bytes.hex(),
+                        self.current_assembly_text, self.mode,
+                    ))
                     if isinstance(statement, pyvex.stmt.Exit):
                         if statement.jumpkind == 'Ijk_Boring':
                             self.target(statement.dst.value)
@@ -531,6 +579,14 @@ class VEXLowerer(ARMScalarLowering):
                         status, detail = 'unsupported', str(error)
                     self.coverage.append(self.coverage_row(chunk, index, statement.tag, status, detail))
                 self.set_origin('Next:' + chunk.vex.jumpkind, len(chunk.vex.statements))
+                self.instruction_hints.append(InstructionHint(
+                    self.origin.id, self.fid.rva, self.current_id.rva,
+                    len(chunk.vex.statements), self.origin.point.instruction_rva,
+                    'Next:' + chunk.vex.jumpkind,
+                    'IRSB terminator: jumpkind=' + chunk.vex.jumpkind + '; next=' + str(chunk.vex.next),
+                    None if self.current_instruction_bytes is None else self.current_instruction_bytes.hex(),
+                    self.current_assembly_text, self.mode,
+                ))
                 self.native_control.append({'function': specification.address, 'irsb': chunk.start,
                     'statement_index': len(chunk.vex.statements), 'origin': self.origin.id, 'kind': chunk.vex.jumpkind,
                     'target': chunk.vex.next.con.value if isinstance(chunk.vex.next, pyvex.expr.Const) else None,
@@ -615,7 +671,7 @@ class VEXLowerer(ARMScalarLowering):
         metadata['source_functions'] = [{'address': s.address, 'name': s.name,
             'blocks': [vars(b) for b in s.blocks], 'edges': list(s.edges), 'call_hints': [vars(c) for c in s.calls]}
             for s in specifications]
-        provenance = ProvenanceIndex(module, tuple(self.source_hints))
+        provenance = ProvenanceIndex(module, tuple(self.source_hints), tuple(self.instruction_hints))
         return FrontendResult(
             module,
             tuple(self.coverage),

@@ -98,6 +98,7 @@ class LegacyDemand:
         *,
         origin: str | None = None,
         reason: str | None = None,
+        details: tuple[tuple[str, str], ...] = (),
     ) -> None:
         """Record one rule event using only already-computed values."""
 
@@ -116,6 +117,10 @@ class LegacyDemand:
             origin_id=origin,
             instruction_rva=instruction_rva,
             reason=reason,
+            details=tuple(details) + (() if origin is None else (
+                ('source_opcode', self.port.engine.origin_record(origin).source_opcode),
+                ('instruction_rva', str(instruction_rva)),
+            )),
         )
 
     def prove_stack_range(self, cfg):
@@ -552,6 +557,21 @@ class LegacyDemand:
                 for binding in bindings:
                     store=e.location(*binding, effect.width_bits, effect.endian, effect.origin) if binding else e.location(None, None, effect.width_bits, effect.endian, effect.origin)
                     alias=p.alias(self.initial.memory, store, loc)
+                    self._trace(
+                        'MEMORY_REACHING_STORE_ALIAS',
+                        inputs=(effect.origin, load.origin, store.id, loc.id),
+                        origin=effect.origin, reason=alias.kind.value,
+                        details=(
+                            ('store_origin', effect.origin), ('load_origin', load.origin),
+                            ('store_object', repr(store.object_id)), ('load_object', repr(loc.object_id)),
+                            ('store_range', repr(store.byte_interval)), ('load_range', repr(loc.byte_interval)),
+                            ('store_width_bits', str(store.width_bits)), ('load_width_bits', str(loc.width_bits)),
+                            ('alias_kind', alias.kind.value), ('alias_evidence', repr(alias.evidence)),
+                            ('alias_status', alias.assessment.status.value),
+                            ('alias_precision', alias.assessment.precision.value),
+                            ('store_guard', repr(effect.guard)),
+                        ),
+                    )
                     if alias.kind==AliasKind.NO:continue
                     if alias.kind==AliasKind.MUST and store.width_bits==loc.width_bits and getattr(effect.guard, 'value', None) is True:
                         self.rules.add('legacy._do_store_define/MustAlias')
@@ -566,7 +586,19 @@ class LegacyDemand:
                         killed=True
                         break
                     self.rules.add('legacy._do_store_define/MayAlias')
-                    alternatives.append(p.unknown(ValueType.bv(loc.width_bits), load.origin, 'MayAlias/partial/guarded reaching store'))
+                    unknown = p.unknown(ValueType.bv(loc.width_bits), load.origin, 'MayAlias/partial/guarded reaching store')
+                    alternatives.append(unknown)
+                    self._trace(
+                        'MEMORY_REACHING_STORE_UNKNOWN',
+                        inputs=(effect.origin, load.origin, store.id, loc.id),
+                        outputs=(unknown,), origin=load.origin,
+                        reason='MayAlias/partial/guarded reaching store',
+                        details=(('alias_kind', alias.kind.value),
+                                 ('alias_evidence', repr(alias.evidence)),
+                                 ('store_origin', effect.origin), ('load_origin', load.origin),
+                                 ('store_range', repr(store.byte_interval)),
+                                 ('load_range', repr(loc.byte_interval))),
+                    )
                 if killed:break
             if not killed:
                 if current==self.function.entry or not self.predecessors[current]:initial_possible=True

@@ -1,0 +1,284 @@
+[
+  {
+    "function": 119600,
+    "steps": 1764,
+    "metrics": {
+      "apg_nodes": 16,
+      "apg_edges": 11,
+      "apg_summaries": 0,
+      "sse_nodes": 1211,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 2611,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 1211,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 11,
+      "alias_queries": 281,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 1405,
+        "write": 0,
+        "resolve_alias": 281,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 1419,
+        "sse.symbol.created": 20,
+        "sse.operation.created": 102,
+        "memory.location.addressed": 10,
+        "memory.read.completed": 1405,
+        "alias.query.completed": 281,
+        "sse.unknown.created": 216,
+        "sse.constant_evaluation.completed": 320
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 125096,
+    "steps": 169,
+    "metrics": {
+      "apg_nodes": 3,
+      "apg_edges": 2,
+      "apg_summaries": 0,
+      "sse_nodes": 156,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 465,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 156,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 2,
+      "alias_queries": 18,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 3,
+        "write": 0,
+        "resolve_alias": 18,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 15,
+        "sse.symbol.created": 21,
+        "sse.operation.created": 91,
+        "sse.constant_evaluation.completed": 53,
+        "memory.location.addressed": 3,
+        "memory.read.completed": 3,
+        "alias.query.completed": 18,
+        "sse.unknown.created": 18
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 125356,
+    "steps": 5,
+    "metrics": {
+      "apg_nodes": 0,
+      "apg_edges": 0,
+      "apg_summaries": 0,
+      "sse_nodes": 15,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 0,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 15,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 0,
+      "alias_queries": 0,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 0,
+        "write": 0,
+        "resolve_alias": 0,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 2,
+        "sse.symbol.created": 9,
+        "sse.operation.created": 2
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 125452,
+    "steps": 91,
+    "metrics": {
+      "apg_nodes": 9,
+      "apg_edges": 6,
+      "apg_summaries": 0,
+      "sse_nodes": 123,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 27,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 123,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 6,
+      "alias_queries": 3,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 3,
+        "write": 0,
+        "resolve_alias": 3,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 14,
+        "sse.symbol.created": 20,
+        "sse.operation.created": 43,
+        "memory.location.addressed": 3,
+        "memory.read.completed": 3,
+        "sse.constant_evaluation.completed": 1,
+        "alias.query.completed": 3
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 146884,
+    "steps": 99,
+    "metrics": {
+      "apg_nodes": 9,
+      "apg_edges": 6,
+      "apg_summaries": 0,
+      "sse_nodes": 121,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 27,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 121,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 6,
+      "alias_queries": 18,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 3,
+        "write": 0,
+        "resolve_alias": 18,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 14,
+        "sse.symbol.created": 19,
+        "sse.operation.created": 41,
+        "memory.location.addressed": 3,
+        "memory.read.completed": 3,
+        "alias.query.completed": 18,
+        "sse.constant_evaluation.completed": 1
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 169360,
+    "steps": 98,
+    "metrics": {
+      "apg_nodes": 9,
+      "apg_edges": 6,
+      "apg_summaries": 0,
+      "sse_nodes": 121,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 27,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 121,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 6,
+      "alias_queries": 15,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 3,
+        "write": 0,
+        "resolve_alias": 15,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 14,
+        "sse.symbol.created": 19,
+        "sse.operation.created": 41,
+        "memory.location.addressed": 3,
+        "memory.read.completed": 3,
+        "alias.query.completed": 15,
+        "sse.constant_evaluation.completed": 1
+      }
+    },
+    "pending": 0
+  },
+  {
+    "function": 190900,
+    "steps": 66,
+    "metrics": {
+      "apg_nodes": 0,
+      "apg_edges": 0,
+      "apg_summaries": 0,
+      "sse_nodes": 59,
+      "heap_objects": 11,
+      "heap_cells": 0,
+      "worklist_states": 1,
+      "worklist_iterations": 0,
+      "contexts": 1,
+      "alias_candidates": 0,
+      "solver_queries": 0,
+      "dag_unique_nodes": 59,
+      "memory_versions": 1,
+      "facts": 0,
+      "path_input_segments": 0,
+      "alias_queries": 0,
+      "definition_queries": 0,
+      "memory_port_calls": {
+        "read": 0,
+        "write": 0,
+        "resolve_alias": 0,
+        "resolve_definition": 0,
+        "havoc": 0
+      },
+      "diagnostic_event_counts": {
+        "memory.port.initialized": 1,
+        "sse.constant.created": 7,
+        "sse.symbol.created": 19,
+        "sse.unknown.created": 2,
+        "sse.operation.created": 20
+      }
+    },
+    "pending": 0
+  }
+]

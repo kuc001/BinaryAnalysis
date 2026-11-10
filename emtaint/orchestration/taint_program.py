@@ -119,6 +119,7 @@ def run_taint(
             write(receipt.with_name(receipt.name+'-start.json'), {'function':fid.rva+store.base, 'round':rounds, 'status':'started'})
             address=fid.rva+store.base
             module, cfg, digest=store.load(address)
+            debug_provenance = store.load_debug_provenance(address, module)
             log_event(LOGGER, 'taint.function.started',
                 **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds,
                 cir_sha256=digest, summary_inputs=len(summaries))
@@ -128,6 +129,16 @@ def run_taint(
             scope=AnalysisScope.from_session(runtime.session, fid, context)
             engine=ImageMemoryEngine(scope, module.architecture, module.origin_map, store.segments,
                 SemanticBudgets(sse_nodes=200000, worklist_iterations=2000000), initial_policy='legacy-loader-snapshot', cache_resolutions=True)
+            engine.debug_provenance = debug_provenance
+            # Presentation-only mapping; core analysis identities remain RVAs.
+            if getattr(args, 'debug_ida_image_base', None) is not None or getattr(args, 'debug_runtime_base', None) is not None:
+                from emtaint.analysis_debugging import AddressTranslator
+                engine.debug_address_translator = AddressTranslator(
+                    module.binary_sha256,
+                    ida_image_base=getattr(args, 'debug_ida_image_base', None),
+                    runtime_base=getattr(args, 'debug_runtime_base', None),
+                    address_bits=module.architecture.address_bits,
+                )
             port=MemoryRuntimePort(engine, cache_alias_queries=True)
             runtime.bind_port(port, fid, context)
             tick=time.monotonic()
@@ -138,16 +149,48 @@ def run_taint(
             port.validate_current=validate_deadline
             names={c.instruction-store.base:c.target for c in by_address[address].calls if type(c.target) is str}
             demand=None
+            trace_recorder=None
             try:
                 demand=LegacyTaintDemand(module.functions[0], port, cfg, legacy_entry(CIRAccurateDataFlow(port)),
                     names=names, summaries=summaries, targets=site_targets, image_base=store.base, tables=MappingProxyType(dict(table_bank)),
                     function_deadline=tick+args.function_seconds)
+                if getattr(args, 'debug_trace', False):
+                    from emtaint.analysis_debugging import AnalysisTraceRecorder
+                    trace_recorder = AnalysisTraceRecorder(
+                        enabled=True, max_events=args.debug_trace_max_events
+                    )
+                    demand.demand.enable_debug_trace(trace_recorder)
                 summary=demand.analyze()
             except (BudgetExceeded, DemandLimit, RecursionError) as error:
                 log_event(LOGGER, 'taint.function.limited', level=logging.WARNING, error_type=type(error).__name__,
                     error_message=str(error),
                     **function_address_fields(fid.rva, store.base, legacy_field='va'), round=rounds)
                 summary=demand.partial_summary(error) if demand else TaintProcedureSummary(address, pending=(('constructor', type(error).__name__+': '+str(error)),))
+            ida_map_path = None
+            if getattr(args, 'debug_ida_export', False):
+                from emtaint.analysis_debugging import IdaAddressIndex
+                ida_map_path = receipt.with_name(receipt.name + '-ida-map.json')
+                IdaAddressIndex(debug_provenance, args.debug_ida_image_base).export(ida_map_path)
+            trace_path = None
+            if trace_recorder is not None:
+                trace_path = receipt.with_name(receipt.name + '-trace.jsonl')
+                trace_recorder.export_jsonl(
+                    trace_path,
+                    address_translator=getattr(engine, 'debug_address_translator', None),
+                    binary_id=module.binary_sha256,
+                )
+            debug_report_path = None
+            if getattr(args, 'debug_report', False):
+                from emtaint.analysis_debugging import AnalysisDebugInspector
+                inspector = AnalysisDebugInspector(debug_provenance, engine=engine, demand=None if demand is None else demand.demand)
+                debug_report_path = receipt.with_name(receipt.name + '-debug-report')
+                inspector.export_report(
+                    debug_report_path,
+                    max_values=args.debug_report_max_values,
+                    max_expressions=args.debug_report_max_expressions,
+                    max_depth=args.debug_report_max_depth,
+                    max_nodes=args.debug_report_max_nodes,
+                )
             raw_summary=summary
             callees=sorted({callee for _, _, call in demand.calls.values()
                 for callee in demand.call_functions(call)}) if demand else []
@@ -164,6 +207,13 @@ def run_taint(
             if not semantic_equal(summaries.get(address), summary):changed.add(fid)
             summaries[address]=summary
             last[address]={'summary':summary, 'metrics':port.metrics(), 'steps':getattr(demand, 'steps', 0),
+                           'debug_ida_export':None if ida_map_path is None else str(ida_map_path),
+                           'debug_trace':None if trace_recorder is None else {
+                               'path':str(trace_path),
+                               'events':len(trace_recorder.events()),
+                               'dropped':trace_recorder.dropped,
+                           },
+                           'debug_report':None if debug_report_path is None else str(debug_report_path),
                            'source_facts':[asdict(f) for f in engine.facts], 'transformation':store.transformations.get(address),
                            'unknown_frontiers':sorted(demand.unknown_evidence) if demand else [],
                            'cir_sha256':digest, 'raw_summary':str(raw_path),

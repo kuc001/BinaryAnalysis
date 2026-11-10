@@ -1,0 +1,149 @@
+{
+  "run_id": "53fb9dd1bc184626b87df23059d8853c",
+  "frontend": "angr-vex",
+  "binary_path": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+  "binary_sha256": "334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787",
+  "requested_site": 120456,
+  "requested_caller": 119600,
+  "metadata_path": null,
+  "metadata_sha256": null,
+  "block_info_path": null,
+  "packages": {
+    "angr": "9.3.4",
+    "pyvex": "9.3.4",
+    "cle": "9.3.4",
+    "claripy": "9.3.4",
+    "archinfo": "9.3.4"
+  },
+  "frontend_fingerprint": "4d9b26d370b3e2bff1728ed5b3a59825e84fd38953f95d6342cb74220c877c5a",
+  "image_base": 32768,
+  "lifted_functions": [
+    119600,
+    125096,
+    125356,
+    125452,
+    146884,
+    169360,
+    190900
+  ],
+  "function_body_hashes": {
+    "0x1d330": "5695d0c2adcc2b8ba81429f3e96a0d37cc9fa77707db2d81f944ed03dae5abf8",
+    "0x1e8a8": "5cd790667859ed042c4ac38e046cf7941d614ec39e9b9f808aae0d7f92220aa4",
+    "0x1e9ac": "0175371f55c4b48fc36e231e8d099405e1455c4fb4532dc8a244faa4e813c045",
+    "0x1ea0c": "3189576db34bd93ec2b25263e357fed96aace84bd0b891d23fb7def822048427",
+    "0x23dc4": "38bdaffc467a9ade70381914840dc4b2f6fe43b2b7286264fce07e58a13823b6",
+    "0x29590": "df3ca4536bba3e6c4458aceaf363ff45510222adf1be63c9719034f8478afe92",
+    "0x2e9b4": "5e553a11cd081e0a91826638f901c2830642059e08f4ed8b4c95aa081cb6ccfa"
+  },
+  "sections": {
+    ".interp": [
+      33012,
+      33032
+    ],
+    ".hash": [
+      33032,
+      37900
+    ],
+    ".dynsym": [
+      37900,
+      49004
+    ],
+    ".dynstr": [
+      49004,
+      61557
+    ],
+    ".rel.dyn": [
+      61560,
+      62392
+    ],
+    ".rel.plt": [
+      62392,
+      65104
+    ],
+    ".init": [
+      65104,
+      65120
+    ],
+    ".plt": [
+      65120,
+      69208
+    ],
+    ".text": [
+      69208,
+      513304
+    ],
+    ".fini": [
+      513304,
+      513320
+    ],
+    ".rodata": [
+      513320,
+      622892
+    ],
+    ".eh_frame": [
+      622892,
+      622896
+    ],
+    ".init_array": [
+      655664,
+      655668
+    ],
+    ".fini_array": [
+      655668,
+      655672
+    ],
+    ".jcr": [
+      655672,
+      655676
+    ],
+    ".data.rel.ro": [
+      655676,
+      657792
+    ],
+    ".dynamic": [
+      657792,
+      658048
+    ],
+    ".got": [
+      658048,
+      659832
+    ],
+    ".data": [
+      659832,
+      690576
+    ],
+    ".bss": [
+      690576,
+      764604
+    ],
+    ".ARM.attributes": [
+      0,
+      41
+    ],
+    ".comment": [
+      0,
+      77
+    ],
+    ".shstrtab": [
+      0,
+      187
+    ]
+  },
+  "segments": [
+    {
+      "base": 32768,
+      "size": 590128,
+      "flags": 5,
+      "sha256": "9c1a8da90647564cfd281b925cedbd3a572a5ec03b26d408efca488a8e92d0a0"
+    },
+    {
+      "base": 655664,
+      "size": 108940,
+      "flags": 6,
+      "sha256": "249f1534130aec83a761a4451d7503aecad55c76892932c82533aa6f2f759a0d"
+    }
+  ],
+  "plt_sha256": "de471f895204b6b78816b2b11e2edf090c0525caf4e44e8a2557aa7aca3d72c3",
+  "acquisition_mode": "live",
+  "acquisition_path": null
+}
