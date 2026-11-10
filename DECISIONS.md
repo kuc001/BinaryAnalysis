@@ -2,6 +2,8 @@
 
 2026-11-10 A2 review. **All ADRs are Proposed; none is Accepted.** SOURCE_CONFIRMED denotes current source evidence, RECOMMENDATION a target design, OPEN_QUESTION an owner decision. See `REPOSITORY_AUDIT.md` for current-code paths. Approval must name the ADR and chosen alternative.
 
+**B0 preflight note (2026-11-10):** `RESET_MANIFEST.md` supplies file-level migration, deletion and retention gates for ADR-005/009/010. The two-level Module Identity / Function Semantic Fingerprint clarification in `ACQUISITION_DESIGN.md` refines ADR-004: a changed whole-binary SHA256 does not automatically relift an unaffected function, while binary-scoped IDs require explicit validated rebinding. These are proposals; ADR-001–012 remain **Proposed** and B0 authorizes no migration or cleanup.
+
 | ADR | Current evidence / context | Recommendation and alternatives | Tradeoff, migration and owner decision |
 |---|---|---|---|
 | 001 — CIR evolution | SOURCE_CONFIRMED `ir/canonical/model.py` has ordered typed effects and UnknownEffect; `core/contracts.py` ValueType lacks aggregate types, Origin is one ProgramPoint; CIRModule contains MemorySnapshot. | Evolve effect contract as CIR v2. Alternatives: keep v1 unchanged, or replace IR wholesale. | v2 preserves consumer value but requires wire/identity migration. Owner: v2 shape and v1 compatibility window? |

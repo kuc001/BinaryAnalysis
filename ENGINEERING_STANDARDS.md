@@ -7,6 +7,13 @@ dependencies, define contracts/schema/identity, specify failure and
 partial behavior, split into reviewable milestones, and obtain approval
 for core IR changes. Do not create empty skeletons first.
 
+Use the seven gates in `CODEX_WORKFLOW.md`: baseline, architecture,
+data contracts, module boundaries, vertical slice, system verification,
+and architecture compliance review. A proposed ADR is not a frozen
+contract. Work on a dependent consumer waits for the owner to approve
+the boundary or an explicitly scoped exception. Classify findings
+P0/P1/P2 and use an Architecture Change Request for frozen contracts.
+
 ## 2. Python standards
 
 -   Type annotations for public and cross-module APIs.
@@ -71,8 +78,42 @@ remain testless, record that as an accepted engineering risk.
 -   No unrelated scope?
 -   Documentation accurate?
 -   Verification claims backed by actual commands/results?
+-   End-to-end input→artifact→analysis→result/evidence path checked?
+-   No unsupported/unknown state converted to a successful negative result?
+-   Task dependencies, scope and frozen-contract approvals recorded?
 
-## 8. Performance
+## 8. Definition of Done and system evidence
+
+For a complex capability, all of the following must be present before
+`VERIFIED`:
+
+1.  Approved task goal, scope, non-goals, dependency list and acceptance
+    witnesses; baseline and applicable freeze gates recorded.
+2.  Typed contract and owner for each stage in its actual data path:
+    input/acquisition, frontend, HIR/CIR/provenance, program/memory/
+    analysis, persistent result/cache, evidence and consuming CLI/debug
+    path as applicable. An explicitly narrower task names its endpoint
+    and leaves downstream capability unclaimed.
+3.  Supported, partial, unsupported, unknown, failure and budget paths
+    handled without silent semantic loss; identity, schema compatibility
+    and invalidation behavior documented.
+4.  Relevant local, integration and representative system checks run
+    with exact commands, exit codes and observations. Cross-frontend or
+    persisted-reload checks are required when the slice crosses those
+    boundaries. A passing local test alone is insufficient.
+5.  Diff and architecture compliance review: dependency direction,
+    provenance/confidence, artifact/result separation, scope and
+    documentation checked; issues resolved or explicitly retained.
+6.  `BUILD_LOG.md`, `BACKLOG.md` and `EXECUTION_PLAN.md` reflect
+    evidence, remaining risks and the correct status.
+
+`IMPLEMENTED` means scoped work exists, not that these checks passed.
+`VERIFIED` and `REVIEWED` require their separate evidence. Only the
+project owner may set `APPROVED`. A documentation-only task can record
+static consistency and diff checks while stating that no runtime tests
+were run. Codex defaults to leaving Git submission to the owner.
+
+## 9. Performance
 
 Measure before optimizing. Prefer demand-driven alias refinement with
 budgets. Cache immutable expensive frontend artifacts. Bound debug

@@ -10,14 +10,17 @@ security analysis contracts.
 ## Before changing code
 
 -   Read `CODEX_TASK.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`,
-    `ENGINEERING_STANDARDS.md`, and the approved milestone in
-    `EXECUTION_PLAN.md`.
+    `ENGINEERING_STANDARDS.md`, `CODEX_WORKFLOW.md`, `DECISIONS.md`,
+    and the applicable milestone in `EXECUTION_PLAN.md`. For complex
+    development use `TASK_SPEC_TEMPLATE.md` and check `BACKLOG.md`.
 -   Inspect actual code, callers, schemas, and nested AGENTS
     instructions before editing.
 -   Do not assume P1--P7 decisions or previous implementations are
     correct.
 -   Do not invent paths, APIs, IDA SDK capabilities, or verification
     results.
+-   Establish the repository baseline and approved task scope before
+    implementation. A proposed architecture or ADR is not an approval.
 
 ## Architecture invariants
 
@@ -45,9 +48,22 @@ security analysis contracts.
 -   Update architecture/decision/plan documents when decisions change.
 -   Never claim a milestone is complete without evidence against
     acceptance criteria.
+-   Freeze architecture, data contracts, and module boundaries before
+    coding their consumers. Changing a frozen core contract requires an
+    owner-approved Architecture Change Request.
+-   For complex work, deliver a bounded end-to-end vertical slice across
+    its actual input, persistence, analysis, result, and evidence path.
+    A class, function, file, or local test alone is not completion.
+-   After two targeted changes fail the same acceptance issue, stop
+    patching and document a root-cause analysis before further edits.
+-   Codex may report IMPLEMENTED, VERIFIED, or REVIEWED with evidence;
+    only the project owner sets APPROVED.
 
 ## Work protocol
 
-Inspect → plan → implement one bounded vertical slice → verify → review
-diff → update docs → commit. Do not cross an architecture decision
-boundary without owner approval.
+Baseline → approved task/gates → inspect → plan → one bounded vertical
+slice → system verification → architecture review → update docs/log.
+Default: Codex does not commit or push; the project owner reviews and
+submits. Do not cross an architecture decision boundary or start the
+next milestone without owner approval. Detailed gates and status rules
+are in `CODEX_WORKFLOW.md`.

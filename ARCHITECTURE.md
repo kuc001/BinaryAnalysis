@@ -10,8 +10,10 @@ CLI -> application use cases -> project/input resolver
                                                    -> HIR (CTree only) -> CIR lowering
                                                    -> CIR (VEX, future Microcode)
                                                    -> immutable artifact store/cache index
-                            -> program/CFG + shared CIR and memory query contracts
-                            -> dataflow/demand/alias/SSE/solver -> summaries/CG/ICFG
+                            -> program/CFG + static callsite hints -> Initial CG
+                            -> shared CIR and memory query contracts
+                            -> dataflow/demand/alias/SSE/solver -> call resolution
+                            -> Refined CG -> summaries/ICFG (iterate to bounded fixpoint)
                             -> taint -> vulnerability assessment -> result store/cache
                             -> read-only debug/evidence inspectors
 provenance graph links source exports, HIR, CIR, machine evidence and results
@@ -21,7 +23,7 @@ Dependencies flow from use cases toward pure contracts. Frontend SDK imports rem
 
 ## 2. Layer responsibilities and principal data flow
 
-Project/input owns binary content identity, architecture, ABI, loader/relocation configuration, frontend selection and typed address conversions. Acquisition resolves inputs and publishes source, HIR, CIR and provenance artifacts. Frontends export only serializable records. CIR is the **proposed common executable effect contract** for CFG, def/use, memory, demand and security analyses. Program owns function/block/callsite identity and graph revisions. Analysis computes versioned results; evidence records reasons and uncertainty. A source call hint is acquisition data, whereas resolved CG edges are analysis results.
+Project/input owns binary content identity, architecture, ABI, loader/relocation configuration, frontend selection and typed address conversions. Acquisition resolves inputs and publishes source, HIR, CIR and provenance artifacts. Frontends export only serializable records. CIR is the **proposed common executable effect contract** for CFG, def/use, memory, demand and security analyses. Program owns function/block/callsite identity and graph revisions. Analysis computes versioned results; evidence records reasons and uncertainty. A Static Callsite Hint records an observed or exported target expression/source claim in acquisition data. Initial CG is an analysis result built from those hints with explicit confirmed/candidate/unknown edges. Dataflow, alias and target resolution refine edges into a versioned Refined CG; interprocedural summaries and ICFG consume its revision and can cause another bounded refinement iteration. No inferred edge is silently promoted to a binary-confirmed fact.
 
 Contract ownership: project defines `BinaryId`, `FunctionId`, address domain and conversion evidence; representations define HIR/CIR/source/provenance identities; memory defines object, path, location, alias and version semantics; analysis defines query/result assessment. Consumers may reference these contracts by ID but may not mutate artifacts.
 
@@ -50,7 +52,7 @@ Official API references establish the **API family**, not this project's deploye
 
 ## 5. Program, memory and shared engines
 
-Program records modules, function/block/callsite IDs, ABI, CFG and call hints. Confirmed and candidate CG edges are separate; interprocedural summaries and ICFG are analysis results keyed by graph revision. Address values carry an explicit tag: RVA, IDA EA/VA, runtime VA or file offset. Conversion requires image base, segment and relocation context; no implicit numeric equality.
+Program records modules, function/block/callsite IDs, ABI, CFG and static callsite hints. Initial CG precedes demand-driven indirect-call resolution; Refined CG and ICFG follow it, with summary/CG revisions iterated until stable or explicitly partial. Confirmed and candidate CG edges are separate; Initial CG, Refined CG, summaries and ICFG are analysis results keyed by source artifact and graph revision. Address values carry an explicit tag: RVA, IDA EA/VA, runtime VA or file offset. Conversion requires image base, segment and relocation context; no implicit numeric equality.
 
 Memory object identity uses `(binary, kind, allocation-or-frame/global anchor, context if needed)`: STACK(frame/function/slot hypothesis), GLOBAL(symbol/segment/range), HEAP(allocation site/context), UNKNOWN(region). Object identity does not assert uniqueness of concrete locations. An access path is root plus Offset, Index(stride and symbolic index), Member(field/layout hypothesis), Deref(pointer width/address space) or UnknownOffset; location is object candidate plus byte range, width, endian, guard and assessment. Types and offset derivations have separate source/confidence references. The current `memory/access_path.py` has Offset/Index/Deref/UnknownOffset and APG records; `state.py` already has byte intervals, AliasKind and strong-update preconditions; `engine.py` has conservative points_to and interval-based alias. Member and object reconciliation are proposed additions, not current features.
 
