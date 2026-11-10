@@ -9,9 +9,11 @@ dist/
 build/
 
 # 忽略虚拟环境目录（按需添加）
+.venv/
+**/.venv/
 venv/
-.env/
 venv*/
+.env/
 .env*/
 
 # 其他常见忽略项（可选）
