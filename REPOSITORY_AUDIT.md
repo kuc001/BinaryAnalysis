@@ -1,0 +1,118 @@
+# BinaryAnalysis 仓库审计与架构重设计（待负责人审查）
+
+> 标签：**SOURCE_CONFIRMED** = 本仓库源代码或 Git 证据；**REQUIREMENT** = TASK/项目约束；**RECOMMENDATION** = 本轮设计建议；**OPEN_QUESTION** = 需要负责人或运行环境确认。静态阅读不等于运行验证。本轮没有运行测试。
+
+## 1. Metadata、范围和文档关系
+
+- **SOURCE_CONFIRMED** 2026-11-10，根目录 `D:/works/dataflow/EmTaint/BinaryAnalysis-worktrees/icall`，分支 `codex/icall`，HEAD `278402ede9e6b060c494648e10f21fdd5e5439f8`，`git status --short` 为空（审计写入前）。另有 `main`（`e79e206`）和 `codex/vuln`（`53f1f4c`）两个 worktree。未切换分支或更改 Git 状态。
+- **SOURCE_CONFIRMED** 指定的 12 份文件都位于当前项目根目录，并已完整阅读：`AGENTS.md`、`00_CODEX_INS.md`、`CODEX_TASK.md`、`ARCHITECTURE.md`、`ACQUISITION_DESIGN.md`、`ENGINEERING_STANDARDS.md`、`EXECUTION_PLAN.md`、`REPOSITORY_AUDIT_TEMPLATE.md`、`DECISIONS_TEMPLATE.md`、`CODEX_WORKFLOW.md`、`TASK_1.md`、`TASK_2.md`。模板给出交付格式；TASK_1/2 和 CODEX_TASK 是需求；AGENTS/ENGINEERING_STANDARDS 是约束；ARCHITECTURE/ACQUISITION_DESIGN 是尚待审计验证的目标提案；EXECUTION_PLAN 是实施顺序。
+- **SOURCE_CONFIRMED** 文档冲突/歧义：`TASK_2.md` 称“新增 HIR”且结语预设统一 CIR；`CODEX_TASK.md` 与 `ARCHITECTURE.md` 则要求审计后决定 HIR 范围及 CIR 是否适合。建议将 HIR 作为 CTree 必需的结构化交换层，CIR 的最终契约列为待批准决策。`CODEX_WORKFLOW.md` 称 `ARCHITECTURE.md` 为“Approved”，其正文却明言 Proposed；本轮按提案处理。`EXECUTION_PLAN.md` 的 A 交付写“approved ARCHITECTURE.md”，而本轮禁止修改该文件；本轮仅提交待批准设计到审计/决策文件。`AGENTS.md` 的常规“实现→验证→提交”协议被本轮明确的只审计禁令覆盖。`CODEX_WORKFLOW.md` 表中的 `CODEX_INS.md` 与实际 `00_CODEX_INS.md` 名称不一致。
+- **REQUIREMENT** 旧 EmTaint 仅作只读参考；本轮不改生产代码、不删除、不运行测试、不提交。
+
+## 2. 完整结构与入口
+
+- **SOURCE_CONFIRMED** 根目录含 `.debug/`、`.p1-work/`、`.p7-work/`、`.venv/`、`.vscode/`、`datas/`、`docs/`、`emtaint/`、`scripts/`、`tests/`，以及 `main.py`、`setup.py`、`pyproject.toml`、`requirements.lock`、配置/设计文档。`rg --files` 得到 203 个 `emtaint` Python 文件、79 个 scripts 文件、92 个 tests 文件；忽略目录中的生成数据未逐文件计数。未发现嵌套 AGENTS.md 或 `.github` CI 配置；这是当前 checkout 的发现，不代表外部 CI 不存在。
+- **SOURCE_CONFIRMED** `pyproject.toml` 声明 distribution `binaryanalysis`、Python `>=3.12,<3.13`，锁定 angr/pyvex/claripy、networkx、z3、psutil 等；`setup.py` 又声明 distribution `emtaint` 并 `find_packages()`，二者包元数据冲突。没有发现 `[project.scripts]`。执行入口是 `main.py` 和 `python -m emtaint` → `emtaint.cli.main`；`emtaint/main.py` 是另一条旧 `EmProgram`/PAG 入口。
+- **SOURCE_CONFIRMED** `emtaint/` 下：`core/` 身份/程序/会话/契约，`frontends/` IDA 元数据和 angr VEX、共同 lowering、已存 CIR 读取，`frontend/angr/` 旧 VEX 包装，`ir/canonical/` CIR/JSON wire，`ir/expressions|statements/` 旧 VEX 类层次，`graph/` 新图，`analysis/graph|pag|variables/` 旧图/PAG，`memory/` APG/状态/引擎，`analysis/dataflow|sse|aliasing|taint|framework|controlflow|bugfinder/` 分析，`solver/` 求解，`orchestration/` 跨函数执行，`results/` 存档，`analysis_debugging/` 解释/地址/追踪，`compat/` 与 `procedures/` 旧接口/规则，`assembly/` 旧基本块，`cli.py` 编排。
+
+## 3. 真实依赖图与循环
+
+以下箭头来自 import、局部 import 和调用点；不是目标架构图。
+
+```text
+main.py / emtaint.__main__ -> cli
+cli -> scripts.p1_runtime (动态导入), scripts.p7_legacy_reference (legacy 模式)
+cli -> FunctionStore -> CIR wire + CFG/controlflow + ProvenanceIndex
+cli -> icall_program -> legacy_cir_search / program_search -> dataflow/framework/memory
+cli -> taint_program -> LegacyTaintDemand + procedures + memory + bugfinder + results
+taint_program -> cli.write                         [反向依赖]
+IdaVexFrontend -> ELF/IDA CFG JSON -> pyvex -> VEXLowerer -> CIRModule/CFG
+AngrVexFrontend -> angr Project/CFGFast/VEX -> VEXLowerer -> CIRModule/CFG
+scripts.p7_acquire -> IdaVexFrontend -> per-function JSON + origins + debug sidecars
+FunctionStore -> acquired JSON -> CIRFunction/Origin -> ProgramIndex/CFG
+CIR wire -> core contracts + memory state/access_path/abstract_heap/query_port
+PythonMemoryEngine -> AccessGraphArena + SymbolicExprDAG + DefinitionResolver
+ProcedureDemand -> legacy_demand + demand_index/register/address/loop + MemoryQueryPort
+solver.process_port -> scripts/p1_solver_worker.py -> ClaripyAdapter
+legacy emtaint.main -> program_builder -> compat.program -> frontend.angr/old IR/PAG
+```
+
+- **SOURCE_CONFIRMED** `taint_program.py:66` 局部导入 `emtaint.cli.write`，而 CLI 调用 `run_taint`：模块级静态环在运行时由局部导入规避，职责方向仍反转。`core/session.py` 注释明确本地导入 graph 用于规避 core/graph export 环。`analysis/framework` 与 `analysis/dataflow`、`analysis/aliasing` 与 `analysis/taint` 的包级静态依赖相互交叉；需要在合同抽取时逐符号解环，不能据包级图宣称每对文件都有导入环。
+- **SOURCE_CONFIRMED** `ir/canonical/wire.py` 注册 `memory.state` 等分析快照类型；`CIRModule` 甚至含 `memory_snapshots`，使 acquisition 输入与分析结果共用 wire 根。`frontends/function_store.py` 加载时还能补尾调用、构 CFG/ProgramIndex，reader 混入分析派生。`analysis/aliasing/program.py` 同时发现 angr 函数、lower CIR、调 demand、做跨函数 alias，frontend 与 engine 混合。
+
+## 4. 生产模块逐项审查和保留价值
+
+表中“输入→输出；上游→下游”是代码调用关系摘要。KEEP 指保留语义或受限实现，仍须通过新契约验收。
+
+| 模块/证据 | 实际职责与数据流、调用者 | 问题及结论 |
+|---|---|---|
+| **SOURCE_CONFIRMED** `emtaint/cli.py` `build_parser/main/run_icall/source_manifest` | 参数/二进制、IDA JSON、现成 acquisition → iCall/taint 收据；入口调用 FunctionStore/orchestration/scripts | **REPLACE 编排，REFACTOR 参数兼容**。固定 `.p7-work`、`httpd_cfg.json`、指定 SHA/函数集合、两步 -i/-t；`source_manifest` 依赖 scripts；无通用 acquire/analyze。|
+| **SOURCE_CONFIRMED** `frontends/inputs.py` `read_ida_cfg/ELFImage`，`vex_input.py` `collect_chunks/discover_inputs`，`ida_vex|angr_vex/frontend.py` | ELF/IDA JSON 或 angr CFGFast → native VEX chunks；`VEXLowerer.lower` → CIR/CFG，供 acquisition、provider、alias 使用 | **REFACTOR**。两 VEX 路径共享 lowerer 值得保留；`IdaVexFrontend` 实际使用 IDA 导出的 CFG JSON + ELF bytes，并不调用 IDA SDK；运行时版本硬钉 9.3.4，ARM scalar 专用 `arm_scalar.py`，覆盖范围须明示。|
+| **SOURCE_CONFIRMED** `frontend/angr/*`、`ir/ir.py`、`ir/vex_ir.py`、`ir/expressions|statements/*`、`assembly/*`、`analysis/graph|pag|variables/*` | 旧 EmProgram → old VEX wrapper/PAG；由 `emtaint/main.py`/compat 使用，与新 `frontends/*` 并存 | **REPLACE/REMOVE 待调用迁移后**；重复 frontend、图与 PAG 实现，不能因目录名直接删除。保留有价值的 legacy PAG 语义案例作参考。|
+| **SOURCE_CONFIRMED** `core/identity.py` `BinaryId/FunctionId/BlockId/ProgramPoint/CallSiteId/MemoryObjectId`，`core/program.py` `Program/Function/BasicBlock/CallSite/Architecture/ABI` | 输入二进制哈希/RVA → 不可变身份/元数据；CIR、graph、session、wire 消费 | **REFACTOR**：身份与地址区分是基础；确认虚拟地址、多 binary、CTree 无 EA 节点、函数变更后的稳定性。|
+| **SOURCE_CONFIRMED** `ir/canonical/model.py` `CIRModule/CIRFunction/CIRBlock/Compute/LoadEffect/StoreEffect/CallEffect/UnknownEffect`，`core/contracts.py` `ValueRef/Origin/Assessment` | VEX lowerer → typed non-SSA effects；dataflow/memory/taint 消费；`wire.py` tagged JSON v1 | **REFACTOR 核心契约**：保留效果语义和显式 unknown；`ValueType` 仅 bool/BV/pointer，`ValueRef.id` 字符串，`Origin` 单一 ProgramPoint，缺少高级对象/类型来源/多对多映射；CIR 混入 MemorySnapshot。不可原样确认为统一 IR。|
+| **SOURCE_CONFIRMED** `graph/program_graphs.py` `ControlFlowGraph/CallGraph`、`frontends/program_index.py`、`core/session.py`、`analysis/framework/runtime.py` | CIR+IDA 调用提示 → CFG/CG/session 修订 → iCall/taint fixed point；`FunctionStore.program_index` 亦构图 | **REFACTOR**：图记录可用；多处构图和补边，CG 同时含确认/候选边。未见独立持久 ICFG 契约；跨过程遍历在 orchestration/runtime 中。|
+| **SOURCE_CONFIRMED** `memory/access_path.py` `AccessPath/AccessGraph`、`access_graph.py` `AccessGraphArena`、`state.py` `MemoryVersion/MemorySnapshot`、`engine.py` `PythonMemoryEngine`、`memory_version.py` `DefinitionResolver`、`query_port.py` `MemoryQueryPort` | CIR load/store → object/path/APG/version/SSE DAG → read/alias/definition；被 dataflow/demand/taint/solver 消费 | **REFACTOR**：区间/强弱更新/版本与预算机制可研究保留；`points_to` 明确返回所有已知对象+未知，alias 主要由对象 ID/区间/显式不相交证明判定，不是完整 points-to；unknown 与分析快照必须独立。`UnimplementedMemoryQueryPort` 是契约占位，不应充作可执行 engine。|
+| **SOURCE_CONFIRMED** `analysis/sse/dag.py` `SymbolicExprDAG`、`core/contracts.py` `SymbolicExprId/AnalysisScope` | memory engine 内构建/实习 DAG → demand、solver lowering | **REFACTOR**：范围化 ID、共享表达式有价值；检查跨函数摘要/持久化 ID、预算与递归展开一致性。|
+| **SOURCE_CONFIRMED** `analysis/dataflow/fast.py` `CIRFastDataFlow.slice`、`accurate.py` `CIRAccurateDataFlow.transfer`、`legacy_demand.py` `LegacyDemand`、`demand_*` | CIR effects/CFG/memory port → slice、状态转移、后向到达定义；orchestration/taint/alias 消费 | **REFACTOR**：存在 fast、accurate、legacy demand 多实现；需统一 Def-Use/Use-Def 索引与 unknown 传递。`ProcedureDemand` 继承旧 demand 并增加索引/缓存，层次待收敛。|
+| **SOURCE_CONFIRMED** `analysis/aliasing/query.py` `query_alias/classify_alias_values`、`aliasing/program.py` `NativeAliasProgram`、`aliasing/demand.py` | 内存别名查询或 live angr 函数发现 → may/must/no/unknown；CLI alias 和 taint 使用 | **REFACTOR**：查询分类规则可保留候选；`NativeAliasProgram` 直接依赖 angr 与 procedure demand，不能作为共享核心。|
+| **SOURCE_CONFIRMED** `analysis/framework/summaries.py` `ProcedureRecipe/compile_recipe`、`runtime.py` `AnalysisRuntime`、`orchestration/{program_search,legacy_cir_search,icall_program,taint_program}.py` | 函数结果、CG 修订、summary 固定点/失效 → iCall/taint；CLI 调用 | **REFACTOR**：增量 invalidation 和 recipe 语义有价值；目前 session 内 revision 和 `.p7-work` 收据不足以定义持久的函数级依赖图。|
+| **SOURCE_CONFIRMED** `solver/port.py` `SolverPort/SolverQuery/SolverResult`、`lowering.py`、`memory_lowering.py`、`backends/claripy_adapter.py`、`process_port.py` | 纯 BV/内存表达式 → Claripy/子进程结果，demand/guard 可调用 | **REFACTOR**：typed port/status 值得保留；`UnimplementedSolverLowering` 显示部分语义未实现；`process_port.py` 硬编码 `scripts/p1_solver_worker.py`。|
+| **SOURCE_CONFIRMED** `analysis/taint/demand.py` `ProcedureDemand/LegacyTaintDemand`、`demand_*`、`facts.py`、`regions.py`、`summary_join.py`、`procedures/legacy.py` | CIR/call/内存版本 → source/sink 需求、区域 may-flow、摘要；`run_taint` 聚合 | **REFACTOR/部分 REPLACE**：大量行为兼容 facade、旧过程规则与特定 P7 收据耦合；保留有证据的源/汇、长度通道、预算和未知传播规则，重建统一策略契约。|
+| **SOURCE_CONFIRMED** `analysis/bugfinder/{legacy_policy,candidate_evidence}.py` | taint requirements → candidate references/weak evidence；taint orchestration 使用 | **REFACTOR**：当前是候选证据与策略，不等于已验证漏洞；`P7-candidate-refs-v2` 是遗留格式。|
+| **SOURCE_CONFIRMED** `results/memory_archive.py`、`frontends/{function_store,saved_cir}.py`、`analysis_debugging/*`、`debugging.py` | JSON/hash 存取及 provenance/value/expression/trace/IDA 地址展示；CLI/taint 使用 | **REFACTOR**：hash 校验、bounded inspector 可复用；两种 acquisition 读取布局并存，debug sidecar 与 origin map 分离；`ProvenanceIndex` 主要索引一源 origin 到值/指令，非完整多对多来源图。`inspectors.py` 有解释入口，必须核查每个入口是否只读。|
+
+## 5. P1–P7、scripts/tests 清理影响
+
+- **SOURCE_CONFIRMED** 旧阶段命名分布在 `core/{identity,program,session,contracts}.py`，`memory/{engine,query_port,state}.py`，`analysis/{dataflow,taint,framework,controlflow,bugfinder}/*`，`solver/*`，`frontends/{vex_input,function_store}.py`，`orchestration/*`，`compat/*` 和 `cli.py`；特别是 `CIR-Wire-v1`/`Memory-Semantics-v1`、`P7-evidence-v5`、`P7-candidate-refs-v2`、`.p7-work` 和 `scripts/p[1-7]*`。这些既是注释，也包括运行时路径、格式标识与行为约束，不能全局替换文本。
+- **SOURCE_CONFIRMED** 生产必需 scripts：`p1_runtime.py` 提供 `ProbeWriteGuard` 给 CLI 和 `p7_acquire.py`；`p7_legacy_reference.py` 是 CLI `--memory-engine legacy` 执行体；`p1_solver_worker.py` 被 `solver/process_port.py` 作为进程脚本调用。`cli.source_manifest` 还读取 `p1_runtime.py`、`legacy_readonly_bootstrap.py`、`p7_legacy_reference.py`、`legacy_baseline.py`、`baseline_inventory.py`、`compare_baseline.py`，删除会令哈希收据失败。`p7_acquire.py` 是当前获取 per-function CIR 的运维入口，删除后 `FunctionStore` 所需新 artifact 无生成者。
+- **SOURCE_CONFIRMED** `scripts/` 其他族群：`p1_*` 求解/探针、`p2_validate.py`、`p3_validate.py`、`p4_*`、`p5_*`、`p6_*`、`p7_*`、`alias_*` benchmark/runner、`quality_audit.py`、`legacy_*` 对照、PowerShell 手工脚本。大多属于验证/实验，但逐文件删除前还需查外部 CI 和人员流程；当前 checkout 未见 `.github`。`.vscode/launch.json` 未见 scripts 直接引用。
+- **RECOMMENDATION** 将写入保护、Acquisition service/manifest、solver worker 启动能力迁入正式 package；保留 legacy backend 与否需负责人决定，若保留则移入受支持 package。更新 source manifest 为语义输入 fingerprint。迁移之后再删 scripts，先建立可执行替代入口。
+- **SOURCE_CONFIRMED** `tests/` 的 `test_p3_contracts.py`、`test_p4_inputs.py`、`test_p5_memory.py`、`test_p6_dataflow.py`、`test_p7_demand.py` 等编码旧契约；`tests/conformance/memory/*`、`test_p7_arm_guard_lowering.py`、`test_p7_length_taint.py`、`test_p7_recursive_summary_invalidation.py`、`test_debug_address_translator.py`、`test_p7_query_isolation.py` 提供值得提炼的语义场景。`tests/fixtures/alias_benchmark/*`、`httpd_baseline_v1.json`、`p7_demand_evidence.json` 是参考数据/benchmark，不应直接作为新架构的规范。没有运行或验证任何用例。
+- **REQUIREMENT** 本轮绝不删除。**RECOMMENDATION** 历史 tests 清理后建立新的契约序列化、属性/差分、frontend 对照、内存/alias/taint 语义、代表性真实二进制、CTree mock/export、失效/并发/恢复端到端验证；benchmark 与正确性测试分开。永久无自动化验证的风险需负责人明示接受。
+
+## 6. Acquisition 现状与目标生命周期
+
+- **SOURCE_CONFIRMED** `scripts/p7_acquire.py` 解析 `--folder/--functions`，强制输出在 `.p7-work`；在脚本中固定 `firmware-binaries/rv130_v44/httpd` 和 `data/ida_data/rv130_1_0_3_44/httpd_cfg.json`；使用 `IdaVexFrontend`、`relocated_image`，写 segments、per-function CIR、origins、debug hints、frontend JSON，最后写 `acquisition-report.json`。它是一次性成功报告，不是通用项目服务。`FunctionStore` 校验 report、部分文件 hash 并加载；没有通用的 artifact manifest/schema fingerprint、原子发布、并发协调或部分恢复协议。`saved_cir.py` 又支持另一种布局。CLI 要求外部先给 `--acquisition`，没有自动创建。
+- **RECOMMENDATION** `ProjectInput` 记录 binary content hash、format/architecture/endian、loader/relocations、IDA 数据库/metadata identity、地址空间；`AcquisitionService` 仅调 adapter/标准化/验证。原始 frontend export、per-function HIR/CIR/CFG/provenance、module metadata/segments/types/symbols 是 **Acquisition Artifact**。CG 解析、alias、def-use、memory versions、taint、vulnerability 是 **Analysis Result**（若纯提取的静态 call hints，可作为 source artifact）。日志、trace、决策链和可重演解释为 **Debug/Evidence Artifact**，与结果关联而不定义其真值。
+- **RECOMMENDATION** Manifest 含 manifest/schema 版本，binary/input/frontend fingerprint，frontend/SDK 与配置版本，loader 与地址转换，HIR/CIR/provenance schema 版本，函数 ID→chunk/hash/依赖，完整/partial/unsupported/failed 清单，生成器与诊断。Binary fingerprint 是二进制 bytes 加语义 loader 配置；frontend fingerprint 是输入元数据/IDB 导出 hash + frontend/SDK/反编译器版本 + 选项；lowering fingerprint 单独包含 lowering 与 schema 版本。展示用 IDA image base 若影响映射则入 provenance/转换元数据，是否入语义 key 由明确地址规范决定。
+- **RECOMMENDATION** Artifact Store 不可变、按内容/依赖寻址；唯一 staging 写 chunk、校验 schema/hash、manifest 最后写，原子 publish。相同 key 用锁或 lease；故障留下可诊断 staging，按 manifest 的 chunk/hash 恢复或丢弃，不把 partial 当 complete。缓存是索引和有效性判断，分 Acquisition Artifact Cache 与 Analysis Result Cache。Result key 包括确切 artifact IDs、算法/策略/预算/摘要版本。按函数依赖 DAG 失效；类型或 frontend 改变只重建受影响函数及依赖者，策略改变不重新 lift VEX。`analyze` 可自动 acquire，`acquire` 可显式运行。粒度以函数为主，加 module metadata 和跨函数索引；共享全局类型变化需标识影响集合。
+
+## 7. HIR/CIR/CTree/Microcode 与多层 Provenance
+
+- **SOURCE_CONFIRMED** 仓库中未发现 `ida_hexrays`、`cfunc_t`、`cexpr_t` 的生产调用；当前 IDA frontend 读取 JSON CFG + ELF，不能声称支持 CTree 或 Microcode。IDA/Hex-Rays 具体安装版本及许可证未知。官方 [IDAPython ida_hexrays 文档](https://python.docs.hex-rays.com/ida_hexrays/index.html) 与 [SDK cfunc_t](https://cpp.docs.hex-rays.com/structcfunc__t.html)、[citem_t](https://cpp.docs.hex-rays.com/structcitem__t.html) 文档确认 `cfunc_t.body` 为 `cinsn_t`，`citem_t` 可有 `BADADDR` EA；具体 Python 字段/visitor/类型序列化需在目标 IDA 版本实测。
+- **RECOMMENDATION** CTree 必须有独立可序列化 HIR；对 VEX/Microcode 不强制生成伪高级结构，直接适配 CIR。IDA 内 exporter 在指定 decompiler maturity 上遍历 `cfunc_t.body` 的 `cinsn_t/cexpr_t`，记录 op、子节点顺序、函数/局部变量稳定索引（`lvar_t`）、`tinfo_t` 的可移植类型描述与来源、EA（含无 EA）、调用目标完整表达式、数组下标、成员偏移、指针解引用、控制结构、异常/unsupported。保留原始 CTree export 与伪代码展示文本；不 pickle 活 SDK 对象，不用文本作语义。提取失败和不支持节点保留 `Opaque/Partial` 且带可能读写的保守效果。
+- **RECOMMENDATION** HIR v1 需要函数、参数/局部/全局变量身份；类型及来源/冲突；表达式（常量、变量、取址、解引用、索引、成员、cast、算术、比较、调用及函数指针目标）；语句（赋值、条件、循环、switch、return）；对象与访问路径、source node ID、completeness。HIR→CIR lowering 对显式副作用、顺序、guard、def/use、内存访问、调用和返回建效果；结构体/数组访问保留 layout 来源和 symbolic index；无法表达时发 `UnknownEffect` + partial assessment 与映射记录，不静默丢失。CIR 目前可作低层共享执行候选，但在类型/对象/来源/身份改造获批之前，不把现有 `CIR-Wire-v1` 认定为最终 canonical。
+- **RECOMMENDATION** 将 provenance 建为独立的有向多重关系：`SourceNode(CTree/VEX/Microcode/Instruction)` ↔ `HIRNode` ↔ `CIR effect/value/definition`，边记录 relation kind、方法、frontend/version、mapping completeness、confidence、冲突与 unmapped 原因。源/目标 ID 有 namespace、binary、function、artifact 版本，不以 EA 或顺序号猜相等。显式区分 RVA、IDA EA、runtime VA、file offset，带 image base/segment/relocation 的转换。置信标签 `BINARY_CONFIRMED`、`DECOMPILER_RECOVERED`、`DECOMPILER_INFERRED`、`USER_ANNOTATED`、`ANALYSIS_DERIVED`、`UNKNOWN`；类型事实可并存冲突，不覆盖。
+- **RECOMMENDATION** Microcode 作为独立、后续实现的 IDA exporter，保留其版本/maturity、寄存器/内存效果及机器指令映射，直接 lower CIR；可与 CTree 来源合并证据但不互相覆盖。多表示冲突记为显式 conflict，分析采用保守语义或要求人工判断。
+- **RECOMMENDATION** `sub_117F8` 示例：CTree 中 `v2[i]` 各为索引左值和 store，`unk_A0178` 为 global read，`eval` 为保留 cast 的间接调用目标；HIR 记录 `v2` 局部对象、推断 `_DWORD[5]` 类型来源、四个元素赋值、条件/return；CIR 生成相应地址计算、分开的 store、global load、call 参数传递及 guard，附从各节点到指令的多对多边。`v2[3]` 字节偏移要由类型布局和/或指令证据推导。`ReadGlobal→Store(v2[3])→传 v2 到 eval` 只是候选路径；未确认 callee 读取或漏洞。伪代码中的字符串赋给 `_DWORD` 的类型/指针宽度冲突必须保留。
+
+## 8. 目标架构、目录建议和实施顺序
+
+```text
+Project/Input manifest -> Acquisition Service -> Frontend exports
+                                  |-> IDA CFG/VEX / angr VEX / CTree / future Microcode
+                                  |-> HIR (CTree) -> lowering -> CIR
+                                  |-> Artifact Store + Acquisition Cache
+                                      -> Program/CFG/CG + Memory/AccessPath/APG
+                                      -> Dataflow/Def-Use + Alias/Demand + Solver
+                                      -> Function Summaries/ICFG -> Taint -> Vulnerability
+                                      -> Analysis Result Store/Cache -> Debug/Evidence
+                        Provenance graph connects all representation levels
+CLI -> application use cases (acquire/analyze/inspect), not directly to scripts
+```
+
+- **RECOMMENDATION** 先稳定契约再移动文件。建议包边界：`emtaint/project`（输入/身份），`acquisition`（服务/fingerprint/manifest），`frontends/{ida,angr}`，`representations/{hir,cir,provenance}`，`program`（CFG/CG/ICFG），`memory`（对象/APG/version/alias port），`analysis/{dataflow,interprocedural,taint,vulnerability}`，`solver`，`storage`（artifact/result），`debugging`，`application`，`cli`。目录仅在有实际消费者时建立；保留 `emtaint` 名称与否待决。
+- **RECOMMENDATION** 顺序：A 审计/决策（本轮，输入真实代码，输出本报告/待决 ADR；退出需负责人批准）；B 清理前迁移 scripts 必需功能、制定新验证策略（退出无生产依赖）；C 身份/地址/HIR/CIR/provenance/manifest 契约（退出可独立序列化且 partial 明确）；D 通用 acquisition/store/cache（退出函数级命中、失效、原子/并发/恢复可验证）；E 结构化 CTree→HIR→CIR 的一函数纵向切片和 VEX 对照（退出跨进程重载与来源追踪）；F 共享 memory/dataflow/alias/summary/taint/vulnerability（退出无 frontend 专属引擎，候选与证明区分）；G read-only debug、性能及差分评估（退出端到端证据与重用统计）。每阶段另需独立批准。
+
+## 9. 风险与必须人工确认
+
+| 标记 | 风险/问题 | 建议 |
+|---|---|---|
+| **OPEN_QUESTION** | CIR v1 是演化还是新 schema？`ValueRef`、`OriginMap`、`MemorySnapshot` 分界影响旧 artifact 兼容。 | 批准显式 schema 迁移/兼容策略后动代码。 |
+| **OPEN_QUESTION** | IDA/Hex-Rays 实际版本、Python API、许可证、export 运行环境未知。 | 在目标环境做只读 API 探测并定支持矩阵。 |
+| **OPEN_QUESTION** | `emtaint` import 路径和 `--memory-engine legacy` 是否继续公开支持？ | 确定迁移窗口/弃用策略。 |
+| **OPEN_QUESTION** | tests/scripts 清除后验证政策及外部 CI 未确认。 | 批准新套件、保留哪些 fixtures/benchmark，核实外部 CI。 |
+| **OPEN_QUESTION** | CTree 推断类型与 VEX/机器事实冲突时的默认查询保守策略。 | 规定证据优先和冲突暴露规则，不暗改事实。 |
+
+**RECOMMENDATION** 第一实施切片是“一个 CTree 函数的结构化导出→独立 HIR 序列化→支持子集 lowering 到 CIR→多对多 provenance→一次共享 def-use/memory 查询”，但只有负责人批准契约后开始。本轮到此停止。

@@ -16,6 +16,14 @@ Deliver: `REPOSITORY_AUDIT.md`, approved `ARCHITECTURE.md`,
 Exit: no classification based only on filenames; removal impact
 documented; unresolved decisions visible; owner approves reset.
 
+### 2026-11-10 audit result (awaiting owner review)
+
+- **SOURCE_CONFIRMED** Audited the 12 requested root documents, Git/worktrees, production package entrypoints and code paths, script dependencies, test/fixture inventory, CIR/memory/analysis/debug contracts. See `REPOSITORY_AUDIT.md` for paths, symbols, dependency graph, classifications and limitations. No tests were run and no code or Git state was changed.
+- **SOURCE_CONFIRMED** Production CLI imports `scripts/p1_runtime.py` and optionally `scripts/p7_legacy_reference.py`; the solver process executes `scripts/p1_solver_worker.py`. Existing acquisition is `scripts/p7_acquire.py`, bound to a fixed firmware/metadata path and `.p7-work`. Deleting scripts now would break supported paths.
+- **SOURCE_CONFIRMED** Current IDA path uses CFG JSON plus ELF/VEX; no production Hex-Rays CTree/Microcode exporter was found. CIR v1 has useful typed effects but lacks the required high-level types and many-to-many provenance contract.
+- **RECOMMENDATION** Resolve ADR-001 through ADR-010 in `DECISIONS.md`, including CIR/HIR boundary, CTree export, artifact identity/granularity, legacy mode, package name, provenance and replacement verification policy. Treat `ARCHITECTURE.md` and `ACQUISITION_DESIGN.md` as proposals pending approval; neither was edited in this audit.
+- **OPEN_QUESTION** Owner approval and the target IDA/Hex-Rays version/environment remain outstanding. Milestone A is **not approved/closed**; milestones B–H must not start from this audit alone.
+
 ## Milestone B --- Safe repository reset
 
 Migrate any production functionality out of `scripts/`; inspect
