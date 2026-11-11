@@ -45,3 +45,6 @@ venv*/
 
 # P7 isolated CLI outputs, characterization and immutable evidence
 .p7-work/
+
+# F0 native caches and local acquisition verification evidence
+.f0-runtime/

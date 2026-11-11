@@ -39,18 +39,43 @@ def load_saved_cir(
     files = sorted((folder_path / 'cir').glob('function-*.json'))
     if not files or sum(file.stat().st_size for file in files) > max_bytes:
         raise InputError('Saved CIR acquisition byte budget')
-    functions = tuple(
-        loads(
-            file.read_text(encoding='utf8'),
-            max_nodes=8_000_000,
-            max_bytes=max_bytes,
-        )
-        for file in files
+    return decode_saved_cir(
+        tuple(file.read_bytes() for file in files),
+        (folder_path / 'architecture.json').read_bytes(),
+        (folder_path / 'producer.json').read_bytes(),
+        (folder_path / 'assessment.json').read_bytes(),
+        (folder_path / 'origins.json').read_bytes(),
+        (folder_path / 'frontend-report.json').read_bytes(),
+        max_bytes=max_bytes,
     )
-    architecture = loads((folder_path / 'architecture.json').read_text(encoding='utf8'))
-    producer = loads((folder_path / 'producer.json').read_text(encoding='utf8'))
-    assessment = loads((folder_path / 'assessment.json').read_text(encoding='utf8'))
-    metadata = json.loads((folder_path / 'origins.json').read_text(encoding='utf8'))
+
+
+def decode_saved_cir(
+    function_bodies: tuple[bytes, ...],
+    architecture_body: bytes,
+    producer_body: bytes,
+    assessment_body: bytes,
+    origins_body: bytes,
+    report_body: bytes,
+    *,
+    max_bytes: int = 256 * 1024 * 1024,
+) -> tuple[CIRModule, object, dict[FunctionId, str]]:
+    """Decode already-read CIR bytes, preserving the saved-CIR v1 layout.
+
+    A verified artifact reader can supply pinned, hash-checked bytes here, so
+    decoding never reopens a potentially changed file after validation.
+    """
+
+    if not function_bodies or sum(map(len, function_bodies)) > max_bytes:
+        raise InputError('Saved CIR acquisition byte budget')
+    functions = tuple(
+        loads(body.decode('utf8'), max_nodes=8_000_000, max_bytes=max_bytes)
+        for body in function_bodies
+    )
+    architecture = loads(architecture_body.decode('utf8'))
+    producer = loads(producer_body.decode('utf8'))
+    assessment = loads(assessment_body.decode('utf8'))
+    metadata = json.loads(origins_body.decode('utf8'))
     if type(metadata) is not dict:
         raise InputError('Saved CIR origins must be a JSON object')
     blocks = {
@@ -81,11 +106,9 @@ def load_saved_cir(
         ('typed-effects',),
         assessment,
     )
-    report = json.loads(
-        (folder_path / 'frontend-report.json').read_text(encoding='utf8')
-    )
+    report = json.loads(report_body.decode('utf8'))
     body_hashes = {
-        function.function_id: hashlib.sha256(file.read_bytes()).hexdigest()
-        for function, file in zip(functions, files)
+        function.function_id: hashlib.sha256(body).hexdigest()
+        for function, body in zip(functions, function_bodies)
     }
     return module, report, body_hashes

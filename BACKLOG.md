@@ -1,13 +1,13 @@
 # BinaryAnalysis task backlog — active dependency queue
 
-As of DOC-CLEANUP, `codex/architecture-reset` HEAD `e6c1cf738f849b9bd6ad4cd40cc7c6f6fb1932aa` has no old `scripts/` or `tests/`. Historical B1/B2 cleanup and Legacy Bootstrap are not active prerequisites. ADR-009 remains Proposed. Only the owner records `APPROVED`. **F0 is the next development task; C1a/C1b remain planned and unauthorized for coding.**
+The `codex/architecture-reset` worktree has no old `scripts/` or P1–P7 `tests/`. Historical B1/B2 cleanup and Legacy Bootstrap are not active prerequisites. ADR-009 remains Proposed. Only the owner records `APPROVED`. **F0 is implemented and verified within its approved boundary; owner implementation review is pending. C1a/C1b remain planned and unauthorized for coding.**
 
 | ID | Status | Bounded outcome | Dependency / next gate |
 |---|---|---|---|
 | R1-A | IMPLEMENTED | Local legacy algorithm audit, hash inventory and migration map delivered; owner considers main direction credible | Owner acceptance of research remains pending; no algorithm migration acceptance inferred |
 | R1-B | IMPLEMENTED | `design/analysis/ANALYSIS_CORE_CONTRACT.md`, alias defect path, gap matrix and C1 specification | Owner review of C1 contracts; no whole CIR v2 approval |
 | R1-C | IMPLEMENTED | `research/modern/` reviews of modern algorithms and architecture extensibility | Static review and owner decision; no algorithm code |
-| F0-PROJECT-TO-CIR-ACQUISITION | PLANNED | Real project input → VEX → CIR/CFG/Origin → immutable artifact → reload | **Next implementation task** after owner approves bounded F0 spec and affected contract gates; no old B1/B2 dependency |
+| F0-PROJECT-TO-CIR-ACQUISITION | VERIFIED | Real project input → VEX → CIR/CFG/Origin → immutable artifact → detached reload | Owner approved bounded F0 decisions A–F on 2026-11-11; three gates have recorded runtime evidence in `BUILD_LOG.md`; implementation review/APPROVED remain with the owner |
 | F1-CTREE-HIR-PREPARATION | PLANNED | CTree/HIR contract preparation and target IDA/Hex-Rays environment probe | May be scoped early by owner; no exporter or HIR completion inferred |
 | C1-STORE-LOAD-ALIAS-SSE | PLANNED | Store/Load→memory→alias→SSE→dependency result/evidence, with C1a/C1b gates | F0 real CIR artifact/reload witness, plus owner approval of C1 contract/scope; not authorized for coding |
 | C2-ALGORITHM-EXPERIMENTS | PLANNED | Proposed pure-copy pruning, bounded lazy edge and shared consumer comparisons | C1 verified, separate owner task; no implementation authorization from R1-C |
@@ -17,9 +17,72 @@ As of DOC-CLEANUP, `codex/architecture-reset` HEAD `e6c1cf738f849b9bd6ad4cd40cc7
 | ON-DEMAND-TAINT | NOT_STARTED | Source/sink demand through CIR, memory and summaries | C1 + summary contract, owner scope |
 | VULNERABILITY-EVIDENCE | NOT_STARTED | Separate candidate taint paths and validated findings | Taint/result/evidence contracts, owner scope |
 
-## F0-PROJECT-TO-CIR-ACQUISITION — next task for owner scoping
+## F0-PROJECT-TO-CIR-ACQUISITION — approved specification and verification
 
-**Order:** Project/Input Resolver → Minimum Acquisition Service → `AngrVexFrontend` → CIR/CFG/Origin → Artifact Store → Reload Verification. Input is an explicit project specification and a real selected binary/function; output is a versioned, hash-checked immutable acquisition with a reloadable CIR function, CFG, origins and completeness/diagnostics. Preserve frontend-independent bytes, typed address spaces and source-to-CIR provenance. A failed/unsupported lift remains visible. Reload verifies schema, hashes, identity and graph/origin references before declaring an artifact usable. `ACQUISITION_DESIGN.md` supplies the broader proposal; F0 freezes only the consumed artifact and publication subset. Full incremental cache, concurrent publication, multi-frontend fusion, CTree exporter and analysis result persistence are later work. Owner approval of the exact fixture, task specification, contract boundary and verification witness is pending; this row does not authorize code.
+### Identity, authority and baseline
+
+- **Task/status/priority:** F0 Project-to-CIR Acquisition Vertical Slice; `VERIFIED`, P1. Parent: F0 in `EXECUTION_PLAN.md`. Scope approver: project owner, 2026-11-11 F0 Owner Approval & Implementation instruction; implementation review remains pending. Codex cannot set `APPROVED`.
+- **Repository baseline:** `codex/architecture-reset`, HEAD `e3ea39a007f294c1040a2a23089c95a35c14ecaa`, clean at F0 preflight on 2026-11-11. Preserve any subsequent user changes. The current `emtaint` CLI is a legacy analysis-mode parser, not a Project acquisition command.
+- **Accepted direction and F0 freeze:** ADR-001/002/003/004/005/006/008/010/012 select the CIR common boundary, direct VEX→CIR path, manifest plus function artifacts, separate artifact/result/evidence lifecycles and current `emtaint` import name. The owner approved this F0-only Project, publication, integrity and detached-reload subset with two-dimensional status. Broader fingerprint/rebinding/cache, whole CIR v2 and ADR-008 cross-representation graph contracts remain Proposed.
+
+### Goal, real input and boundaries
+
+**Observable outcome:** Given one explicit Project input, acquire one real function through the existing `AngrVexFrontend`, persist its CIR function, source CFG, Origin records and bounded frontend provenance, then load and validate those records in a fresh process without invoking angr or analysis. Return an immutable `AcquisitionRef` and a read-only acquisition summary. F0 intentionally ends at verified analysis inputs; Dataflow/Alias/SSE results, cache reuse and vulnerability evidence belong to later tasks.
+
+**Verified real witness:** `D:\works\dataflow\EmTaint\BinaryAnalysis-worktrees\firmware-binaries\rv130_v44\httpd`, 626,308 bytes, SHA-256 `334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787`. ELF32 little-endian, `ET_EXEC`, `EM_ARM`; executable file-backed segment VA `[0x8000,0x98130)`, file range `[0,0x90130)`, image base `0x8000`. ELF entry **VA `0x10e58`**, `FunctionId` RVA `0x8e58`. Runtime `AngrVexFrontend.discover((0x10e58,))` recovered `_start` with one ARM/default-mode input block; lift produced one CIR block, 95 effects, 74 Origins, 119 SourceHints, 74 InstructionHints and a one-node/zero-edge incomplete CFG. The entry succeeds without a backup selection. RVA, source VA, IDA EA, runtime VA and file offset remain distinct domains.
+
+**Reuse and implemented paths:** `emtaint/frontends/angr_vex/frontend.py` and `vex_input.py` retain native CFGFast/VEX lifting and pinned 9.3.4 runtime; `vex_lowering.py` yields CIR, incomplete source CFG, report and provenance; `ir/canonical/wire.py` retains `CIR-Wire-v1`. New `emtaint/project.py` resolves JSON Project input, `emtaint/acquisition.py` orchestrates the actual frontend, `emtaint/artifacts.py` publishes and validates independent artifacts, and `emtaint/acquire_cli.py` supplies the new subcommand through `__main__.py`. `frontends/saved_cir.py` gained a byte-input decoder reused by its old directory reader and the new pinned reader. The guard-era `FunctionStore` and old analysis CLI logic remain outside F0.
+
+**Actual implementation scope:** `emtaint/project.py`, `emtaint/acquisition.py`, `emtaint/artifacts.py`, `emtaint/acquire_cli.py`, `emtaint/__main__.py`, `emtaint/frontends/saved_cir.py`, new `tests/f0/test_acquisition.py` and `.gitignore` for ignored local F0 evidence. No public Core Identity, CIR model or Wire format changed.
+
+**Excluded:** old `scripts/`, WriteGuard, Legacy Bootstrap, P7 receipt compatibility, legacy `FunctionStore` repair, C1 Alias/SSE, CTree/HIR export, CG/summary/taint, CIR v2, full incremental cache/fingerprint rebinding, concurrent writers, historical migration, analysis-result persistence and broad CLI replacement. Never commit or push automatically.
+
+### Owner-approved F0 contracts and implemented behavior
+
+1. **ProjectSpec-F0-v1 and resolver.** One UTF-8 JSON file with `project_schema_version`, `binary_path` (absolute or relative to spec directory), `binary_sha256`, `frontend: "angr-vex"`, `function_vas: ["0x10e58"]`, `expected_image_base: "0x8000"`, and `allow_partial: true`; artifact output root is an explicit command/API parameter outside semantic identity. Resolver rejects duplicate/empty selections, wrong digest, non-ELF/unsupported architecture, changed loader base or addresses outside file-backed executable bytes. It returns immutable `ResolvedInputs` containing exact bytes/hash, normalized VA and RVA selection and ELF/loader address map; invalid input raises a stated error. The file path is provenance, not binary identity. The witness Project file was generated locally without copying firmware into production code.
+2. **Acquisition API.** `resolve(ProjectSpec) -> ResolvedInputs`; `acquire(ResolvedInputs, FrontendSelection, ArtifactRoot) -> AcquisitionOutcome`; `load(AcquisitionRef, FunctionId, *, project=None) -> FunctionInputs`. A successful `AcquisitionOutcome` carries a published reference, function ID, artifact integrity `VALID`, semantic completeness and diagnostics; failures raise explicit `InputError`/`ArtifactError`/I/O errors with no successful reference. `FunctionInputs` carries one `CIRModule`, `ControlFlowGraph`, Origin-backed `ProvenanceIndex`, frontend report and verified artifact hashes. `.venv\Scripts\python.exe -m emtaint acquire --project <project.json> --artifact-root <dir>` prints a pinned JSON receipt. The public `load` API provides fresh-process read-only reload without native lifting; optional `project` performs current-binary/loader comparison.
+3. **Identity and address domains.** `BinaryId` is the SHA-256 of exact binary bytes; `FunctionId(BinaryId, 0x8e58)` uses image RVA. Store selected VA, ELF link base, angr mapped base, segment VA/file-offset mapping and conversion policy in typed or explicitly tagged fields. Never collapse source VA, RVA, file offset, IDA EA and runtime VA. F0 artifact ID is `(kind, schema version, SHA-256 of canonical stored bytes)`; a manifest binds those IDs to the exact binary, selected function, loader inputs, `Producer`, CIR wire version and frontend/lowering versions. No cross-binary rebinding or function semantic cache reuse is claimed. A changed binary or loader/configuration cannot hit an old acquisition.
+4. **Immutable layout and validation.** `AcquisitionManifest-F0-v1` names one generation, binary/function identities, ELF segment/VA/RVA mapping, producer/tool/CIR versions, semantic completeness, assessment/diagnostics, and every artifact's kind/version/relative path/size/SHA-256. The generation contains `architecture.json`, `producer.json`, `assessment.json`, `origins.json`, `frontend-report.json`, `source/function-<rva>.json`, `cir/function-<rva>.json`, `cfg/function-<rva>.json`, `provenance/source-hints.json` and `provenance/instruction-hints.json`. Source selection stores recovered function bounds/edges, block byte hashes and coverage; it is not a replayable VEX dump. CFG stores function/node/edge/entry/exit/status/reason. Paths are fixed, relative and confined to one generation, rejecting traversal, absolute paths and links. The manifest is written last. The verified reader pins its external manifest digest, checks all sizes/hashes and cross-references, then passes already-verified bytes to the reused saved-CIR decoder; the old directory reader alone is not a trusted receipt.
+5. **Publish, partial and errors.** Stage on the artifact root's volume, verify there, then rename to a new absent immutable generation; return its explicit ref only after publication. Readers ignore staging. F0 has no cache pointer, overwrite, concurrent-writer guarantee or recovery algorithm. Artifact integrity (`VALID`, `MISSING`, `STALE`, `CORRUPT`, `INCOMPATIBLE`) and semantic completeness (`COMPLETE`, `PARTIAL`) are separate dimensions. The real witness reloads as **integrity `VALID`, semantics `PARTIAL`** because the bounded CIR and CFG assessments remain incomplete, even though its 74 recorded statements have no unsupported opcode. `allow_partial: false` fails before publication. Detached `load` needs the pinned receipt and all saved artifacts, not the original binary or native runtime; explicitly passing `project` checks current bytes and loader/address mapping and may report `STALE`.
+6. **Ownership and provenance.** Project resolver owns path/hash/address normalization; native angr/VEX objects remain inside `frontends`; acquisition orchestrates but does not perform analysis; artifact writer/reader owns bytes, schema/ref validation and immutable publication; `graph`/`core`/`ir` remain frontend-independent. Persist `Origin` and all available `SourceHint`/`InstructionHint` records rather than flattening them to one source per CIR value. Treat them as bounded VEX/source evidence, not the future cross-representation ADR-008 Provenance Graph. Loading/inspection is read-only and does not execute new analysis or angr queries. Acquisition CFG is an incomplete source CFG, not a refined analysis CG/CFG result.
+
+The approved Project input used for the witness is:
+
+```json
+{
+  "project_schema_version": "ProjectSpec-F0-v1",
+  "binary_path": "D:\\works\\dataflow\\EmTaint\\BinaryAnalysis-worktrees\\firmware-binaries\\rv130_v44\\httpd",
+  "binary_sha256": "334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787",
+  "frontend": "angr-vex",
+  "function_vas": ["0x10e58"],
+  "expected_image_base": "0x8000",
+  "allow_partial": true
+}
+```
+
+This path is a local witness location, not a serialized identity. `AcquisitionRef` contains the generation path, externally pinned manifest SHA-256 and schema version. `cir/function-<rva>.json` uses `wire.dumps(CIRFunction)`; shared architecture/producer/assessment files use the same codec. `origins.json` retains the saved reader's ID-keyed map with `block`, `statement_index`, `instruction_rva` and `source_opcode`. CFG, source selection and hint files are versioned JSON. The manifest hashes every referenced file and records its size; content hashes detect corruption but do not authenticate provenance without the caller-held pinned digest.
+
+**Decision gates:** The project owner approved A–F for this bounded F0 implementation on 2026-11-11, including two-dimensional status and detached load. Repository Baseline, F0 Architecture/Data Contract/Module Boundary freezes, Vertical-Slice Development and System Verification are recorded in `BUILD_LOG.md`. Architecture compliance was self-checked for the reviewable diff; owner implementation review/`APPROVED` remains pending. Broader CIR v2, ADR-008 graph, cache/rebinding and analysis contracts are not frozen by F0; changing a frozen public boundary still requires an ACR.
+
+### Vertical path and falsifiable acceptance
+
+```text
+ProjectSpec + actual ELF/hash/entry VA
+  -> resolver: bytes, BinaryId, loader map, selected RVA
+  -> AngrVexFrontend.discover/lift: FunctionInput, VEX chunks, CIR module,
+     CFG input, Origin map, provenance hints, assessment/report
+  -> immutable manifest + function/CFG/Origin/provenance artifacts
+  -> fresh-process verified load: FunctionInputs + read-only summary
+```
+
+1. The exact witness binary resolves to its declared SHA-256, `EM_ARM`, base `0x8000`, entry VA `0x10e58` and `FunctionId` RVA `0x8e58`; discovered block extents are recorded. A wrong hash/base or out-of-range function is rejected before publish.
+2. On approved runtime, one selected function is lifted. The manifest references the same `BinaryId`/`FunctionId` as every CIR body, CFG node/edge, Origin and hint. Report statement coverage and unsupported/lift failures are observable. Expected semantic status is `PARTIAL` unless complete coverage is actually established; no fabricated `COMPLETE` claim.
+3. A fresh process loads through the F0 reader with the native frontend unavailable or explicitly blocked. It reproduces the same CIR body hash, CFG nodes/edges/status, Origin records, hints and diagnostics; inspection is read-only and triggers no analysis query.
+4. Tampering independently with CIR, CFG, `origins.json`, hint sidecar or manifest, or deleting a referenced file, yields `CORRUPT`/`MISSING` and no usable acquisition. A foreign function ID, dangling CFG edge or hint-to-origin/value link is rejected even when an attacker recomputes one file hash.
+5. Replacing the binary or changing the declared loader base makes the old ref `STALE`; an unsupported manifest/CIR schema yields `INCOMPATIBLE`. Staging without a published manifest is invisible. An incomplete lift is usable only through an explicitly partial ref; `allow_partial: false` cannot publish it.
+6. Only the selected function is materialized. No Alias/SSE, taint, CTree, CG refinement, analysis result, cache hit, old script or guard path is invoked. The artifact remains usable without its source binary when all pinned manifest hashes and references validate; an explicit current-Project comparison reports `STALE` when the source is absent or changed.
+
+**Verification outcome:** `.venv\Scripts\python.exe -m emtaint acquire --project <project.json> --artifact-root <dir>` exited 0 on the real ELF. A separate Python process loaded the pinned generation without importing angr/pyvex/cle/archinfo. The final F0 suite ran 13 tests successfully with one environment-limited link-creation skip; the link-guard code path was tested separately. `BUILD_LOG.md` records exact commands, hashes, negative cases and the remaining platform limitation. If two targeted fixes fail one acceptance issue, stop and record root cause per `CODEX_WORKFLOW.md`.
 
 ## C1-STORE-LOAD-ALIAS-SSE — task specification for owner review after F0
 
