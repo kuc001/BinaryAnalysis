@@ -8,6 +8,7 @@
 - Local reference directory creation: 2026-11-10 20:11:30 Asia/Shanghai (filesystem metadata; not proof of copy time).
 - This manifest was generated at 2026-11-10T21:20:07+08:00 (manifest filesystem creation time); local reference snapshot copying time is not independently recorded.
 - Files under `dataflow/`: 164
+- Additional audited entrypoint outside `dataflow/`: `references/legacy-emtaint/main.py`, SHA256 `5448e7add7ae5343947b4386f2caa35f910284c6c1918010c75ecd2f482c503c`. R1-A cites its construction, result writing, disabled alias report, and security check calls. It is a tracked file in the same local BinaryAnalysis reference snapshot; it is **not** included in the 164-file `dataflow/` count. Original upstream EmTaint commit remains unknown.
 - SHA256 below is computed from local bytes on 2026-11-10; source was not imported or run.
 
 | File | SHA256 |

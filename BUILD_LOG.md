@@ -17,6 +17,13 @@ Record evidence for each bounded task. This log does not approve an ADR or miles
 - **Static commands/results:** `git status --short --branch` initially reported no changes; `rg --files references/legacy-emtaint/dataflow` and `Get-ChildItem ... -Recurse -File` each counted 164; `git log -1 -- references/legacy-emtaint` identified containing commit; `Get-FileHash -Algorithm SHA256` rechecked all 164 manifest rows with **0 mismatches**; `git diff --check` exited 0. `rg` and `Get-Content` were used to inspect callsites and source ranges. No Python production code, legacy analysis, tests, network source, commit or push was used.
 - **Gates/status:** repository baseline and documentation scope established. R1-A deliverables are IMPLEMENTED. Static consistency checks are recorded, but full independent algorithm review, runnable behavioral comparison and owner acceptance remain open. C/F/G contract freezes and code slices are not authorized by this work. No schema or Python code changed.
 
+## R1-C — modern algorithm and extensibility static review (2026-11-11)
+
+- **Baseline/scope:** `codex/architecture-reset` HEAD `ddfbc5fccaecaf9d624600aa32c4a17ced8b300f`, ahead 1, with pre-existing R1-B Markdown changes and untracked `ANALYSIS_CORE_CONTRACT.md`, `docs/Task-R1-C.md`, `references/papers/`. All were preserved. R1-C authorizes documentation research only.
+- **Evidence:** ten local full PDFs in `references/papers/` were read via read-only extraction with PDF page markers; five core mechanisms and five supplemental positions are cited in `MODERN_SOURCE_ANALYSIS_REVIEW.md`. Current CIR, memory, alias, SSE, frontend and result Python source was read statically. `ARCHITECTURE_EXTENSIBILITY_REVIEW.md` records the matrix, P0 false-NoAlias path, access-overlap choice, identity persistence gate, input preflight, dependency invalidation, C1a/b and owner decisions. `load_saved_cir` returns module/report/body hashes, not a CFG object; report CFG rows require a validated adapter. No saved new-format acquisition was found in the searched worktrees. The author-hosted LISPA paper and official conference listing were located; its DOI is only secondarily reported and remains `NOT_VERIFIED` as publisher metadata.
+- **Changes:** two new review documents plus status/readiness updates to backlog, plan and this log. Accepted ADR text/status, Python, CIR wire schema and old EmTaint source were not edited. No tests, old EmTaint execution, installation, commit or push were performed.
+- **Verification:** static document consistency and Git diff/status checks only; no runtime semantic or performance claim. R1-C is **IMPLEMENTED**, pending static/owner review; C1 remains PLANNED.
+
 ## Entry format for future work
 
 ### Task ID / date / baseline

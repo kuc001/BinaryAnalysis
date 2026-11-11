@@ -1,85 +1,62 @@
-# BinaryAnalysis execution plan — owner decisions and milestone gates
+# BinaryAnalysis execution plan — current gates and historical disposition
 
-2026-11-10. Milestones are bounded approval gates, not P1–P7 package boundaries. The owner Accepted ADR-001–008 and ADR-010–012 in their stated directions; ADR-009 remains Proposed. The owner revoked B1-GUARD authorization and removed WriteGuard/ProbeWriteGuard/ForbiddenMutation/Legacy Readonly Bootstrap from the target architecture. This round revises only documentation; the revised B1 cleanup plan requires owner approval before any production edit. No B2 deletion or Git submission is authorized. Stage descriptions below are plans, not completion claims.
+Baseline: `codex/architecture-reset`, HEAD `ddfbc5fccaecaf9d624600aa32c4a17ced8b300f` on 2026-11-11, clean before R1-B edits. `scripts/` and `tests/` are absent. ADR-001–008 and ADR-010–012 have owner-Accepted **directions**; their detailed identity, schema and module contracts remain subject to freeze. ADR-009 is Proposed. `DECISIONS.md` retains the B1-GUARD cancellation and older B0/B1/B2 reasoning. Those cleanup tasks are historical, not active prerequisites for new algorithm work. Only the project owner may set `APPROVED` or authorize a new implementation boundary; no Git submission is authorized by this plan.
 
 ## Status ledger
 
-Active milestones use `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED`, `REVIEWED`, `APPROVED`. Meanings, transitions and gate evidence are defined in `CODEX_WORKFLOW.md`. `CANCELLED` records the owner's withdrawal of B1-GUARD as a task disposition in `BACKLOG.md`, not completion or a new active milestone state. `IMPLEMENTED` records a deliverable, not acceptance. Only the project owner may set `APPROVED`; proposed ADRs and a Git commit do not imply approval. Update this ledger with evidence links whenever status changes.
+`NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED`, `REVIEWED`, `APPROVED` have the meanings in `CODEX_WORKFLOW.md`. `IMPLEMENTED` describes a scoped deliverable, not owner acceptance. Historical `CANCELLED` applies to B1-GUARD only.
 
 | Milestone | Status | Evidence / next gate |
 |---|---|---|
-| A | IMPLEMENTED | `REPOSITORY_AUDIT.md`; owner review remains unrecorded |
-| A2 | IMPLEMENTED | Architecture direction accepted for ADR-001–008/010–012; detailed contract freeze and ADR-009 remain open |
-| R1-A | IMPLEMENTED | Local legacy algorithm research documents and 164-file hash manifest drafted; static consistency review and owner architecture review pending; no code/analysis run |
-| B0 | IMPLEMENTED | `RESET_MANIFEST.md` and technical review revised for owner guard-removal decision; new cleanup scope awaits approval |
-| B1 | PLANNED | B1-GUARD CANCELLED; B1-CLI/SOLVER/LEGACY/ACQUIRE/SOURCE cleanup specifications await owner approval; code NOT_STARTED |
-| B2 | NOT_STARTED | Needs B1 evidence, per-file deletion approval and protected-data review |
-| B3 | NOT_STARTED | Needs B2 evidence and applicable C/D contracts |
-| C | PLANNED | Depends on approved architecture/data-contract boundaries |
-| D | PLANNED | Depends on C contract gate |
-| E | PLANNED | Depends on C/D and target IDA compatibility |
-| F | PLANNED | Depends on E and shared memory contract |
-| G | PLANNED | Depends on F and security policy contract |
-| H | PLANNED | Depends on D–G and verification policy |
+| A / A2 | IMPLEMENTED | Repository audit and accepted ADR directions; exact C/D/E contracts and ADR-009 remain open |
+| R1-A | IMPLEMENTED | Local 164-file dataflow audit plus `main.py` hash, algorithm map and allowlist; owner reviewed main direction as basically credible, final acceptance and runtime equivalence unclaimed |
+| R1-B | IMPLEMENTED | `ANALYSIS_CORE_CONTRACT.md`, static alias counterexample, gap matrix and C1 task spec; static document review/owner contract decision pending |
+| R1-C | IMPLEMENTED | `MODERN_SOURCE_ANALYSIS_REVIEW.md` and `ARCHITECTURE_EXTENSIBILITY_REVIEW.md`; full-text paper and current-code static review, owner review pending |
+| C1-STORE-LOAD-ALIAS-SSE | PLANNED | First existing-CIR Store/Load→memory→alias→SSE→persisted result/evidence slice; requires owner approval of exact task and affected contract/module gates, not B1/B2 cleanup |
+| C2/C3 algorithm experiments | PLANNED | Research proposals only; C1 verification and separate owner tasks required |
+| C — wider representation contracts | PLANNED | Versioned CIR v2/HIR/source identity, address/provenance and compatibility freeze remain separate from C1's minimal contract |
+| D — Acquisition and stores | PLANNED | Project-level source/HIR/CIR artifact/cache/result lifecycles; applicable C contracts and owner scope |
+| E — CTree frontend | PLANNED | Structured exporter and HIR lowering after C/D and target IDA compatibility probe |
+| F — wider unified memory/program analysis | PLANNED | Cross-frontend object reconciliation, CG/ICFG and summary iteration after relevant C/E gates; C1 is its first bounded algorithm slice using existing CIR |
+| iCall recovery | NOT_STARTED | C1 dependency/evidence and callsite/CG revision contract; owner scope |
+| Interprocedural summary | NOT_STARTED | Refined CG/context and memory-effect contract; owner scope |
+| On-demand taint | NOT_STARTED | C1 plus summary/source/sink contracts; owner scope |
+| Vulnerability evidence | NOT_STARTED | Taint candidates and independent validation/result policy; owner scope |
+| H — debugging/evaluation | PLANNED | Stored read-only evidence, representative cross-frontend and performance evaluation after applicable slices |
 
-The task queue and task-level dependencies are in `BACKLOG.md`; exact commands, results and skipped checks belong in `BUILD_LOG.md`. The seven gate names and their entry/exit criteria are in `CODEX_WORKFLOW.md`. A milestone may have IMPLEMENTED documentation while its design gate is still pending owner decision.
+## R1-A → R1-B → R1-C → C1 gate sequence
 
-### R1-A research gate
+R1-A supplied local algorithm evidence, not a migrated code oracle. The primary historical source is `references/legacy-emtaint/dataflow`; the audited `references/legacy-emtaint/main.py` is separately hashed in `LEGACY_DATAFLOW_SNAPSHOT.md`. The original upstream EmTaint commit remains unknown. R1-B narrows that evidence to the first shared CIR Definition, Memory, AliasQuery, SSE and provenance/result contracts in `ANALYSIS_CORE_CONTRACT.md`. Its static `analysis/aliasing/query.py` path shows a possible false complete `NOALIAS` for an uninitialized pointer. R1-B changes documentation only: no production code, tests, legacy execution or full CIR v2 approval.
 
-R1-A uses the local `references/legacy-emtaint/dataflow` snapshot as the primary historical source. The separate `emtaint-migration/EmTaint` checkout is a runnable lineage for later, authorized behavioral comparison; the reference snapshot is not run. Outputs are `LEGACY_DATAFLOW_SNAPSHOT.md`, `LEGACY_DATAFLOW_OVERVIEW.md`, `LEGACY_DATAFLOW_ALGORITHM_AUDIT.md`, `ALGORITHM_MIGRATION_MAP.md` and `CORE_ALLOWLIST.md`. Acceptance for this **documentation-only** slice is a complete file/hash inventory, source-backed reachable chains for alias, SSE, iCall and taint, capability/limitation distinctions, new-code gap map and later dependency/gate proposal. Static checks and diff review may advance it to VERIFIED/REVIEWED; the owner alone records APPROVED. No C/F/G implementation, HIR/CIR schema change or next milestone starts from this research alone.
+C1 starts from an **existing, hash-checked CIR Store/Load input**, follows the versioned memory and alias decision through a shared forward/backward dependency graph, and persists a result with read-only explanation. `BACKLOG.md` contains the exact input/output, callers, candidate modification files, prohibited changes, ten semantic scenarios, invalidation and stop conditions. Before code, the owner resolves: C1 scope and endpoint; alias/uncertainty/guard contract; private derived v1 IDs versus durable v2 IDs; result/evidence schema and cache invalidation; representative input and verification path; module ownership. Do not infer approval of all CIR v2 or HIR fields from this smaller contract. If a selected change crosses a frozen boundary, submit an ACR before modifying code.
 
-### B0 review to B1 authorization boundary
+R1-C used the local full papers to separate immediate C1 semantics from later algorithms. Its proposed minimum is address alias plus independent byte overlap/coverage, deterministic artifact/revision-bound private IDs for any persisted C1 result, and an actually verified saved-CIR input. `frontends/saved_cir.py` exists but returns no CFG object; its report carries CFG rows requiring a bounded validation adapter. No saved new-format acquisition was found in the searched worktrees, so the owner must select or authorize a real acquisition witness. C1a supplies semantic query/evidence, C1b supplies persist/reload/invalidation/read-only Inspector; both are required for completed C1. The possible false complete `NOALIAS` in `analysis/aliasing/query.py` remains P0. R1-C is documentation IMPLEMENTED, not C1 or CIR v2 APPROVED.
 
-The B0 technical review in `RESET_MANIFEST.md` confirms dynamic CLI imports, solver subprocess launch, source-file hashes, the old-Python child bootstrap and the still-needed acquisition producer. `DECISIONS.md` records the owner’s accepted ADR directions, open ADR-009 and cancellation of B1-GUARD. `BACKLOG.md` now owns the B1 cleanup dependency graph: CLI, SOLVER, LEGACY and ACQUIRE remove guard-only calls while preserving their business paths; SOURCE follows executable and receipt choices; B2 deletes obsolete helpers only after verified decoupling and exact-file owner approval. Full Acquisition replacement remains D after C; B2 cannot remove `p7_acquire.py` before a verified compatible producer.
+```text
+R1-A local audit (IMPLEMENTED, owner acceptance pending)
+  → R1-B minimal contract (documentation, owner review pending)
+  → R1-C modern algorithm/extensibility review (IMPLEMENTED, owner review pending)
+  → owner C1 task + affected contract/module freeze
+  → C1a semantic Store/Load/Alias/SSE query and evidence
+  → C1b deterministic persistence/reload/invalidation and read-only explanation
+  → owner review of evidence
+  → later iCall/summaries/taint/evidence and separately scoped C2/C3 experiments
+```
 
-Before any B1 code change, submit bounded task specifications and modification plans for the revised cleanup. The legacy child still uses `_p0b_bootstrap.py` for parser and analysis work, so the replacement entry and plan/resume compatibility must be decided without a new guard. CLI, Solver and Acquisition need explicit output folders, file creation policy and failure receipts after guard removal. The B1-GUARD migration specification and its package API are withdrawn; no production code is authorized by this documentation round. `BUILD_LOG.md` will record actual implementation evidence only after work begins.
+## Historical reset disposition
 
-## A — Repository audit
+The previous plan required B1-CLI/SOLVER/LEGACY/ACQUIRE/SOURCE, B2 cleanup and B3 entry consolidation before later milestones. That sequence described files and scripts already removed from this worktree and is **superseded as an execution plan**. It must not trigger guard implementation, new compatibility shims, Legacy Bootstrap restoration, old script migration or a block on C1. The accepted ADR directions and the record of B1-GUARD cancellation remain in `DECISIONS.md`; `RESET_MANIFEST.md` and Git history remain historical evidence. A newly observed live dependency is triaged from current source, not assumed from the old manifest. Current `frontends/function_store.py` still has guard-era receipt expectations, so C1's chosen existing-CIR input path needs a concrete preflight and may require a bounded reader adapter; that finding does not reactivate B1/B2.
 
-Goal: inspect production code, imports, schemas, CLI, scripts/tests dependencies and classify value. Input: current checkout and product requirements. Output: `REPOSITORY_AUDIT.md` with facts, inference, recommendations and limits. Acceptance: key paths traced to code and unresolved decisions listed. Current audit exists but is not owner-approved; A2 corrects stale findings. Risk: static inspection misses runtime/external CI behavior. Document: audit and decision register.
+## Later bounded milestones
 
-## A2 — Architecture Decision & Design Freeze
+**C:** Freeze durable source/HIR/CIR v2/value/definition/effect identity, many-to-many provenance, address conversions, partial semantics and v1 read compatibility with representative VEX/CTree inputs. An approved C1 private index is not the whole C milestone. Do not relabel old v1 artifacts.
 
-Goal: independently verify A evidence and specify HIR/CIR, CTree export, memory, provenance, confidence and acquisition/result boundaries. Input: A audit, source code, TASK_1/2, product and engineering constraints. Output: revised `REPOSITORY_AUDIT.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `DECISIONS.md`, this plan. Modules inspected: CIR/wire, core contracts/identity, frontends/FunctionStore, memory, dataflow/alias/demand/taint, orchestration, CLI, scripts and packaging. Risk: deployed IDA API/version unknown and proposed schema not yet exercised. Acceptance: A/B HIR/CIR comparison, explicit HIR/CIR/memory/provenance contracts, ADR register, B–H dependencies and gates, source-backed corrections. Verification: static reads and doc/diff review only; **no tests, code changes, commit or push** in A2. Exit: owner has accepted eleven architecture directions; exact contracts and ADR-009 remain open and are not silently frozen.
+**D:** Build project-level Acquisition and separate immutable Artifact, Cache, Analysis Result and Debug/Evidence stores with two-level fingerprints, partial publication and invalidation. Existing producer/reader paths require fresh source inspection. No old script restoration is implied.
 
-## B0 — Repository Reset Preflight (current, documentation only)
+**E:** Export structured CTree in a validated IDA/Hex-Rays environment, serialize HIR outside IDA and conservatively lower to the shared CIR. Preserve no-EA/unsupported and type/layout uncertainty. Microcode production remains later scope.
 
-Goal: turn the A/A2 audit into a file-by-file reset decision. Input: current checkout, A2 proposal, script/test/output inventory and call sites. Output: `RESET_MANIFEST.md`, corrected audit, architecture/acquisition clarifications and this plan. Dependencies: A2 design available for review; no ADR is self-approved. Modules inspected: `scripts/*`, `tests/*`, generated roots, CLI, solver, FunctionStore, entrypoints. Risk: unseen external CI or user data. Acceptance: every script/test file classified, production consumers and prerequisites recorded, protected data named, no deletion or code edit. Document: six B0 documents. Exit: owner reviews manifest and authorizes a specific B1 scope.
+**F:** Reconcile high/low memory candidates and run shared CFG/dataflow/alias/demand; C1 is the first single-function Store/Load slice. Later Refined CG/ICFG and summaries require their own contracts and revisions. MayAlias is never a strong-update proof.
 
-## B1 — Remove auxiliary guard dependencies while preserving production flows
+**Security sequence:** iCall recovery publishes candidate versus confirmed edges; interprocedural summaries carry context and memory effects; on-demand taint uses the shared dependency graph; vulnerability assessment distinguishes candidate path from validation. Each step has a separate owner task, result/evidence contract and acceptance witnesses.
 
-Goal: remove WriteGuard, ProbeWriteGuard, ForbiddenMutation and guard-specific bootstrap dependencies from supported execution without removing Solver, Acquisition, CLI or supported Legacy Backend behavior. Input: owner-approved revised B0 manifest and bounded B1 task specifications; ADR-009 retirement remains open. Output: guard-free CLI/worker/acquisition/legacy paths with explicit output destinations, coherent receipts and source fingerprints. B1 may retain `p1_solver_worker.py`, `p7_acquire.py` and necessary non-guard legacy capability; it does not require wholesale `scripts/` relocation. Dependencies: owner approval of the new cleanup plan, then B1-CLI/SOLVER/LEGACY/ACQUIRE followed by B1-SOURCE; legacy plan/hash changes are coordinated. Modules: CLI, solver worker/process port, acquisition producer, legacy target/old-Python launch and source manifest. Risk: broken subprocess protocol, old-Python parser/analysis, historical receipts or FunctionStore production. Acceptance: no live guard import/lifecycle/violations or `_p0b_bootstrap.py` dependency; each supported data flow and its output/error path verified; no guard reimplementation. Document: exact migration mapping and build evidence. Exit: owner reviews exact B2 deletion list separately.
-
-## B2 — Historical tests/scripts/output cleanup
-
-Goal: remove approved old harness/files only after functionality and semantic requirements survive. Input: B1 evidence, new-contract scenario specifications, owner-approved per-file targets and data backup/hash manifest. Output: bounded removal of approved scripts/tests/generated files; protected inputs retained. Dependencies: B1, and D acquisition replacement for `p7_acquire.py` if B1 did not supply one. Modules: `scripts/`, `tests/`, `.p1-work/`, `.p7-work/`, `.debug/` and references. Risk: unique evidence, hidden dynamic/CI invocation or tracked user reports. Acceptance: no production/CLI/CI/docs/dev-workflow references to removed files; replacement behaviors and fixtures verified; exact removed paths and preserved hashes recorded; no untracked user file touched. Document: executed deletion log and residual risk. Exit: owner reviews product entrypoints.
-
-## B3 — CLI, packaging and documentation consolidation
-
-Goal: provide coherent retained product entrypoints after B2. Input: approved contracts and B1/B2 migration evidence. Output: CLI routing to Project→Acquisition→Artifact/Cache→Frontend/HIR/CIR→analysis→debug, consistent `pyproject.toml` and current docs; retain `emtaint` import unless owner changes ADR-006. Dependencies: B2 and relevant C/D contracts where the new application path needs them. Modules: `main.py`, `emtaint/__main__.py`, `emtaint/cli.py`, packaging and docs. Risk: premature CLI promises before C/D or lost -i/-t behavior. Acceptance: documented supported commands resolve to working services, no stale phase path, packaging metadata consistent, compatibility decisions explicit. Document: CLI migration guide, decisions and verification evidence. If C/D are not ready, defer new commands rather than claim completion.
-
-## C — Stable identities and representation contracts
-
-Goal: freeze serializable project/function/source/HIR/CIR/provenance/confidence/address/partial contracts before consumers. Input: approved A2, representative VEX and CTree export specimens. Output: schema versions, typed identity and conversion rules, HIR v1/CIR v2, compatibility/migration adapters and contract fixtures. Dependencies: approved A2/ADRs and B1 preservation of existing producer paths; it need not wait for B2 deletion. Modules: `core/identity.py`, `core/contracts.py`, `ir/canonical/*`, frontend contracts, wire. Risks: old artifact breakage and unstable no-EA/local identity. Acceptance: round-trip across process without SDK objects; explicit unsupported and many-to-many mappings; typed address conversion; historical wire handled only through declared adapter. Document: architecture/schema/decision changes and verification evidence.
-
-## D — Acquisition and stores
-
-Goal: project-level multi-frontend build and reuse. Input: C contracts, project manifest, binary/metadata. Output: immutable module/function source/HIR/CIR/provenance artifacts, dependency DAG, store/cache services and explicit acquire/automatic analyze use cases. Dependencies: C, ADR-004/010. Modules: current `frontends/function_store.py`, `saved_cir.py`, `scripts/p7_acquire.py` replacement, storage/application. Risks: stale cache, races, incomplete publication, overly broad invalidation. Acceptance: exact reuse and selective invalidation, concurrent single publication, corrupt/partial/incompatible detection, crash recovery, no hardcoded firmware/P7 path. Document: acquisition schema and operational recovery guide.
-
-## E — Frontend and HIR vertical slice
-
-Goal: export one representative CTree function structurally, serialize/reload HIR outside IDA, lower supported subset to shared CIR; maintain existing VEX path. Input: C/D contracts and target IDA/Hex-Rays compatibility probe. Output: IDA exporter, CTree source artifact, HIR, lowering diagnostics and provenance; Microcode export contract only. Dependencies: C/D, ADR-003/007/012 and target IDA environment approval. Modules: `frontends/ida_vex`, new adapter only when consumed, HIR/CIR, provenance. Risks: API version differences, inaccurate type/layout, missing EA, unsupported opcodes. Acceptance: call target, local/array/member/pointer, control and no-EA cases preserved; unsupported footprint explicit; one CTree and VEX case feed the same CIR query contract. Document: supported-version matrix, exporter schema and coverage report.
-
-## F — Unified program and memory semantics
-
-Goal: reconcile high/low candidate objects and run one memory/alias/dataflow/demand pipeline. Input: E CIR/provenance and C memory contracts. Output: object/path reconciliation, byte-range overlap, MemoryVersion, CFG/CG/ICFG and summary dependencies, shared query API. Dependencies: E, ADR-001/008/011/012. Modules: `memory/*`, `graph/*`, `analysis/dataflow/*`, `analysis/aliasing/*`, `analysis/framework/*`, `solver/*`. Risks: false MustAlias, unsound strong updates, solver budget effects. Acceptance: CTree `v2[3]` and `[SP+offset]` can be related only by evidence; MayAlias stays May; partial overlap and unknown propagation observable; no frontend-specific memory engine. Document: memory contract, soundness limits, result schema and evidence.
-
-## G — Shared security and interprocedural analysis
-
-Goal: use F contracts for summaries, taint and vulnerability assessment across representations. Input: function CIR, graphs, memory/def-use/alias results, policies. Output: versioned summaries, taint candidates and separately validated findings with evidence dependencies. Dependencies: F and conflict policy ADR-011. Modules: `analysis/taint/*`, `analysis/bugfinder/*`, `orchestration/*`, `procedures/*`. Risks: candidate paths mistaken for vulnerabilities, callee effects lost, recursive invalidation. Acceptance: both frontend paths share algorithms; unresolved call/guard/unsupported propagates partial; changing policy invalidates security results without reacquiring; cross-function dependencies explicit. Document: policy/summary/result contracts and representative case evidence.
-
-## H — Debugging and evaluation
-
-Goal: make outputs inspectable and measure correctness, performance and reuse. Input: D–G artifacts/results and representative binary/decompiler scenarios. Output: read-only cross-representation inspector, address mapping, causal trace, reports, comparison/benchmark evidence and recovery observations. Dependencies: D–G, approved replacement verification policy. Modules: `analysis_debugging/*`, result storage, CLI application use cases. Risks: inspection accidentally runs queries, provenance holes, misleading negative findings. Acceptance: every finding links to stored evidence where available; ambiguous/unmapped links visible; inspection read-only; address domains distinct; verification commands/results and limitations recorded. Document: user/debug guide, build log, updated audit and plan.
-
-Each implementation milestone starts only after its applicable architecture, data-contract and module-boundary gates and an owner-approved task scope. Implement a bounded vertical slice, verify the system path, review compliance and update decisions/docs/log. Codex does not commit or push by default; the project owner reviews and submits. This governance task stops before B1.
+**H:** Inspect stored evidence without new analysis queries; evaluate correctness, partial/failure paths, performance, reload/invalidation and cross-frontend behavior. Runtime claims require exact commands/results in `BUILD_LOG.md`. The seven gates in `CODEX_WORKFLOW.md` apply to each implementation task. No successor starts automatically after a document is written or a test passes.
