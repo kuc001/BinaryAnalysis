@@ -79,7 +79,7 @@ Select additional material by task:
 
 | Task | Additional reading |
 |---|---|
-| F0 Project-to-CIR acquisition | `ACQUISITION_DESIGN.md`; `ARCHITECTURE.md` Project/Frontend/HIR/CIR/Provenance sections; ADR-001/002/003/004/006/008/010/012. Read `design/analysis/ANALYSIS_CORE_CONTRACT.md` identity sections only if the F0 identity boundary needs them. |
+| F0 Project-to-CIR acquisition | `ACQUISITION_DESIGN.md`; `ARCHITECTURE.md` Project/Frontend/HIR/CIR/Provenance sections; ADR-001/002/003/004/005/006/008/010/012. Read `design/analysis/ANALYSIS_CORE_CONTRACT.md` identity sections only if the F0 identity boundary needs them. |
 | F1 CTree/HIR | `ACQUISITION_DESIGN.md`, relevant original requirements in `archive/original-requirements/TASK_2.md`, and applicable HIR/CIR/provenance contracts. |
 | C1 Alias/SSE | `design/analysis/ANALYSIS_CORE_CONTRACT.md`, `research/legacy/ALGORITHM_MIGRATION_MAP.md`, `research/legacy/LEGACY_DATAFLOW_ALGORITHM_AUDIT.md`, `research/modern/ARCHITECTURE_EXTENSIBILITY_REVIEW.md`. Read the modern paper review only for a specific optimization question. |
 | C2/C3 algorithm research | Both `research/modern/` reviews and `design/analysis/ANALYSIS_CORE_CONTRACT.md`. |
