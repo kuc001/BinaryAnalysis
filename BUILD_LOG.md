@@ -10,6 +10,13 @@ Record evidence for each bounded task. This log does not approve an ADR or miles
 - **Verification:** `git diff --check` exited without whitespace errors (Git emitted only LF→CRLF notices). A read-only Python 3.12 document check found all seven gate names and eight status values, three new files with final newlines, and no trailing whitespace in the seven edited/created files. `git status --short` confirmed no Python/code changes and preserved the pre-existing B0 edits, `RESET_MANIFEST.md` and `docs/Task03.md`. No runtime tests or benchmarks were run.
 - **Status:** VERIFIED for the documentation scope. Architecture compliance review and owner approval are not recorded; B1 remains NOT_STARTED.
 
+## R1-A — local legacy algorithm research (2026-11-10)
+
+- **Scope and baseline:** owner-supplied R1-A documentation-only task plus local-source priority clarification; `codex/architecture-reset`, HEAD `2176e78f7cc410838603912886b35be7cf39c5d1`, clean at start. `references/legacy-emtaint` is tracked inside BinaryAnalysis and has no nested Git metadata; its original EmTaint commit is unknown. Runnable comparison checkout `emtaint-migration/EmTaint` HEAD `72a9e3081632b2f9d1881141bc7b0d43c7158033` was identified, not run.
+- **Evidence produced:** 164 local `dataflow/` files listed and SHA256-hashed in `LEGACY_DATAFLOW_SNAPSHOT.md`; source-backed module map, four algorithm chains, migration/dependency map, allowlist and architecture/plan/backlog updates. A later source check found the unused and inconsistent `_initialize_taint_source` path and corrected the taint audit to identify reachable procedure-model initialization.
+- **Static commands/results:** `git status --short --branch` initially reported no changes; `rg --files references/legacy-emtaint/dataflow` and `Get-ChildItem ... -Recurse -File` each counted 164; `git log -1 -- references/legacy-emtaint` identified containing commit; `Get-FileHash -Algorithm SHA256` rechecked all 164 manifest rows with **0 mismatches**; `git diff --check` exited 0. `rg` and `Get-Content` were used to inspect callsites and source ranges. No Python production code, legacy analysis, tests, network source, commit or push was used.
+- **Gates/status:** repository baseline and documentation scope established. R1-A deliverables are IMPLEMENTED. Static consistency checks are recorded, but full independent algorithm review, runnable behavioral comparison and owner acceptance remain open. C/F/G contract freezes and code slices are not authorized by this work. No schema or Python code changed.
+
 ## Entry format for future work
 
 ### Task ID / date / baseline

@@ -10,6 +10,7 @@ Active milestones use `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLE
 |---|---|---|
 | A | IMPLEMENTED | `REPOSITORY_AUDIT.md`; owner review remains unrecorded |
 | A2 | IMPLEMENTED | Architecture direction accepted for ADR-001–008/010–012; detailed contract freeze and ADR-009 remain open |
+| R1-A | IMPLEMENTED | Local legacy algorithm research documents and 164-file hash manifest drafted; static consistency review and owner architecture review pending; no code/analysis run |
 | B0 | IMPLEMENTED | `RESET_MANIFEST.md` and technical review revised for owner guard-removal decision; new cleanup scope awaits approval |
 | B1 | PLANNED | B1-GUARD CANCELLED; B1-CLI/SOLVER/LEGACY/ACQUIRE/SOURCE cleanup specifications await owner approval; code NOT_STARTED |
 | B2 | NOT_STARTED | Needs B1 evidence, per-file deletion approval and protected-data review |
@@ -22,6 +23,10 @@ Active milestones use `NOT_STARTED`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `IMPLE
 | H | PLANNED | Depends on D–G and verification policy |
 
 The task queue and task-level dependencies are in `BACKLOG.md`; exact commands, results and skipped checks belong in `BUILD_LOG.md`. The seven gate names and their entry/exit criteria are in `CODEX_WORKFLOW.md`. A milestone may have IMPLEMENTED documentation while its design gate is still pending owner decision.
+
+### R1-A research gate
+
+R1-A uses the local `references/legacy-emtaint/dataflow` snapshot as the primary historical source. The separate `emtaint-migration/EmTaint` checkout is a runnable lineage for later, authorized behavioral comparison; the reference snapshot is not run. Outputs are `LEGACY_DATAFLOW_SNAPSHOT.md`, `LEGACY_DATAFLOW_OVERVIEW.md`, `LEGACY_DATAFLOW_ALGORITHM_AUDIT.md`, `ALGORITHM_MIGRATION_MAP.md` and `CORE_ALLOWLIST.md`. Acceptance for this **documentation-only** slice is a complete file/hash inventory, source-backed reachable chains for alias, SSE, iCall and taint, capability/limitation distinctions, new-code gap map and later dependency/gate proposal. Static checks and diff review may advance it to VERIFIED/REVIEWED; the owner alone records APPROVED. No C/F/G implementation, HIR/CIR schema change or next milestone starts from this research alone.
 
 ### B0 review to B1 authorization boundary
 

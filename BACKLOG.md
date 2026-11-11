@@ -4,6 +4,7 @@ This is the dependency queue for bounded tasks, not a second execution plan. Mil
 
 | ID | Milestone / priority | Bounded outcome | Dependencies and decision gate | Status | Acceptance / evidence |
 |---|---|---|---|---|---|
+| R1-A | Research / P1 | Audit local legacy dataflow and map four algorithms to the accepted architecture without code changes | Owner R1-A research scope; local snapshot, runnable checkout for later comparison; implementation still needs C/F/G contract gates | IMPLEMENTED | Overview, detailed audit, migration map, 164-file hash manifest and allowlist drafted; static checks/review pending; owner review before algorithm migration |
 | GOV-001 | Pre-B1 / P1 | Establish architecture-first Codex governance in the seven permitted Markdown files | Current A2/B0 documents and user scope | VERIFIED | Seven gates/eight states and new docs checked; `git diff --check` clear; owner review pending |
 | B0-TECH-REVIEW | B0 / P0 | Verify reset dependencies, guard behavior, ADR impact and B1 ordering without code changes | A2/B0 documents and current checkout | VERIFIED | `RESET_MANIFEST.md` corrections, 12-row ADR matrix, B1 graph/spec; static coverage and diff checks; owner review pending |
 | ADR-REVIEW | A2/B0 / P0 | Record owner’s scoped architecture decisions and remaining contract details | `DECISIONS.md`, `ARCHITECTURE.md`, `ACQUISITION_DESIGN.md`, `RESET_MANIFEST.md` | IMPLEMENTED | ADR-001–008/010–012 Accepted directions; ADR-009 Proposed; C/D/E contracts still need freeze |
