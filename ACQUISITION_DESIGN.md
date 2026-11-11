@@ -1,6 +1,8 @@
-# Acquisition, artifacts and caches — A2 proposal
+# Acquisition, artifacts and caches — approved direction, proposed contracts
 
-Status: **Proposed**, pending ADR-004/010/012 and owner approval. Current `scripts/p7_acquire.py` and `frontends/function_store.py` are fixed-layout acquisition/reader implementations, not this service.
+Status: **ADR-004/010/012 architecture directions Accepted; detailed contracts Proposed.** The module/function artifact schema, semantic fingerprints, identity rebinding, atomic publication and recovery rules below are design targets awaiting their own freeze, not implemented features. The old `scripts/p7_acquire.py` is absent from this worktree; `emtaint/frontends/function_store.py` is an existing fixed-layout reader, not the proposed service.
+
+**F0 boundary:** first implement a real Project/Input Resolver → minimum Acquisition Service → `AngrVexFrontend` → CIR/CFG/Origin → immutable Artifact Store → reload verification path. Freeze only the identities, integrity checks, partial/error states and storage contract this path consumes. Full incremental cache reuse, concurrent publication, cross-version rebinding and multi-frontend fusion remain later work; their designs below do not become F0 acceptance by default. F0 precedes C1 analysis implementation in `EXECUTION_PLAN.md`.
 
 ## 1. Ownership and interfaces
 

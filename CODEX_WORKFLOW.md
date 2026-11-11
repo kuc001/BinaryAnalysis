@@ -1,6 +1,6 @@
 # Codex development workflow for BinaryAnalysis
 
-This is the detailed process behind the short rules in `AGENTS.md`. Product intent is in `CODEX_TASK.md`; architecture and artifact contracts are in `ARCHITECTURE.md` and `ACQUISITION_DESIGN.md`; engineering criteria are in `ENGINEERING_STANDARDS.md`. `DECISIONS.md` records proposed/owner-approved architecture decisions. `EXECUTION_PLAN.md` owns milestone dependencies and status. `BACKLOG.md` owns bounded task dependencies; `TASK_SPEC_TEMPLATE.md` is the required format for complex development tasks; `BUILD_LOG.md` records commands, evidence and limitations. `REPOSITORY_AUDIT.md` and `RESET_MANIFEST.md` are evidence/cleanup inputs, not authorization to implement or delete. Do not create another management document without a distinct owner and purpose.
+This is the detailed process behind the short rules and task-based Document Loading Policy in `AGENTS.md`. Product intent is in `CODEX_TASK.md`; architecture and artifact contracts are in `ARCHITECTURE.md` and `ACQUISITION_DESIGN.md`; engineering criteria are in `ENGINEERING_STANDARDS.md`. `DECISIONS.md` records proposed/owner-approved architecture decisions. `EXECUTION_PLAN.md` owns milestone dependencies and status. `BACKLOG.md` owns bounded task dependencies; `TASK_SPEC_TEMPLATE.md` is the required format for complex development tasks; `BUILD_LOG.md` records commands, evidence and limitations. `archive/reset-2026/REPOSITORY_AUDIT.md` and `archive/reset-2026/RESET_MANIFEST.md` retain historical evidence, not implementation authorization. `research/` contains algorithm evidence; `design/analysis/` contains the pending C1 analysis contract. Do not create another management document without a distinct owner and purpose.
 
 ## 1. Authority and status
 
@@ -59,7 +59,7 @@ For an acceptance failure, record hypothesis, evidence, exact change and targete
 
 Before coding, copy `TASK_SPEC_TEMPLATE.md` into the task description or fill its fields in an approved issue; do not create a new document merely for the copy. Link the task in `BACKLOG.md`, note dependencies and gate state, inspect all affected producers/consumers and record baseline. Prefer one coherent vertical slice and a small reviewable diff. Update the build log with exact commands, exits, artifacts, observed behavior and checks not run. Verify system data flow as well as local semantics. Review the diff, update design/decision/plan docs when behavior or contract changes, and report remaining risk.
 
-Definition of Done is in `ENGINEERING_STANDARDS.md`. Codex can report IMPLEMENTED, VERIFIED and review evidence; only the owner may set APPROVED or authorize B1/B2 or any later milestone. No automatic continuation across milestone gates.
+Definition of Done is in `ENGINEERING_STANDARDS.md`. Codex can report IMPLEMENTED, VERIFIED and review evidence; only the owner may set APPROVED or authorize F0, C1 or another implementation milestone. No automatic continuation across milestone gates.
 
 ## 6. Git and parallel work
 
@@ -69,4 +69,4 @@ Parallel research is allowed when explicitly tasked and independently bounded. D
 
 ## 7. Current transition
 
-A2 architecture and ADR-001–012 remain Proposed unless the owner records approval. B0 produced a reset preflight manifest and documentation changes; that is not B1 authorization. This governance task establishes process only. B1 requires the owner to review `RESET_MANIFEST.md`, resolve relevant ADRs and approve a B1 task spec with its contract/dependency gates.
+ADR-001–008 and ADR-010–012 are Accepted **directions** in `DECISIONS.md`; ADR-009 remains Proposed. Acceptance does not freeze detailed HIR/CIR, artifact, fingerprint or analysis-result schemas. Historical B0/B1/B2 and Legacy Bootstrap discussion in the archived reset record does not authorize or block current work. `EXECUTION_PLAN.md` places F0 Project-to-CIR acquisition before C1; F0 still needs its exact task and affected contract gates approved by the owner. C1a/C1b remain planned, not authorized for implementation. Read current documents by task under `AGENTS.md`, and use an ACR before crossing any frozen architecture boundary.

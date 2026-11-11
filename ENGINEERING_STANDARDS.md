@@ -58,14 +58,14 @@ unsupported lowering with a no-op.
 
 ## 6. Verification after reset
 
-The requested cleanup removes legacy `tests/` and `scripts/`. This does
-not make correctness optional. The owner must approve a new verification
-policy. Recommended: discard legacy tests as architecture drivers, then
-establish a fresh suite around approved contracts, representative
-binary/decompiler fixtures, frontend differential checks and end-to-end
-scenarios. Benchmarks should be separate from unit tests. Do not
-disguise old tests under another folder name. If the project chooses to
-remain testless, record that as an accepted engineering risk.
+The old P1--P7 `tests/` and `scripts/` trees are already absent from the
+current reconstruction worktree. ADR-005 accepts new verification built
+around approved contracts, representative binary/decompiler fixtures,
+frontend differential checks and end-to-end scenarios. New tests may
+be created for an authorized F0 or later task; do not restore the old
+suite or hide it under another folder. Benchmarks remain separate from
+semantic tests. A task that skips tests reports the limitation in
+`BUILD_LOG.md`; no runtime result is inferred from documentation checks.
 
 ## 7. Review checklist
 

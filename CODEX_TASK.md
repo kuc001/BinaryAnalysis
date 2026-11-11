@@ -11,10 +11,10 @@ incremental artifacts, and explainable evidence.
 1.  Binary frontend inputs: machine code, IDA disassembly/CFG, VEX; IDA
     Microcode as a planned complementary frontend.
 2.  Decompiler input: structured Hex-Rays CTree, not text parsing.
-3.  Frontend-independent HIR if required by the audit; serializable and
-    free of Hex-Rays runtime objects.
-4.  A canonical analysis representation (CIR is a candidate, not a
-    foregone conclusion).
+3.  An independent, frontend-neutral HIR for structured CTree input,
+    serializable and free of Hex-Rays runtime objects; CTree → HIR → CIR.
+4.  CIR as the common analysis input: VEX → CIR and future Microcode →
+    CIR. Exact HIR/CIR schemas and identities still require approval.
 5.  Shared Dataflow, Def-Use/Use-Def, Alias/APG, Memory,
     interprocedural, Taint and Vulnerability algorithms.
 6.  Many-to-many provenance across
@@ -37,17 +37,11 @@ incremental artifacts, and explainable evidence.
 
 ## Repository reset
 
-The requested reset targets legacy `tests/`, `scripts/`, P1--P7 docs and
-generated artifacts. First identify imports, CLI/CI/docs references and
-reusable production functionality. Remove only after an approved impact
-plan. Do not disguise old tests by moving them elsewhere.
-
-The owner must explicitly decide the post-reset verification strategy.
-Recommendation: remove historical tests, then build a fresh verification
-suite around the approved contracts and representative
-binaries/decompiler cases. A complex analysis framework should not
-permanently operate without repeatable verification unless the owner
-accepts that risk.
+The current architecture-reset worktree has already removed the old
+`tests/` and `scripts/` trees. They are historical reset subjects, not
+F0 prerequisites. ADR-005 permits new contract-based verification with
+representative binary and decompiler inputs; do not restore the P1--P7
+test architecture or disguise old tests under another directory.
 
 ## Decision policy
 

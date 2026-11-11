@@ -1,3 +1,5 @@
+> Archived reset preflight (2026-11-10). B1/B2 and Legacy Bootstrap steps below describe a past checkout; they are not current F0 prerequisites or authorization to restore old scripts/tests. Historical SHAs and evidence are retained.
+
 # Repository reset manifest — B0 preflight
 
 **Status: Revised proposal; no deletion is authorized by this document.** The original B0 inventory snapshot was 2026-11-10, codex/icall at 3716b9648aa5b683a62b6f4e34d277ab547202a3, ahead of origin by one commit. The owner later cancelled B1-GUARD. This guard-removal review used codex/icall HEAD dfe7dbb88c53adc95b3767d485ae77d32918442f with existing uncommitted documentation; it did not reset that work. Untracked docs/Task03.md is user data and protected. This inventory and review are static; no tests, scripts, cleanup or migration were run.

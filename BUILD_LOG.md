@@ -24,6 +24,14 @@ Record evidence for each bounded task. This log does not approve an ADR or miles
 - **Changes:** two new review documents plus status/readiness updates to backlog, plan and this log. Accepted ADR text/status, Python, CIR wire schema and old EmTaint source were not edited. No tests, old EmTaint execution, installation, commit or push were performed.
 - **Verification:** static document consistency and Git diff/status checks only; no runtime semantic or performance claim. R1-C is **IMPLEMENTED**, pending static/owner review; C1 remains PLANNED.
 
+## DOC-CLEANUP — root Markdown consolidation (2026-11-11)
+
+- **Baseline and scope:** `codex/architecture-reset` HEAD `e6c1cf738f849b9bd6ad4cd40cc7c6f6fb1932aa`, clean before this task. Documentation-only owner request; no F0 implementation authorization.
+- **File disposition:** 27 root Markdown files became 11 retained authority files, 12 tracked moves into `research/legacy/`, `research/modern/`, `design/analysis/` and `archive/`, plus four authorized obsolete-document removals. `CORE_ALLOWLIST.md` became `research/legacy/ALGORITHM_CAPABILITY_CANDIDATES.md` and is explicitly a candidate research record. Archived original requirements and reset audit received short present-versus-historical notices; original Git SHAs and evidence remain.
+- **Current guidance:** `AGENTS.md` now maps F0/F1/C1/C2-C3 to necessary reading and requires conversation-level Document Preflight. `CODEX_TASK.md`, `CODEX_WORKFLOW.md`, `ACQUISITION_DESIGN.md`, `ARCHITECTURE.md`, `ENGINEERING_STANDARDS.md` and `DECISIONS.md` distinguish Accepted directions from proposed contracts and retired B1/B2 workflow. `BACKLOG.md` and `EXECUTION_PLAN.md` place F0 Project/Input → minimum Acquisition → AngrVexFrontend → CIR/CFG/Origin → Artifact Store → reload before C1a/C1b. F1 contract preparation and environment probing remain proposed.
+- **Static checks:** initial `git status --short --branch` was clean on the stated HEAD. Root Markdown count: 27 → 11. Read-only Markdown relative-link check covered 23 retained/moved/archive files and found 0 broken links. Active inline `.md` reference check found 0 missing paths; Python/config reference search found no references to moved document names. `git diff --check` and `git diff --cached --check` exited 0 (Git printed line-ending notices). No analysis tests or runtime acquisition were run.
+- **Remaining gates:** owner review of the document structure and exact F0 task/contract freeze; F0, F1 and C1 code remain unstarted. No Python, `docs/`, `references/` or `emtaint/` file changed; no commit or push.
+
 ## Entry format for future work
 
 ### Task ID / date / baseline

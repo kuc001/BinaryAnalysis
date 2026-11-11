@@ -1,6 +1,6 @@
 # R1-A — Legacy dataflow algorithm audit
 
-Status: static source audit of local `references/legacy-emtaint` as tracked in BinaryAnalysis HEAD `2176e78f7cc410838603912886b35be7cf39c5d1` (the original EmTaint commit is unknown). Paths/lines below refer to that snapshot. “Implemented” means a reachable source path was found, not soundness or runtime verification. The runnable `emtaint-migration/EmTaint` checkout was identified as a separate code lineage; no legacy or new analysis was run.
+Research scope: static source audit of local `references/legacy-emtaint` as tracked in BinaryAnalysis HEAD `2176e78f7cc410838603912886b35be7cf39c5d1` (the original EmTaint commit is unknown). Task/approval status remains in root `BACKLOG.md` and `EXECUTION_PLAN.md`. Paths/lines below refer to that snapshot. “Implemented” means a reachable source path was found, not soundness or runtime verification. The runnable `emtaint-migration/EmTaint` checkout was identified as a separate code lineage; no legacy or new analysis was run.
 
 ## 1. Alias: query seeds, address refinement and limits
 

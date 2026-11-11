@@ -1,3 +1,5 @@
+> Archived reset audit (2026-11-10). “Current” refers to the recorded checkout and Git SHA below, not the present architecture-reset worktree. Use `ARCHITECTURE.md`, `DECISIONS.md` and `EXECUTION_PLAN.md` for current direction and gates.
+
 # BinaryAnalysis repository audit — B0 current findings
 
 Status: **B0 preflight proposal**, 2026-11-10. SOURCE_CONFIRMED means a checked local file, import or Git observation; INFERENCE means a conclusion needing runtime validation; RECOMMENDATION is a future design/cleanup action. No tests, benchmark, migration or deletion were run. The A/A2 narrative is retained in the historical appendix below; its Git snapshots are historical, not current.

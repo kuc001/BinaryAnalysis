@@ -1,6 +1,6 @@
 # R1-C — Architecture Extensibility and C1 Readiness
 
-**Status: IMPLEMENTED for static review, 2026-11-11; not an approved schema or C1 coding authorization.** Baseline: `codex/architecture-reset` HEAD `ddfbc5fccaecaf9d624600aa32c4a17ced8b300f`; pre-existing R1-B documentation edits and untracked papers/task are preserved. Evidence: current `emtaint/` source, `ANALYSIS_CORE_CONTRACT.md`, `ACQUISITION_DESIGN.md`, local R1-A audit, and the page-cited papers in `MODERN_SOURCE_ANALYSIS_REVIEW.md`. `scripts/` and `tests/` are absent. No Python, wire schema, Accepted ADR, legacy source, test, installation or Git history was changed.
+**Research scope:** static R1-C review dated 2026-11-11, not an approved schema or C1 coding authorization. Milestone status is maintained only in `BACKLOG.md` and `EXECUTION_PLAN.md`. Baseline: `codex/architecture-reset` HEAD `ddfbc5fccaecaf9d624600aa32c4a17ced8b300f`; pre-existing R1-B documentation edits and untracked papers/task were preserved. Evidence: inspected `emtaint/` source, `design/analysis/ANALYSIS_CORE_CONTRACT.md`, `ACQUISITION_DESIGN.md`, local R1-A audit, and papers in `research/modern/MODERN_SOURCE_ANALYSIS_REVIEW.md`. `scripts/` and `tests/` were absent. No Python, wire schema, Accepted ADR, legacy source, test, installation or Git history was changed in R1-C.
 
 ## 1. Actual R1-B boundary and correctness risks
 
@@ -13,7 +13,7 @@
 | Query | `memory/query_port.py` supplies typed operations/budget but no unified query identity, precision policy, query-point version, comprehensive alias proof or separate assessment axes in wrapper. | Candidate screening is possible, but safe negative and context-sensitive/SMT refinement need explicit context, budget and evidence. |
 | Graph/result | `memory/access_path.py` APG is a representation relation, not IDE/CFL tabulation. `results/memory_archive.py` hashes memory snapshot groups. `analysis_debugging/inspectors.py` has read-only facilities. | No persisted Store→Load dependency result/reload identity or derivation/invalidation graph. Snapshot archive does not itself establish semantic answer persistence. |
 
-The existing R1-B text's phrase “stable ID” and C1's persisted cross-process result need a tighter rule. A private ID formed only from an in-memory ordinal is **not** stable across re-export, CFG revision, loader transformation or a different wire artifact. `ANALYSIS_CORE_CONTRACT.md` already proposes a deterministic tuple; §4 below fixes its use and failure condition. Accepted ADR direction remains intact.
+The existing R1-B text's phrase “stable ID” and C1's persisted cross-process result need a tighter rule. A private ID formed only from an in-memory ordinal is **not** stable across re-export, CFG revision, loader transformation or a different wire artifact. `design/analysis/ANALYSIS_CORE_CONTRACT.md` already proposes a deterministic tuple; §4 below fixes its use and failure condition. Accepted ADR direction remains intact.
 
 ## 2. Extensibility matrix
 

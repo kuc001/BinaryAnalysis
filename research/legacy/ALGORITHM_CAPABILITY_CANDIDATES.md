@@ -1,6 +1,6 @@
-# Core allowlist — R1-B contract boundary
+# Legacy algorithm capability candidates — R1-B research
 
-Status: **proposed research/contract classification, awaiting owner review**. This is a planning allowlist for algorithm ideas and dependencies, not permission to copy legacy code, change frozen contracts or implement a milestone. The active C1 boundary is specified in `ANALYSIS_CORE_CONTRACT.md` and `BACKLOG.md`; historical B1/B2 cleanup is not a C1 dependency.
+This is a **candidate research record** for selected legacy algorithms and partial core capabilities, **not the project's complete production-code whitelist**. It does not approve copying legacy code, changing contracts or implementing a milestone. The current C1 proposal is in `design/analysis/ANALYSIS_CORE_CONTRACT.md` and `BACKLOG.md`; approved architecture and task status live in `DECISIONS.md` and `EXECUTION_PLAN.md`. Historical B1/B2 cleanup is not a C1 dependency.
 
 | Candidate core responsibility | Local evidence | Allowed research/implementation boundary | Gate |
 |---|---|---|---|

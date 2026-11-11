@@ -1,3 +1,5 @@
+> Archived original requirement. This preserves the CTree fixture and initial design intent; current contracts and task gates are in `ARCHITECTURE.md`, `DECISIONS.md` and `EXECUTION_PLAN.md`.
+
 # 新增架构要求：Decompiler Frontend 与 High-Level Semantic Analysis
 
 ## 一、总体目标

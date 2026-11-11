@@ -1,6 +1,6 @@
 # R1-A — Algorithm migration map
 
-Status: **research proposal, not a frozen contract or migration approval**. Source evidence is the local reference snapshot and `LEGACY_DATAFLOW_ALGORITHM_AUDIT.md`. Current code names below describe inspected modules, not equivalence claims. The runnable `emtaint-migration/EmTaint` is a separate local comparison target for a later authorized validation.
+Research scope: proposed algorithm mapping, not a frozen contract or migration approval. Task and ADR status remain in root `BACKLOG.md` and `DECISIONS.md`. Source evidence is the local reference snapshot and `LEGACY_DATAFLOW_ALGORITHM_AUDIT.md`. Code names below describe inspected modules, not equivalence claims. The runnable `emtaint-migration/EmTaint` is a separate local comparison target for later authorized validation.
 
 ## Capability and migration matrix
 

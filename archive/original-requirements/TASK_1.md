@@ -1,3 +1,5 @@
+> Archived original requirement. This records the owner's initial request, not the current execution sequence. Current authority is `DECISIONS.md`, `ARCHITECTURE.md` and `EXECUTION_PLAN.md`.
+
 BinaryAnalysis — 全面架构重置与重新设计任务
 1. 项目目标
 本项目决定放弃之前 P1–P7 阶段式重构路线，重新审查和设计 BinaryAnalysis。

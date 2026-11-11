@@ -1,6 +1,6 @@
 # R1-A — Legacy EmTaint dataflow overview
 
-Status: **research, awaiting owner review**. Source of truth is the local `references/legacy-emtaint` snapshot, not an online repository. `D:/works/dataflow/EmTaint/emtaint-migration/EmTaint` is a separate runnable migration checkout (HEAD `72a9e3081632b2f9d1881141bc7b0d43c7158033`); it is not evidence that the reference snapshot runs. No legacy analysis was executed. The complete 164-file, local-byte SHA256 inventory and containing-repository commit are in [LEGACY_DATAFLOW_SNAPSHOT.md](LEGACY_DATAFLOW_SNAPSHOT.md). The original EmTaint commit of copied bytes is unknown.
+Research scope: local `references/legacy-emtaint` snapshot, not an online repository. Milestone status and approval are recorded only in root `BACKLOG.md` and `EXECUTION_PLAN.md`. `D:/works/dataflow/EmTaint/emtaint-migration/EmTaint` is a separate runnable migration checkout (HEAD `72a9e3081632b2f9d1881141bc7b0d43c7158033`); it is not evidence that the reference snapshot runs. No legacy analysis was executed. The complete 164-file, local-byte SHA256 inventory and containing-repository commit are in [LEGACY_DATAFLOW_SNAPSHOT.md](LEGACY_DATAFLOW_SNAPSHOT.md). The original EmTaint commit of copied bytes is unknown.
 
 ## Module map
 
