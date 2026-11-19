@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
 import hashlib
@@ -335,7 +336,8 @@ def _read_checked(generation: Path, relative: object, size: object, sha256: obje
     return data
 
 
-def _load_manifest(generation: Path, pinned_sha256: str, *, staging: bool) -> dict[str, object]:
+def _load_manifest(generation: Path, pinned_sha256: str, *, staging: bool,
+                   schema: str = MANIFEST_SCHEMA) -> dict[str, object]:
     if not staging and not generation.name.startswith("generation-"):
         raise ArtifactError(IntegrityStatus.MISSING, "Only published generations can be read")
     if _is_link(generation):
@@ -356,7 +358,7 @@ def _load_manifest(generation: Path, pinned_sha256: str, *, staging: bool) -> di
         raise ArtifactError(IntegrityStatus.CORRUPT, "Invalid manifest JSON") from error
     if type(manifest) is not dict:
         raise ArtifactError(IntegrityStatus.CORRUPT, "Manifest must be an object")
-    if manifest.get("schema_version") != MANIFEST_SCHEMA:
+    if manifest.get("schema_version") != schema:
         raise ArtifactError(IntegrityStatus.INCOMPATIBLE, "Unsupported manifest schema")
     if not staging and manifest.get("generation") != generation.name:
         raise ArtifactError(IntegrityStatus.CORRUPT, "Manifest generation mismatch")
@@ -704,26 +706,44 @@ def publish(
     payloads = _payloads(inputs, module, cfg, provenance, report)
     generation_name = "generation-" + uuid4().hex
     manifest = _manifest(inputs, module, cfg, report, tool_versions, payloads, generation_name)
+    generation, digest = _publish_generation(
+        root.path, generation_name, manifest, payloads,
+        lambda staging, pin: _validated_generation(staging, pin, module.functions[0].function_id, staging=True),
+        staging_prefix=".staging-f0-",
+    )
+    return AcquisitionRef(generation, digest)
+
+
+def _publish_generation(
+    root: Path,
+    generation_name: str,
+    manifest: dict,
+    payloads: dict[str, bytes],
+    validate: Callable[[Path, str], object],
+    *,
+    staging_prefix: str,
+) -> tuple[Path, str]:
+    """Publish version-specific bytes after their codec verifies the staging generation."""
     manifest_bytes = _json_bytes(manifest)
     if len(manifest_bytes) > MAX_MANIFEST_BYTES:
-        raise ValueError("F0 manifest exceeds byte budget")
-    root.path.mkdir(parents=True, exist_ok=True)
-    if _is_link(root.path):
+        raise ValueError("Manifest exceeds byte budget")
+    root.mkdir(parents=True, exist_ok=True)
+    if _is_link(root):
         raise ValueError("Artifact root cannot be a link")
-    staging = Path(tempfile.mkdtemp(prefix=".staging-f0-", dir=root.path))
+    staging = Path(tempfile.mkdtemp(prefix=staging_prefix, dir=root))
     published = False
     try:
         for kind, data in payloads.items():
-            _write_bytes(staging / manifest["artifacts"][kind]["path"], data)
+            _write_bytes(_safe_file(staging, manifest["artifacts"][kind]["path"]), data)
         _write_bytes(staging / "manifest.json", manifest_bytes)
         digest = hashlib.sha256(manifest_bytes).hexdigest()
-        _validated_generation(staging, digest, module.functions[0].function_id, staging=True)
-        generation = root.path / generation_name
+        validate(staging, digest)
+        generation = root / generation_name
         if generation.exists():
             raise FileExistsError("Acquisition generation already exists")
         staging.rename(generation)
         published = True
-        return AcquisitionRef(generation, digest)
+        return generation, digest
     finally:
-        if not published and staging.exists() and staging.parent == root.path:
+        if not published and staging.exists() and staging.parent == root:
             shutil.rmtree(staging)

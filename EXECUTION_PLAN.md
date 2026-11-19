@@ -12,13 +12,15 @@ Baseline: `codex/architecture-reset`, HEAD `e6c1cf738f849b9bd6ad4cd40cc7c6f6fb19
 | R1-A | IMPLEMENTED | `research/legacy/` audit, `main.py` hash, migration map and capability candidates; final acceptance/runtime equivalence unclaimed |
 | R1-B | IMPLEMENTED | `design/analysis/ANALYSIS_CORE_CONTRACT.md`, static alias counterexample, gap matrix and C1 task spec; owner contract decision pending |
 | R1-C | IMPLEMENTED | `research/modern/MODERN_SOURCE_ANALYSIS_REVIEW.md` and `research/modern/ARCHITECTURE_EXTENSIBILITY_REVIEW.md`; static owner review pending |
-| F0 — Project-to-CIR Acquisition Vertical Slice | VERIFIED | Owner approved bounded decisions A–F on 2026-11-11; real Project/Input → AngrVexFrontend → CIR/CFG/Origin → immutable Artifact Store → detached reload passed the three F0 gates; owner implementation review remains pending |
-| F1 — CTree/HIR preparation | PLANNED | Contract preparation and target IDA/Hex-Rays environment probe may be scoped early; no implementation or verification claim |
+| F0 — Project-to-CIR Acquisition Vertical Slice | APPROVED | Owner approved bounded decisions A–F on 2026-11-11; real Project/Input → AngrVexFrontend → CIR/CFG/Origin → immutable Artifact Store → detached reload passed the three F0 gates; owner accepted the bounded implementation in F1-08 |
+| F1-A — Real CTree input audit and HIR contract specification | VERIFIED | Real `0x632F8` export and ELF audited. Proposed contract and task specification recorded for owner review |
+| F1 — CTree → HIR → CIR vertical slice | VERIFIED | F1-01 through F1-09 authorized the bounded slice. All five gates have saved evidence in `BUILD_LOG.md`. Final owner review pending |
+| F1-VEX-CIR-V2-INTEROPERABILITY | PLANNED | Versioned saved VEX/CIR v1 to Common CIR v2 adapter. Separate authorization required |
 | C1-STORE-LOAD-ALIAS-SSE | PLANNED | First existing-CIR Store/Load→memory→alias→SSE→persisted result/evidence slice; requires owner approval of exact task and affected contract/module gates, not B1/B2 cleanup |
 | C2/C3 algorithm experiments | PLANNED | Research proposals only; C1 verification and separate owner tasks required |
 | C — wider representation contracts | PLANNED | Versioned CIR v2/HIR/source identity, address/provenance and compatibility freeze remain separate from C1's minimal contract |
 | D — Acquisition and stores | PLANNED | Project-level source/HIR/CIR artifact/cache/result lifecycles; applicable C contracts and owner scope |
-| E — CTree frontend | PLANNED | Structured exporter and HIR lowering after C/D and target IDA compatibility probe |
+| E — wider CTree frontend | PLANNED | Expand beyond F1's pinned exporter and 19-opcode capability under separate version and compatibility evidence |
 | F — wider unified memory/program analysis | PLANNED | Cross-frontend object reconciliation, CG/ICFG and summary iteration after relevant C/E gates; C1 is its first bounded algorithm slice using existing CIR |
 | iCall recovery | NOT_STARTED | C1 dependency/evidence and callsite/CG revision contract; owner scope |
 | Interprocedural summary | NOT_STARTED | Refined CG/context and memory-effect contract; owner scope |
@@ -26,13 +28,15 @@ Baseline: `codex/architecture-reset`, HEAD `e6c1cf738f849b9bd6ad4cd40cc7c6f6fb19
 | Vulnerability evidence | NOT_STARTED | Taint candidates and independent validation/result policy; owner scope |
 | H — debugging/evaluation | PLANNED | Stored read-only evidence, representative cross-frontend and performance evaluation after applicable slices |
 
-## R1-A → R1-B → R1-C → F0 → C1 gate sequence
+## F0 → F1 → VEX/CIR v2 interoperability → C1 gate sequence
 
 R1-A supplied local algorithm evidence, not a migrated code oracle. The primary historical source is `references/legacy-emtaint/dataflow`; the audited `references/legacy-emtaint/main.py` is separately hashed in `research/legacy/LEGACY_DATAFLOW_SNAPSHOT.md`. The original upstream EmTaint commit remains unknown. R1-B narrows that evidence to the first shared CIR Definition, Memory, AliasQuery, SSE and provenance/result contracts in `design/analysis/ANALYSIS_CORE_CONTRACT.md`. Its static `analysis/aliasing/query.py` path shows a possible false complete `NOALIAS` for an uninitialized pointer. R1-B changed documentation only, without approving CIR v2.
 
-F0 delivers a real, reloadable CIR/CFG/Origin acquisition from a declared Project input and `AngrVexFrontend`. Its bounded order is Project/Input Resolver → Minimum Acquisition Service → AngrVexFrontend → CIR/CFG/Origin → Artifact Store → independent-process reload. The owner approved the exact F0 subset; `BUILD_LOG.md` records all three runtime gates and the local symlink-creation limitation. Its artifact integrity is `VALID` while CIR/CFG semantic completeness is `PARTIAL`. Full incremental cache, concurrent publication and multi-frontend fusion remain later. F1 CTree/HIR contract work and environment probe may be prepared early under separate scope; no F1 capability is complete.
+F0 delivers a real, reloadable CIR/CFG/Origin acquisition from a declared Project input and `AngrVexFrontend`. Its bounded order is Project/Input Resolver → Minimum Acquisition Service → AngrVexFrontend → CIR/CFG/Origin → Artifact Store → independent-process reload. The owner approved the exact F0 subset. `BUILD_LOG.md` records all three runtime gates and the local symlink-creation limitation. Its artifact integrity is `VALID` while CIR/CFG semantic completeness is `PARTIAL`. Full incremental cache, concurrent publication and multi-frontend fusion remain later.
 
-C1 starts after F0 from a **hash-checked, reloadable CIR Store/Load input**, follows the versioned memory and alias decision through a shared forward/backward dependency graph, and persists a result with read-only explanation. `BACKLOG.md` contains its input/output, callers, candidate modification files, prohibited changes, ten semantic scenarios, invalidation and stop conditions. Before C1 code, the owner resolves: scope and endpoint; alias/uncertainty/guard contract; private derived v1 IDs versus durable v2 IDs; result/evidence schema and cache invalidation; representative input and verification path; module ownership. Do not infer approval of all CIR v2 or HIR fields. If a selected change crosses a frozen boundary, submit an ACR before modifying code.
+F1-A audited the owner's new acceptance function `0x632F8` (RVA `0x5B2F8`). The owner accepted the pinned export as the compatibility witness. F1 builds HIR-Wire-v1 and Common CIR-Wire-v2, publishes an immutable generation using shared storage, and supports detached inspection.
+
+C1 requires F1 plus verified VEX/CIR v2 interoperability or an equivalent path and a **hash-checked, reloadable Common CIR v2 Store/Load input**, follows the versioned memory and alias decision through a shared forward/backward dependency graph, and persists a result with read-only explanation. `BACKLOG.md` contains its input/output, callers, candidate modification files, prohibited changes, ten semantic scenarios, invalidation and stop conditions. Before C1 code, the owner resolves: scope and endpoint; alias/uncertainty/guard contract; private derived v1 IDs versus durable v2 IDs; result/evidence schema and cache invalidation; representative input and verification path; module ownership. Do not infer approval of all CIR v2 or HIR fields. If a selected change crosses a frozen boundary, submit an ACR before modifying code.
 
 R1-C used the local full papers to separate C1 semantics from later algorithms. Its proposed minimum is address alias plus independent byte overlap/coverage, deterministic artifact/revision-bound private IDs for persisted C1 results, and a verified CIR input. F0 now supplies the real hash-checked acquisition witness; `frontends/saved_cir.py` remains a CIR/Origin decoder, while the F0 artifact reader validates and reconstructs the saved CFG and provenance. This does not authorize C1. C1a supplies semantic query/evidence, C1b supplies persistence/reload/invalidation/read-only Inspector; both are required for completed C1. The possible false complete `NOALIAS` in `analysis/aliasing/query.py` remains P0. R1-C is documentation IMPLEMENTED, not C1 or CIR v2 APPROVED.
 
@@ -42,6 +46,8 @@ R1-A local audit (IMPLEMENTED, owner acceptance pending)
   → R1-C modern algorithm/extensibility review (IMPLEMENTED, owner review pending)
   → owner F0 task + affected acquisition/artifact contract freeze
   → F0 Project/Input → AngrVexFrontend → CIR/CFG/Origin → Artifact Store → Reload
+  → F1 pinned CTree / HIR / Common CIR v2 / CFG / provenance + detached reload
+  → separately authorized VEX CIR v1 to Common CIR v2 interoperability
   → owner C1 task + affected contract/module freeze
   → C1a semantic Store/Load/Alias/SSE query and evidence
   → C1b deterministic persistence/reload/invalidation and read-only explanation

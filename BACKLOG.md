@@ -1,15 +1,17 @@
 # BinaryAnalysis task backlog — active dependency queue
 
-The `codex/architecture-reset` worktree has no old `scripts/` or P1–P7 `tests/`. Historical B1/B2 cleanup and Legacy Bootstrap are not active prerequisites. ADR-009 remains Proposed. Only the owner records `APPROVED`. **F0 is implemented and verified within its approved boundary; owner implementation review is pending. C1a/C1b remain planned and unauthorized for coding.**
+The `codex/architecture-reset` worktree has no old `scripts/` or P1–P7 `tests/`. Historical B1/B2 cleanup and Legacy Bootstrap are not active prerequisites. ADR-009 remains Proposed. Only the owner records `APPROVED`. **The owner accepted the bounded F0 implementation in F1-08. F1 precedes VEX/CIR v2 interoperability, which precedes C1.**
 
 | ID | Status | Bounded outcome | Dependency / next gate |
 |---|---|---|---|
 | R1-A | IMPLEMENTED | Local legacy algorithm audit, hash inventory and migration map delivered; owner considers main direction credible | Owner acceptance of research remains pending; no algorithm migration acceptance inferred |
 | R1-B | IMPLEMENTED | `design/analysis/ANALYSIS_CORE_CONTRACT.md`, alias defect path, gap matrix and C1 specification | Owner review of C1 contracts; no whole CIR v2 approval |
 | R1-C | IMPLEMENTED | `research/modern/` reviews of modern algorithms and architecture extensibility | Static review and owner decision; no algorithm code |
-| F0-PROJECT-TO-CIR-ACQUISITION | VERIFIED | Real project input → VEX → CIR/CFG/Origin → immutable artifact → detached reload | Owner approved bounded F0 decisions A–F on 2026-11-11; three gates have recorded runtime evidence in `BUILD_LOG.md`; implementation review/APPROVED remain with the owner |
-| F1-CTREE-HIR-PREPARATION | PLANNED | CTree/HIR contract preparation and target IDA/Hex-Rays environment probe | May be scoped early by owner; no exporter or HIR completion inferred |
-| C1-STORE-LOAD-ALIAS-SSE | PLANNED | Store/Load→memory→alias→SSE→dependency result/evidence, with C1a/C1b gates | F0 real CIR artifact/reload witness, plus owner approval of C1 contract/scope; not authorized for coding |
+| F0-PROJECT-TO-CIR-ACQUISITION | APPROVED | Real project input → VEX → CIR/CFG/Origin → immutable artifact → detached reload | Owner approved bounded F0 decisions A–F on 2026-11-11; three gates have recorded runtime evidence in `BUILD_LOG.md`. Owner accepted the implementation in F1-08 |
+| F1-A — Real CTree Input Audit & HIR Contract Specification | VERIFIED | Read-only audit of the pinned `0x632F8` export and ELF plus a contract proposal | Static evidence in `BUILD_LOG.md`. Live compatibility and implementation gates remain open |
+| F1-CTREE-HIR-CIR-VERTICAL-SLICE | VERIFIED | One real CTree → reloadable HIR → shared CIR/CFG and provenance → detached inspection | F1-01 through F1-09 approved the implementation boundary. System evidence in `BUILD_LOG.md`. Final review pending |
+| F1-VEX-CIR-V2-INTEROPERABILITY | PLANNED | Explicit adapter from saved F0 CIR v1 to Common CIR v2 | Separate authorization and verification after F1 |
+| C1-STORE-LOAD-ALIAS-SSE | PLANNED | Store/Load→memory→alias→SSE→dependency result/evidence, with C1a/C1b gates | Requires VEX/CIR v2 interoperability or equivalent verified path and owner approval of C1 scope |
 | C2-ALGORITHM-EXPERIMENTS | PLANNED | Proposed pure-copy pruning, bounded lazy edge and shared consumer comparisons | C1 verified, separate owner task; no implementation authorization from R1-C |
 | C3-ADVANCED-SOLVER-EXPERIMENTS | PLANNED | Proposed CFL/IDE, merge/replay, selective context and incremental recomputation prototypes | C1/C2 evidence and separate owner scope |
 | ICALL-RECOVERY | NOT_STARTED | Function-pointer candidates with Alias/SSE evidence and versioned Refined CG | Verified/approved C1 boundary, callsite/CG contract and owner task scope |
@@ -21,7 +23,7 @@ The `codex/architecture-reset` worktree has no old `scripts/` or P1–P7 `tests/
 
 ### Identity, authority and baseline
 
-- **Task/status/priority:** F0 Project-to-CIR Acquisition Vertical Slice; `VERIFIED`, P1. Parent: F0 in `EXECUTION_PLAN.md`. Scope approver: project owner, 2026-11-11 F0 Owner Approval & Implementation instruction; implementation review remains pending. Codex cannot set `APPROVED`.
+- **Task/status/priority:** F0 Project-to-CIR Acquisition Vertical Slice, `APPROVED`, P1. Parent: F0 in `EXECUTION_PLAN.md`. Scope approver: project owner, 2026-11-11 F0 Owner Approval & Implementation instruction; implementation accepted by the owner in decision F1-08.
 - **Repository baseline:** `codex/architecture-reset`, HEAD `e3ea39a007f294c1040a2a23089c95a35c14ecaa`, clean at F0 preflight on 2026-11-11. Preserve any subsequent user changes. The current `emtaint` CLI is a legacy analysis-mode parser, not a Project acquisition command.
 - **Accepted direction and F0 freeze:** ADR-001/002/003/004/005/006/008/010/012 select the CIR common boundary, direct VEX→CIR path, manifest plus function artifacts, separate artifact/result/evidence lifecycles and current `emtaint` import name. The owner approved this F0-only Project, publication, integrity and detached-reload subset with two-dimensional status. Broader fingerprint/rebinding/cache, whole CIR v2 and ADR-008 cross-representation graph contracts remain Proposed.
 
@@ -62,7 +64,7 @@ The approved Project input used for the witness is:
 
 This path is a local witness location, not a serialized identity. `AcquisitionRef` contains the generation path, externally pinned manifest SHA-256 and schema version. `cir/function-<rva>.json` uses `wire.dumps(CIRFunction)`; shared architecture/producer/assessment files use the same codec. `origins.json` retains the saved reader's ID-keyed map with `block`, `statement_index`, `instruction_rva` and `source_opcode`. CFG, source selection and hint files are versioned JSON. The manifest hashes every referenced file and records its size; content hashes detect corruption but do not authenticate provenance without the caller-held pinned digest.
 
-**Decision gates:** The project owner approved A–F for this bounded F0 implementation on 2026-11-11, including two-dimensional status and detached load. Repository Baseline, F0 Architecture/Data Contract/Module Boundary freezes, Vertical-Slice Development and System Verification are recorded in `BUILD_LOG.md`. Architecture compliance was self-checked for the reviewable diff; owner implementation review/`APPROVED` remains pending. Broader CIR v2, ADR-008 graph, cache/rebinding and analysis contracts are not frozen by F0; changing a frozen public boundary still requires an ACR.
+**Decision gates:** The project owner approved A–F for this bounded F0 implementation on 2026-11-11, including two-dimensional status and detached load. Repository Baseline, F0 Architecture/Data Contract/Module Boundary freezes, Vertical-Slice Development and System Verification are recorded in `BUILD_LOG.md`. Architecture compliance was self-checked for the reviewable diff; the owner subsequently accepted the implementation in F1-08. Broader CIR v2, ADR-008 graph, cache/rebinding and analysis contracts are not frozen by F0; changing a frozen public boundary still requires an ACR.
 
 ### Vertical path and falsifiable acceptance
 
@@ -84,11 +86,51 @@ ProjectSpec + actual ELF/hash/entry VA
 
 **Verification outcome:** `.venv\Scripts\python.exe -m emtaint acquire --project <project.json> --artifact-root <dir>` exited 0 on the real ELF. A separate Python process loaded the pinned generation without importing angr/pyvex/cle/archinfo. The final F0 suite ran 13 tests successfully with one environment-limited link-creation skip; the link-guard code path was tested separately. `BUILD_LOG.md` records exact commands, hashes, negative cases and the remaining platform limitation. If two targeted fixes fail one acceptance issue, stop and record root cause per `CODEX_WORKFLOW.md`.
 
-## C1-STORE-LOAD-ALIAS-SSE — task specification for owner review after F0
+## F1-CTREE-HIR-CIR-VERTICAL-SLICE
 
-**Identity and gates.** Priority P0 for a possible false `NOALIAS` in the public alias wrapper, P1 for the bounded slice. Architecture directions ADR-001/002/008/010/011/012 remain Accepted; detailed CIR v2/identity/result contracts are not all frozen. R1-B proposes the minimal boundary in `design/analysis/ANALYSIS_CORE_CONTRACT.md`. C1 remains `PLANNED` until F0 supplies a real reloadable CIR input and the owner approves C1's boundary, private-v1-ID versus durable-v2-ID policy, result storage endpoint and module ownership. If implementation changes a frozen core boundary, prepare an ACR before code.
+### Identity and authority
 
-**R1-C readiness clarification.** `research/modern/ARCHITECTURE_EXTENSIBILITY_REVIEW.md` recommends separate address `AliasKind` and byte `AccessOverlap/ByteCoverage`; C1 must not use a range-level `NO_ALIAS` as proof that pointers cannot alias. It requires a deterministic, versioned private v1 ID recipe bound to CIR body hash, producer/acquisition fingerprint, function/CFG revision, block, effect/role ordinals, with reload mapping and stale rejection. A bare ephemeral ID cannot be persisted as a durable DefinitionId. F0's verified artifact is the preferred real input. `frontends/saved_cir.py` with a validated report-CFG adapter remains an alternative if its receipt and identities can be proven. These are owner decisions, not a grant to edit core schema.
+- **Parent / state / priority** · F1 in [EXECUTION_PLAN.md](EXECUTION_PLAN.md), `VERIFIED`, P1 for the first real decompiler input path.
+- **Baseline** · `codex/architecture-reset`, `dca2e70f38ab205ff81efef9c498e0c40eb7e90f`, clean at F1-A entry. Preserve unrelated changes.
+- **Authorization** · Owner authorized implementation in F1-01 through F1-09 on 2026-11-19. Final implementation review remains with the owner.
+
+### Goal, scope and dependencies
+
+- **Goal** · Import the pinned real export, validate ELF identity, build and detach-reload HIR, lower the reloaded HIR to bounded CIR, publish CIR/CFG and provenance, then inspect the persisted generation in a fresh Python process.
+- **Input** · [Structured source JSON](.f1-input/ctree/ctree_632f8_39ebd8aca9.json), SHA-256 `209e40012ce07ae79ce95847b5a3792a687536951772877fbd5847ebd06c4c3e`. Expected ELF SHA-256 `334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787`, base `0x8000`, EA `0x632F8`, RVA `0x5B2F8`.
+- **Scope** · Strict draft-v2 CTree reader, 19-opcode HIR builder and Opaque policy, deterministic HIR codec and reload, bounded HIR→CIR lowering, CFG, bidirectional evidence, F1-only immutable artifact I/O and read-only inspection. See [F1 HIR Contract](design/hir/F1_HIR_CONTRACT.md).
+- **Non-goals** · Full opcode matrix, exporter changes, F0 acquisition/schema changes, legacy runtime or scripts, Microcode, Alias/SSE/Taint, broad CIR migration, analysis result storage and caching. The artifact/CFG evidence path is the requested endpoint.
+- **Current producer/consumers** · `emtaint/plugins/ida93_export_ctree.py` produced the source. `emtaint/project.py` resolves the F0 Project spec and can inform mapping checks. `emtaint/ir/canonical/model.py` defines shared effects, `wire.py` defines v1, and `emtaint/graph/program_graphs.py` supplies the shared CFG. `emtaint/artifacts.py` provides the F0 pinning and reload precedent. F1 uses Common CIR-Wire-v2, a bounded adapter capability and F1 manifest with explicit dispatch.
+- **Prerequisites** · F1-A verified matching source and ELF. F1-01 accepted the captured export as the limited IDA compatibility witness. F1-08 accepted the saved F0 baseline.
+
+### Contracts and architecture gates
+
+- **Baseline** · Satisfied for drafting. Follow ADR-001/002/003/004/008/010/011/012 and recheck baseline before implementation.
+- **Architecture/data/module freezes** · F1-02 through F1-07 approve common HIR/CIR, shared CFG and provenance, layer ownership, partial semantics and a separate F1 Manifest backed by shared generation operations. Changes to frozen contracts require an approved ACR.
+- **Implementation scope** · CTree adapter in `emtaint/frontends/ctree_source.py`, HIR in `emtaint/ir/hir/model.py`, and common CIR in `emtaint/ir/canonical/{wire_v2,hir_lowering}.py`. Core JSON and the shared CFG/identity packages own generic validation and node identity. Shared provenance is in `emtaint/analysis_debugging/representation_provenance.py`. F1 acquisition, evidence, manifest and CLI live in `emtaint/f1_*.py`. `emtaint/artifacts.py` shares generation operations with both versions. Tests and the F0 saved-generation regression live in `tests/f1/`.
+- **Compatibility and failure** · Pin source and Manifest externally, validate all joins and domains, keep v1 reader behavior, fail closed on corruption/incompatible version. Valid unknown semantics are represented with Opaque/Unknown and conservative effects. Changed source content or producer policy invalidates dependent identities. No cache service or cross-generation rebinding in scope.
+
+### Vertical path and acceptance
+
+1. **Identity and strict reader** · Load the checked-in fixture and actual ELF. Verify expected pin, digest, base, entry and exclusive end. Reproduce all 53 nodes, 52 edges and source counts. Reject wrong binary SHA, base/entry or fingerprint, unsupported schema, duplicate key, malformed role or dangling node/type/lvar, and budget excess before publication.
+2. **HIR serialization and reload** · Build and round-trip canonical bytes in an independent process without IDA, preserving six variables, 23 source type records or explicit traceable correspondences, and every source node. Check all for roles, two ifs, four calls, one byte dereference and return 0. A valid fixture derivative containing an opaque opcode retains original identity/order and produces an explicit reason. Derivatives are labeled as test inputs.
+3. **CIR and shared graph** · Lower reloaded HIR. Check init/header/body/latch/exit and loop-carried definition, true/false joins, lexical call sites with argument counts 2/5/1/2, byte Load before the guarded last call, and Return with 0. Use shared `ControlFlowGraph.successors` on reconstructed graph. Assert conservative call footprints, explicit unknown layout/cast where evidence is insufficient, and `PARTIAL` assessment. Do not infer an exact MemoryObject or full call summary from display text.
+4. **Evidence** · Query stored edges both ways from source dereference to CIR load and condition, and between CIR and independently verified instruction bytes. Verify no-EA, structural zero-effect coverage, explicit partial/ambiguous/unavailable statuses, and the retained helper/machine-call conflict. Test many-to-many edges without requiring one machine EA per HIR node.
+5. **System reload and invalidation** · Publish immutable F1 generation; detach-reload from a fixed Manifest hash with no IDA, angr or original ELF. Reject tampered source, HIR, CIR, CFG, provenance or path escapes. Test stable repeat encoding with the same inputs, stale comparison after policy/input change, and existing F0 reader compatibility using the saved generation. No new F0 acquisition.
+
+### Verification and handoff
+
+Use contract tests and the real fixture via the approved public F1 entrypoint. Record exact invocations, exit codes, pins, detected failures and omitted checks in the build log after implementation. A single-function result does not establish multi-function or cross-frontend equivalence. Main risks are bounded type metadata, CTree/ELF semantic differences, and a shared CFG projection that erases unknown control or synthetic identity. Stop if identity fails, a needed feature cannot be modeled conservatively, F0/frozen contracts would change without ACR, or the second targeted fix fails the same acceptance check. For the latter, record root cause before subsequent changes. Implementation/review and final approval each require their own evidence.
+
+## F1-VEX-CIR-V2-INTEROPERABILITY
+
+**Status `PLANNED`.** After F1, scope and approve a separately versioned adapter that reads the pinned F0 manifest and CIR-Wire-v1 through the existing reader, maps into Common CIR-Wire-v2, and preserves Origin, CFG, tagged address mappings and effect evidence. Unsupported or lossy mappings must explicitly remain partial. Keep the original F0 generation immutable. Verification requires a deterministic converted body, detached reload outside angr and v1 read compatibility. A verified adapter or equivalent interoperability path is a prerequisite for cross-frontend C1.
+
+## C1-STORE-LOAD-ALIAS-SSE — task specification for owner review after interoperability
+
+**Identity and gates.** Priority P0 for a possible false `NOALIAS` in the public alias wrapper, P1 for the bounded slice. Architecture directions ADR-001/002/008/010/011/012 remain Accepted; detailed CIR v2/identity/result contracts are not all frozen. R1-B proposes the minimal boundary in `design/analysis/ANALYSIS_CORE_CONTRACT.md`. C1 remains `PLANNED` until verified VEX/CIR v2 interoperability or an equivalent path provides common CIR input and the owner approves the C1 contract, result endpoint and module ownership. If implementation changes a frozen core boundary, prepare an ACR before code.
+
+**R1-C readiness clarification.** `research/modern/ARCHITECTURE_EXTENSIBILITY_REVIEW.md` recommends separate address `AliasKind` and byte `AccessOverlap/ByteCoverage`; C1 must not use a range-level `NO_ALIAS` as proof that pointers cannot alias. It requires a deterministic, versioned private v1 ID recipe bound to CIR body hash, producer/acquisition fingerprint, function/CFG revision, block, effect/role ordinals, with reload mapping and stale rejection. A bare ephemeral ID cannot be persisted as a durable DefinitionId. F0's verified artifact is the source input for the planned v1-to-v2 adapter. `frontends/saved_cir.py` with a validated report-CFG adapter remains an alternative if its receipt and identities can be proven. These are owner decisions, not a grant to edit core schema.
 
 **Two bounded gates, one C1 outcome.** C1a: correct Store/Load/Alias/overlap/SSE forward and backward queries, uncertainty and inspectable dependency evidence. C1b: deterministic versioned result identity, persistence/reload, dependency invalidation and read-only Inspector over a real CIR input. C1a alone is not complete C1. Full Hermes, IDE/CFL, Merge-Replay, selective object sensitivity, incremental SVFA, full points-to, iCall and taint remain outside C1.
 

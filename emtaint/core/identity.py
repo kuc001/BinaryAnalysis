@@ -4,6 +4,7 @@ from enum import Enum
 import hashlib
 import json
 import re
+from types import UnionType
 from typing import Self, TypeVar
 
 
@@ -28,11 +29,12 @@ def text(value: object, name: str, allow_empty: bool = False) -> None:
         raise ValueError(name + ' must not be empty')
 
 
-def typed(value: object, kind: type[T], name: str) -> None:
+def typed(value: object, kind: type[T] | UnionType, name: str) -> None:
     """Require ``value`` to satisfy a concrete runtime class contract."""
 
     if not isinstance(value, kind):
-        raise TypeError(name + ' must be ' + kind.__name__)
+        kind_name = str(kind) if isinstance(kind, UnionType) else kind.__name__
+        raise TypeError(name + ' must be ' + kind_name)
 
 
 def tuple_of(value: object, kind: type[T], name: str) -> None:
@@ -102,6 +104,37 @@ class BlockId(StableIdentity):
         integer(self.rva, 'block RVA')
         integer(self.index, 'block variant index')
         text(self.mode, 'instruction mode')
+
+
+@dataclass(frozen=True)
+class ProgramBlockId(StableIdentity):
+    """Shared block identity with an optional source anchor."""
+
+    function: FunctionId
+    local_id: str
+    origin_kind: str
+    anchor_domain: str | None = None
+    anchor_address: int | None = None
+
+    def __post_init__(self) -> None:
+        typed(self.function, FunctionId, 'block function')
+        text(self.local_id, 'block local identity')
+        if self.origin_kind not in {'machine', 'source', 'synthetic'}:
+            raise ValueError('Invalid block origin kind')
+        if self.anchor_address is None:
+            if self.anchor_domain is not None or self.origin_kind == 'machine':
+                raise ValueError('Invalid missing block anchor')
+        else:
+            integer(self.anchor_address, 'block anchor')
+            if self.anchor_domain not in {'RVA', 'IDA_EA', 'LINKED_VA', 'RUNTIME_VA', 'FILE_OFFSET'}:
+                raise ValueError('Invalid block anchor domain')
+        if self.origin_kind == 'machine' and self.anchor_domain != 'RVA':
+            raise ValueError('Machine block identity requires an RVA anchor')
+
+    @property
+    def synthetic(self) -> bool:
+        """Whether this identity was created by lowering."""
+        return self.origin_kind == 'synthetic'
 
 
 @dataclass(frozen=True)

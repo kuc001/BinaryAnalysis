@@ -2,8 +2,10 @@
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from emtaint.core.identity import FunctionId, BlockId, CallSiteId, text, typed
+from emtaint.core.identity import FunctionId, BlockId, ProgramBlockId, CallSiteId, text, typed
 from emtaint.core.program import Completeness
+
+BlockIdentity = BlockId | ProgramBlockId
 
 
 def frozen_of(values, kind, name):
@@ -25,14 +27,14 @@ class FlowKind(str, Enum):
 
 @dataclass(frozen=True)
 class FlowEdge:
-    source: BlockId
-    target: BlockId
+    source: BlockIdentity
+    target: BlockIdentity
     kind: FlowKind = FlowKind.FALL_THROUGH
     label: str = ''
 
     def __post_init__(self):
-        typed(self.source, BlockId, 'flow source')
-        typed(self.target, BlockId, 'flow target')
+        typed(self.source, BlockIdentity, 'flow source')
+        typed(self.target, BlockIdentity, 'flow target')
         typed(self.kind, FlowKind, 'flow kind')
         text(self.label, 'edge label', allow_empty=True)
         if self.source.function != self.target.function:
@@ -42,18 +44,18 @@ class FlowEdge:
 @dataclass(frozen=True)
 class ControlFlowGraph:
     function: FunctionId
-    nodes: frozenset[BlockId]
+    nodes: frozenset[BlockIdentity]
     edges: frozenset[FlowEdge] = frozenset()
-    entry: BlockId | None = None
-    exits: frozenset[BlockId] = frozenset()
+    entry: BlockIdentity | None = None
+    exits: frozenset[BlockIdentity] = frozenset()
     status: Completeness = Completeness.UNKNOWN
     reason: str = 'Control-flow edges not imported'
 
     def __post_init__(self):
         typed(self.function, FunctionId, 'CFG function')
-        frozen_of(self.nodes, BlockId, 'CFG nodes')
+        frozen_of(self.nodes, BlockIdentity, 'CFG nodes')
         frozen_of(self.edges, FlowEdge, 'CFG edges')
-        frozen_of(self.exits, BlockId, 'CFG exits')
+        frozen_of(self.exits, BlockIdentity, 'CFG exits')
         typed(self.status, Completeness, 'CFG completeness')
         text(self.reason, 'CFG reason', allow_empty=self.status == Completeness.COMPLETE)
         if any(node.function != self.function for node in self.nodes):
