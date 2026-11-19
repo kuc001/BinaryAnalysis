@@ -1,0 +1,1677 @@
+{
+  "decompilation": {
+    "maturity_name": "CMAT_FINAL",
+    "maturity_value": 8
+  },
+  "diagnostics": [],
+  "environment": {
+    "decompiler_ctree_maturity": "recorded_per_function_in_decompilation",
+    "hexrays_version": "9.3.0.251224",
+    "ida_image_base_ea": "0x8000",
+    "ida_version": "9.3",
+    "input_file_path": "D:\\Codes\\firmware-binaries\\rv130_v44\\httpd",
+    "input_file_sha256": "334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787",
+    "no_ea_marker": "null",
+    "processor": "ARM",
+    "python_version": "3.15.2",
+    "source_address_domain": "IDA_EA",
+    "type_encoding": "bounded_structural_hints_not_lossless"
+  },
+  "export_fingerprint": "86b88fbfda634919dab74241ce008ba00a424cf3d67c096e5cb5cf3ea015a0c8",
+  "export_fingerprint_algorithm": "sha256-canonical-ctree-semantic-v2",
+  "exported_at_utc": "2026-11-19T07:28:06.630548+00:00",
+  "function": {
+    "end_ea": "0x6339c",
+    "entry_ea": "0x632f8",
+    "name": "sub_632F8",
+    "root_node": "node:root"
+  },
+  "local_variables": [
+    {
+      "argument": true,
+      "definition_ea": "0x632f8",
+      "lvar_index": 0,
+      "name": "a1",
+      "size_bytes": 4,
+      "storage": {
+        "kind": "register",
+        "micro_register": 8
+      },
+      "type_id": "type:d6930df7c30074b40026194c10c8667512e160f4dfea7878ca6577df57f16ef1",
+      "user_name": false,
+      "user_type": false
+    },
+    {
+      "argument": false,
+      "definition_ea": "0x63315",
+      "lvar_index": 1,
+      "name": "",
+      "size_bytes": 4,
+      "storage": {
+        "kind": "register",
+        "micro_register": 44
+      },
+      "type_id": "type:d6930df7c30074b40026194c10c8667512e160f4dfea7878ca6577df57f16ef1",
+      "user_name": false,
+      "user_type": false
+    },
+    {
+      "argument": false,
+      "definition_ea": "0x6333d",
+      "lvar_index": 2,
+      "name": "i",
+      "size_bytes": 4,
+      "storage": {
+        "kind": "register",
+        "micro_register": 28
+      },
+      "type_id": "type:d6930df7c30074b40026194c10c8667512e160f4dfea7878ca6577df57f16ef1",
+      "user_name": false,
+      "user_type": false
+    },
+    {
+      "argument": false,
+      "definition_ea": "0x6335d",
+      "lvar_index": 3,
+      "name": "v3",
+      "size_bytes": 4,
+      "storage": {
+        "kind": "register",
+        "micro_register": 8
+      },
+      "type_id": "type:3bbcf2275d0e886f7f0347a810c9ca9e06126b6e6b6f0d686141b3394581b382",
+      "user_name": false,
+      "user_type": false
+    },
+    {
+      "argument": false,
+      "definition_ea": "0x63381",
+      "lvar_index": 4,
+      "name": "",
+      "size_bytes": 4,
+      "storage": {
+        "kind": "register",
+        "micro_register": 8
+      },
+      "type_id": "type:d6930df7c30074b40026194c10c8667512e160f4dfea7878ca6577df57f16ef1",
+      "user_name": false,
+      "user_type": false
+    },
+    {
+      "argument": false,
+      "definition_ea": "0x63320",
+      "lvar_index": 5,
+      "name": "dest",
+      "size_bytes": 14,
+      "storage": {
+        "ida_frame_offset": 10,
+        "kind": "stack",
+        "raw_stack_offset": 10
+      },
+      "type_id": "type:af7d7050df60d81aaa95d311c897f5149e682f89430ae497735f15f27b4e3bda",
+      "user_name": true,
+      "user_type": false
+    }
+  ],
+  "nodes": {
+    "node:root": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[0]",
+          "index": 0,
+          "role": "statement"
+        },
+        {
+          "id": "node:root/statement[1]",
+          "index": 1,
+          "role": "statement"
+        },
+        {
+          "id": "node:root/statement[2]",
+          "index": 2,
+          "role": "statement"
+        }
+      ],
+      "ea": "0x63320",
+      "id": "node:root",
+      "label": -1,
+      "opcode": "cit_block",
+      "opcode_value": 71,
+      "path": "root",
+      "status": "represented"
+    },
+    "node:root/statement[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[0]/expression[0]",
+          "index": 0,
+          "role": "expression"
+        }
+      ],
+      "ea": "0x63320",
+      "id": "node:root/statement[0]",
+      "label": -1,
+      "opcode": "cit_expr",
+      "opcode_value": 72,
+      "path": "root/statement[0]",
+      "status": "represented"
+    },
+    "node:root/statement[0]/expression[0]": {
+      "attributes": {
+        "call_target_role": "x",
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[0]/expression[0]/callee[0]",
+          "index": 0,
+          "role": "callee"
+        },
+        {
+          "id": "node:root/statement[0]/expression[0]/argument[0]",
+          "index": 0,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[0]/expression[0]/argument[1]",
+          "index": 1,
+          "role": "argument"
+        }
+      ],
+      "ea": "0x63320",
+      "id": "node:root/statement[0]/expression[0]",
+      "label": -1,
+      "opcode": "cot_call",
+      "opcode_value": 57,
+      "path": "root/statement[0]/expression[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[0]/expression[0]/argument[0]": {
+      "attributes": {
+        "exflags": 0,
+        "lvar_index": 5
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x6331c",
+      "id": "node:root/statement[0]/expression[0]/argument[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[0]/expression[0]/argument[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[0]/expression[0]/argument[1]": {
+      "attributes": {
+        "exflags": 1,
+        "string": "ddns_enable_X",
+        "string_length_ch": 13
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[0]/expression[0]/argument[1]",
+      "label": -1,
+      "opcode": "cot_str",
+      "opcode_value": 63,
+      "path": "root/statement[0]/expression[0]/argument[1]",
+      "status": "represented",
+      "type_id": "type:7e3ef1e6a8fe461e59ea11e6ad2fa09505f4eff2e97b4ef4b352c32639ca1842"
+    },
+    "node:root/statement[0]/expression[0]/callee[0]": {
+      "attributes": {
+        "exflags": 1,
+        "helper_name": "strcpy"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[0]/expression[0]/callee[0]",
+      "label": -1,
+      "opcode": "cot_helper",
+      "opcode_value": 68,
+      "path": "root/statement[0]/expression[0]/callee[0]",
+      "status": "represented",
+      "type_id": "type:e15c22c14b2ba6b4288cd211388e6b7f3be523c80074387e309326b3fff14bda"
+    },
+    "node:root/statement[1]": {
+      "attributes": {
+        "execution_order": [
+          "init",
+          "condition",
+          "body",
+          "step"
+        ]
+      },
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/init[0]",
+          "index": 0,
+          "role": "init"
+        },
+        {
+          "id": "node:root/statement[1]/condition[0]",
+          "index": 0,
+          "role": "condition"
+        },
+        {
+          "id": "node:root/statement[1]/step[0]",
+          "index": 0,
+          "role": "step"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]",
+          "index": 0,
+          "role": "body"
+        }
+      ],
+      "ea": "0x6333c",
+      "id": "node:root/statement[1]",
+      "label": -1,
+      "opcode": "cit_for",
+      "opcode_value": 74,
+      "path": "root/statement[1]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]",
+          "index": 0,
+          "role": "statement"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]",
+          "index": 1,
+          "role": "statement"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]",
+          "index": 2,
+          "role": "statement"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]",
+          "index": 3,
+          "role": "statement"
+        }
+      ],
+      "ea": "0x63354",
+      "id": "node:root/statement[1]/body[0]",
+      "label": -1,
+      "opcode": "cit_block",
+      "opcode_value": 71,
+      "path": "root/statement[1]/body[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]",
+          "index": 0,
+          "role": "expression"
+        }
+      ],
+      "ea": "0x63354",
+      "id": "node:root/statement[1]/body[0]/statement[0]",
+      "label": -1,
+      "opcode": "cit_expr",
+      "opcode_value": 72,
+      "path": "root/statement[1]/body[0]/statement[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]": {
+      "attributes": {
+        "call_target_role": "x",
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/callee[0]",
+          "index": 0,
+          "role": "callee"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[0]",
+          "index": 0,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[1]",
+          "index": 1,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[2]",
+          "index": 2,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[3]",
+          "index": 3,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[4]",
+          "index": 4,
+          "role": "argument"
+        }
+      ],
+      "ea": "0x63354",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]",
+      "label": -1,
+      "opcode": "cot_call",
+      "opcode_value": 57,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]",
+      "status": "represented",
+      "type_id": "type:ef63a4ff4a2afee95159c82e1e8be15824c6ce1c32e8790365380618d4151aa5"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[0]": {
+      "attributes": {
+        "exflags": 0,
+        "lvar_index": 5
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x6334c",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/argument[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[1]": {
+      "attributes": {
+        "exflags": 1,
+        "numeric_value_hex": "0xe"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63344",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[1]",
+      "label": -1,
+      "opcode": "cot_num",
+      "opcode_value": 61,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/argument[1]",
+      "status": "represented",
+      "type_id": "type:61c08a73277a22c1648ea8f9526388925ea748c744c79acb547a2194bc95d7e7"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[2]": {
+      "attributes": {
+        "exflags": 16,
+        "object_ea": "0x82eac"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63348",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[2]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/argument[2]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[3]": {
+      "attributes": {
+        "exflags": 16,
+        "object_ea": "0x92d94"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63340",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[3]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/argument[3]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[4]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 2,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63350",
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/argument[4]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/argument[4]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/body[0]/statement[0]/expression[0]/callee[0]": {
+      "attributes": {
+        "exflags": 1,
+        "object_ea": "0x10390"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[0]/expression[0]/callee[0]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[0]/expression[0]/callee[0]",
+      "status": "represented",
+      "type_id": "type:f268a8705a0510fb9742c01b6440da3b7c0039086fc4e135fbe6d7e29c3237d9"
+    },
+    "node:root/statement[1]/body[0]/statement[1]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]",
+          "index": 0,
+          "role": "expression"
+        }
+      ],
+      "ea": "0x6335c",
+      "id": "node:root/statement[1]/body[0]/statement[1]",
+      "label": -1,
+      "opcode": "cit_expr",
+      "opcode_value": 72,
+      "path": "root/statement[1]/body[0]/statement[1]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]",
+          "index": 0,
+          "role": "y"
+        }
+      ],
+      "ea": "0x6335c",
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]",
+      "label": -1,
+      "opcode": "cot_asg",
+      "opcode_value": 2,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 3,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]": {
+      "attributes": {
+        "exflags": 0
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        }
+      ],
+      "ea": "0x6335c",
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]",
+      "label": -1,
+      "opcode": "cot_cast",
+      "opcode_value": 48,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]/y[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]": {
+      "attributes": {
+        "call_target_role": "x",
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/callee[0]",
+          "index": 0,
+          "role": "callee"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/argument[0]",
+          "index": 0,
+          "role": "argument"
+        }
+      ],
+      "ea": "0x6335c",
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_call",
+      "opcode_value": 57,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/argument[0]": {
+      "attributes": {
+        "exflags": 0,
+        "lvar_index": 5
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63358",
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/argument[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/argument[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/callee[0]": {
+      "attributes": {
+        "exflags": 1,
+        "object_ea": "0x1d170"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/callee[0]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[1]/expression[0]/y[0]/x[0]/callee[0]",
+      "status": "represented",
+      "type_id": "type:6436b418b928923723a62d78d7bb24999641b8acc65c9f2f80e7865f1417a45a"
+    },
+    "node:root/statement[1]/body[0]/statement[2]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/condition[0]",
+          "index": 0,
+          "role": "condition"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]",
+          "index": 0,
+          "role": "then"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]",
+      "label": -1,
+      "opcode": "cit_if",
+      "opcode_value": 73,
+      "path": "root/statement[1]/body[0]/statement[2]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/condition[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/condition[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/condition[0]",
+      "label": -1,
+      "opcode": "cot_lnot",
+      "opcode_value": 49,
+      "path": "root/statement[1]/body[0]/statement[2]/condition[0]",
+      "status": "represented",
+      "type_id": "type:c07fcc34e9b9df2451ec0e04f7c443aa142702e66f54470a4d9fba99912916d8"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/condition[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 3,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/condition[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[2]/condition[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]",
+          "index": 0,
+          "role": "statement"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]",
+      "label": -1,
+      "opcode": "cit_block",
+      "opcode_value": 71,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]",
+          "index": 0,
+          "role": "expression"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]",
+      "label": -1,
+      "opcode": "cit_expr",
+      "opcode_value": 72,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]",
+          "index": 0,
+          "role": "y"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]",
+      "label": -1,
+      "opcode": "cot_asg",
+      "opcode_value": 2,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 3,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        }
+      ],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]",
+      "label": -1,
+      "opcode": "cot_ref",
+      "opcode_value": 52,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/y[0]",
+          "index": 0,
+          "role": "y"
+        }
+      ],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_idx",
+      "opcode_value": 58,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/x[0]": {
+      "attributes": {
+        "exflags": 16,
+        "object_ea": "0x8cf60"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:d4f64b8293eb9bad944ed7c4840199621bdf472d8fef1c5947f4c275f771aebe"
+    },
+    "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/y[0]": {
+      "attributes": {
+        "exflags": 0,
+        "numeric_value_hex": "0x2c"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63364",
+      "id": "node:root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/y[0]",
+      "label": -1,
+      "opcode": "cot_num",
+      "opcode_value": 61,
+      "path": "root/statement[1]/body[0]/statement[2]/then[0]/statement[0]/expression[0]/y[0]/x[0]/y[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/body[0]/statement[3]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/condition[0]",
+          "index": 0,
+          "role": "condition"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]",
+          "index": 0,
+          "role": "then"
+        }
+      ],
+      "ea": "0x63368",
+      "id": "node:root/statement[1]/body[0]/statement[3]",
+      "label": -1,
+      "opcode": "cit_if",
+      "opcode_value": 73,
+      "path": "root/statement[1]/body[0]/statement[3]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/condition[0]": {
+      "attributes": {
+        "exflags": 1,
+        "pointer_access_size_bytes": 1,
+        "reference_width_bytes": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/condition[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        }
+      ],
+      "ea": "0x63368",
+      "id": "node:root/statement[1]/body[0]/statement[3]/condition[0]",
+      "label": -1,
+      "opcode": "cot_ptr",
+      "opcode_value": 51,
+      "path": "root/statement[1]/body[0]/statement[3]/condition[0]",
+      "status": "represented",
+      "type_id": "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/condition[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 3,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[3]/condition[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[3]/condition[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]",
+          "index": 0,
+          "role": "statement"
+        }
+      ],
+      "ea": "0x63394",
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]",
+      "label": -1,
+      "opcode": "cit_block",
+      "opcode_value": 71,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]",
+          "index": 0,
+          "role": "expression"
+        }
+      ],
+      "ea": "0x63394",
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]",
+      "label": -1,
+      "opcode": "cit_expr",
+      "opcode_value": 72,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]/statement[0]",
+      "status": "represented"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]": {
+      "attributes": {
+        "call_target_role": "x",
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/callee[0]",
+          "index": 0,
+          "role": "callee"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[0]",
+          "index": 0,
+          "role": "argument"
+        },
+        {
+          "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[1]",
+          "index": 1,
+          "role": "argument"
+        }
+      ],
+      "ea": "0x63394",
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]",
+      "label": -1,
+      "opcode": "cot_call",
+      "opcode_value": 57,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]",
+      "status": "represented",
+      "type_id": "type:ef63a4ff4a2afee95159c82e1e8be15824c6ce1c32e8790365380618d4151aa5"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 0,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63390",
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[1]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 2,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x6338c",
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[1]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/argument[1]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/callee[0]": {
+      "attributes": {
+        "exflags": 1,
+        "object_ea": "0x62b30"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/callee[0]",
+      "label": -1,
+      "opcode": "cot_obj",
+      "opcode_value": 64,
+      "path": "root/statement[1]/body[0]/statement[3]/then[0]/statement[0]/expression[0]/callee[0]",
+      "status": "represented",
+      "type_id": "type:0561f57c9f1349d4ccec0450eb1f1f55c13c24675aedb8aecce62158261f7ae3"
+    },
+    "node:root/statement[1]/condition[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/condition[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        },
+        {
+          "id": "node:root/statement[1]/condition[0]/y[0]",
+          "index": 0,
+          "role": "y"
+        }
+      ],
+      "ea": "0x6337c",
+      "id": "node:root/statement[1]/condition[0]",
+      "label": -1,
+      "opcode": "cot_ne",
+      "opcode_value": 23,
+      "path": "root/statement[1]/condition[0]",
+      "status": "represented",
+      "type_id": "type:c07fcc34e9b9df2451ec0e04f7c443aa142702e66f54470a4d9fba99912916d8"
+    },
+    "node:root/statement[1]/condition[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 2,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x6337c",
+      "id": "node:root/statement[1]/condition[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/condition[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/condition[0]/y[0]": {
+      "attributes": {
+        "exflags": 1,
+        "numeric_value_hex": "0x5"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63378",
+      "id": "node:root/statement[1]/condition[0]/y[0]",
+      "label": -1,
+      "opcode": "cot_num",
+      "opcode_value": 61,
+      "path": "root/statement[1]/condition[0]/y[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/init[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/init[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        },
+        {
+          "id": "node:root/statement[1]/init[0]/y[0]",
+          "index": 0,
+          "role": "y"
+        }
+      ],
+      "ea": "0x6333c",
+      "id": "node:root/statement[1]/init[0]",
+      "label": -1,
+      "opcode": "cot_asg",
+      "opcode_value": 2,
+      "path": "root/statement[1]/init[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/init[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 2,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/init[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/init[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/init[0]/y[0]": {
+      "attributes": {
+        "exflags": 1,
+        "numeric_value_hex": "0x1"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x6333c",
+      "id": "node:root/statement[1]/init[0]/y[0]",
+      "label": -1,
+      "opcode": "cot_num",
+      "opcode_value": 61,
+      "path": "root/statement[1]/init[0]/y[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/step[0]": {
+      "attributes": {
+        "exflags": 1
+      },
+      "category": "expression",
+      "children": [
+        {
+          "id": "node:root/statement[1]/step[0]/x[0]",
+          "index": 0,
+          "role": "x"
+        }
+      ],
+      "ea": "0x63374",
+      "id": "node:root/statement[1]/step[0]",
+      "label": -1,
+      "opcode": "cot_preinc",
+      "opcode_value": 55,
+      "path": "root/statement[1]/step[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[1]/step[0]/x[0]": {
+      "attributes": {
+        "exflags": 1,
+        "lvar_index": 2,
+        "reference_width_bytes": 4
+      },
+      "category": "expression",
+      "children": [],
+      "ea": null,
+      "id": "node:root/statement[1]/step[0]/x[0]",
+      "label": -1,
+      "opcode": "cot_var",
+      "opcode_value": 65,
+      "path": "root/statement[1]/step[0]/x[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    },
+    "node:root/statement[2]": {
+      "attributes": {},
+      "category": "statement",
+      "children": [
+        {
+          "id": "node:root/statement[2]/value[0]",
+          "index": 0,
+          "role": "value"
+        }
+      ],
+      "ea": "0x63388",
+      "id": "node:root/statement[2]",
+      "label": -1,
+      "opcode": "cit_return",
+      "opcode_value": 80,
+      "path": "root/statement[2]",
+      "status": "represented"
+    },
+    "node:root/statement[2]/value[0]": {
+      "attributes": {
+        "exflags": 1,
+        "numeric_value_hex": "0x0"
+      },
+      "category": "expression",
+      "children": [],
+      "ea": "0x63380",
+      "id": "node:root/statement[2]/value[0]",
+      "label": -1,
+      "opcode": "cot_num",
+      "opcode_value": 61,
+      "path": "root/statement[2]/value[0]",
+      "status": "represented",
+      "type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+    }
+  },
+  "op_histogram": {
+    "cit_block": 4,
+    "cit_expr": 5,
+    "cit_for": 1,
+    "cit_if": 2,
+    "cit_return": 1,
+    "cot_asg": 3,
+    "cot_call": 4,
+    "cot_cast": 1,
+    "cot_helper": 1,
+    "cot_idx": 1,
+    "cot_lnot": 1,
+    "cot_ne": 1,
+    "cot_num": 5,
+    "cot_obj": 6,
+    "cot_preinc": 1,
+    "cot_ptr": 1,
+    "cot_ref": 1,
+    "cot_str": 1,
+    "cot_var": 13
+  },
+  "schema_version": "IDA-CTree-Source-F1-draft-v2",
+  "scope": "CTree source representation only; not HIR or CIR; unverified high-level type semantics",
+  "types": {
+    "type:0561f57c9f1349d4ccec0450eb1f1f55c13c24675aedb8aecce62158261f7ae3": {
+      "display": "int (__fastcall *)(int, int)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": true,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:30792304728c91f5476cb944f4f898801593ab75ad5fbbc2c24f409ee1b530e4",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:30792304728c91f5476cb944f4f898801593ab75ad5fbbc2c24f409ee1b530e4": {
+      "argument_type_ids": [
+        "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912",
+        "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912"
+      ],
+      "display": "int __fastcall(int, int)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": true,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "return_type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912",
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded",
+      "variadic": false
+    },
+    "type:3bbcf2275d0e886f7f0347a810c9ca9e06126b6e6b6f0d686141b3394581b382": {
+      "display": "char *",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:d001c1cc60a98a8c64e51dbde6713fff0711926aec44b758c0c603bfb5928870",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "decompiler_or_user_annotation",
+      "structure_status": "bounded"
+    },
+    "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e": {
+      "display": "char *",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:56035548cba783abf6c6ca7168b8a56d624b4efd31e201ecb4ced9838e879940": {
+      "display": "const char",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 1,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:5b37b6a129e562b02c247b28709ef3a5ce5b7ce4277f08debfc315937b2ca696": {
+      "argument_type_ids": [
+        "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e",
+        "type:881ed4297bc3e470fe75c5d767ee11ec1c7baa6d0e51d8c8ef1c2ed014e299d4",
+        "type:fc7d468b3aa307ef9f3fb395bc2560e0bdd6fdfbe3ff27caf98df9940062174c"
+      ],
+      "display": "int(char *s, size_t maxlen, const char *format, ...)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": true,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "return_type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912",
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded",
+      "variadic": true
+    },
+    "type:5e9cb45939f8c5230b8200ab433b5b90dafca5a58046f9ea7354238704e14882": {
+      "argument_type_ids": [
+        "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e"
+      ],
+      "display": "int __fastcall(char *)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": true,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "return_type_id": "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912",
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded",
+      "variadic": false
+    },
+    "type:61c08a73277a22c1648ea8f9526388925ea748c744c79acb547a2194bc95d7e7": {
+      "display": "unsigned int",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:6436b418b928923723a62d78d7bb24999641b8acc65c9f2f80e7865f1417a45a": {
+      "display": "int (__fastcall *)(char *)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": true,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:5e9cb45939f8c5230b8200ab433b5b90dafca5a58046f9ea7354238704e14882",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:7183e9801fbf3adbb46180ee5a5fb5629dc1bc021cbf0c2b02dc48d8140d2cda": {
+      "argument_type_ids": [
+        "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e",
+        "type:fc7d468b3aa307ef9f3fb395bc2560e0bdd6fdfbe3ff27caf98df9940062174c"
+      ],
+      "display": "char *__fastcall(char *dest, const char *)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": true,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "return_type_id": "type:4bb4557ee5aa4a206d07c39edd0cfdfb673a4720c507ce39972640d36eff234e",
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded",
+      "variadic": false
+    },
+    "type:7e3ef1e6a8fe461e59ea11e6ad2fa09505f4eff2e97b4ef4b352c32639ca1842": {
+      "array_count": 14,
+      "display": "char[14]",
+      "element_type_id": "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e",
+      "is_array": true,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 14,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:881ed4297bc3e470fe75c5d767ee11ec1c7baa6d0e51d8c8ef1c2ed014e299d4": {
+      "display": "size_t",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:af7d7050df60d81aaa95d311c897f5149e682f89430ae497735f15f27b4e3bda": {
+      "array_count": 14,
+      "display": "char[14]",
+      "element_type_id": "type:d001c1cc60a98a8c64e51dbde6713fff0711926aec44b758c0c603bfb5928870",
+      "is_array": true,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 14,
+      "source": "decompiler_or_user_annotation",
+      "structure_status": "bounded"
+    },
+    "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e": {
+      "display": "char",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 1,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:c07fcc34e9b9df2451ec0e04f7c443aa142702e66f54470a4d9fba99912916d8": {
+      "display": "bool",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 1,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:d001c1cc60a98a8c64e51dbde6713fff0711926aec44b758c0c603bfb5928870": {
+      "display": "char",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 1,
+      "source": "decompiler_or_user_annotation",
+      "structure_status": "descriptive"
+    },
+    "type:d4f64b8293eb9bad944ed7c4840199621bdf472d8fef1c5947f4c275f771aebe": {
+      "array_count": 45,
+      "display": "char[45]",
+      "element_type_id": "type:bf6e7199ff0840b506cb282973f4b5f5e419d1161ad28815fddecd1350ccd63e",
+      "is_array": true,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 45,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:d6930df7c30074b40026194c10c8667512e160f4dfea7878ca6577df57f16ef1": {
+      "display": "int",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "decompiler_or_user_annotation",
+      "structure_status": "descriptive"
+    },
+    "type:e15c22c14b2ba6b4288cd211388e6b7f3be523c80074387e309326b3fff14bda": {
+      "display": "char *(__fastcall *)(char *dest, const char *)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": true,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:7183e9801fbf3adbb46180ee5a5fb5629dc1bc021cbf0c2b02dc48d8140d2cda",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:ed8a5bb698d4c690c35ac7a6d5bc2d444ac062e37428424227e899acf4693912": {
+      "display": "int",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": true,
+      "is_ptr": false,
+      "is_signed": true,
+      "is_udt": false,
+      "is_void": false,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:ef63a4ff4a2afee95159c82e1e8be15824c6ce1c32e8790365380618d4151aa5": {
+      "display": "void",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": false,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": true,
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "descriptive"
+    },
+    "type:f268a8705a0510fb9742c01b6440da3b7c0039086fc4e135fbe6d7e29c3237d9": {
+      "display": "int (*)(char *s, size_t maxlen, const char *format, ...)",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": true,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:5b37b6a129e562b02c247b28709ef3a5ce5b7ce4277f08debfc315937b2ca696",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    },
+    "type:fc7d468b3aa307ef9f3fb395bc2560e0bdd6fdfbe3ff27caf98df9940062174c": {
+      "display": "const char *",
+      "is_array": false,
+      "is_enum": false,
+      "is_float": false,
+      "is_func": false,
+      "is_funcptr": false,
+      "is_integral": false,
+      "is_ptr": true,
+      "is_signed": false,
+      "is_udt": false,
+      "is_void": false,
+      "pointed_type_id": "type:56035548cba783abf6c6ca7168b8a56d624b4efd31e201ecb4ced9838e879940",
+      "representation": "bounded_structural_hints_not_lossless_tinfo",
+      "size_bytes": 4,
+      "source": "hexrays_inferred_or_user",
+      "structure_status": "bounded"
+    }
+  },
+  "verification": {
+    "diagnostic_count": 0,
+    "ida_visitor": {
+      "expressions": 40,
+      "statements": 13,
+      "status": 0,
+      "total": 53
+    },
+    "opaque_node_count": 0,
+    "partial_type_count": 0,
+    "structural": {
+      "expressions": 40,
+      "statements": 13,
+      "total": 53
+    },
+    "structural_status": "covered",
+    "type_serialization_status": "bounded_structural_hints_not_lossless"
+  }
+}
