@@ -140,6 +140,10 @@ Builder `build_hir(ValidatedCTree) -> HIRFunction` 按已观察的 19 个 opcode
 
 ## 6. Provenance 与传播
 
+F1 复查将控制结构、CIR 语义和机器映射分开验证。主样例的 12 块和 14 边构成 `COMPLETE` 的结构化 CFG。调用 footprint、布局和转换的不确定性仍使 CIR 为 `PARTIAL`，机器映射按节点记录。UnknownExit 和可能改变控制的 Opaque 都使结构 CFG 为 `INCOMPLETE`。早期产物在全部节点与边吻合时可保留其历史的悲观状态字段，读取时依照现有 CIR 重算结构状态。Wire 与 Manifest 版本保持原样。
+
+F1 的 source → HIR 采用一个源身份绑定一个对应 HIR 节点，通用 provenance 图仍支持多对多。读取验证端点作用域、关系方向、lowering 覆盖、可选机器证据和冲突引用。允许的方向为 source → HIR，HIR → block/definition/use 的派生，HIR → effect/definition/use 的 lowering，以及 effect → instruction 的对应。
+
 共享 `Representation-Provenance-v1` 保存 source、HIR、block、effect、definition、use 和 instruction 端点。表头绑定 FunctionId 和各端点类别的 artifact digest。边保存关系、方法、置信分类、mapping status 和理由。读端从已有边构建双向索引。coverage 分别记录 lowering 和机器映射状态。ARM 字节、地址转换和经审核的固定样本对应存入独立证据文件。
 
 | 情况 | 记录 |

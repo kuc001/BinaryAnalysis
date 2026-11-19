@@ -316,7 +316,8 @@ def _safe_file(generation: Path, relative: object) -> Path:
     return candidate
 
 
-def _read_checked(generation: Path, relative: object, size: object, sha256: object) -> bytes:
+def read_generation_artifact(generation: Path, relative: object, size: object, sha256: object) -> bytes:
+    """Read a generation-relative artifact and verify its bound size and digest."""
     if type(size) is not int or not 0 <= size <= MAX_ARTIFACT_BYTES:
         raise ArtifactError(IntegrityStatus.CORRUPT, "Invalid artifact size")
     if type(sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
@@ -336,8 +337,9 @@ def _read_checked(generation: Path, relative: object, size: object, sha256: obje
     return data
 
 
-def _load_manifest(generation: Path, pinned_sha256: str, *, staging: bool,
-                   schema: str = MANIFEST_SCHEMA) -> dict[str, object]:
+def read_generation_manifest(generation: Path, pinned_sha256: str, *, staging: bool,
+                             schema: str = MANIFEST_SCHEMA) -> dict[str, object]:
+    """Validate the outer manifest pin and schema before codec-specific checks."""
     if not staging and not generation.name.startswith("generation-"):
         raise ArtifactError(IntegrityStatus.MISSING, "Only published generations can be read")
     if _is_link(generation):
@@ -389,7 +391,7 @@ def _checked_artifacts(generation: Path, manifest: dict[str, object]) -> dict[st
         if relative in paths:
             raise ArtifactError(IntegrityStatus.CORRUPT, "Duplicate artifact path")
         paths.add(relative)
-        payloads[kind] = _read_checked(generation, relative, row["size"], row["sha256"])
+        payloads[kind] = read_generation_artifact(generation, relative, row["size"], row["sha256"])
     return payloads
 
 
@@ -537,7 +539,7 @@ def _validated_generation(
     *,
     staging: bool = False,
 ) -> FunctionInputs:
-    manifest = _load_manifest(generation, pinned_sha256, staging=staging)
+    manifest = read_generation_manifest(generation, pinned_sha256, staging=staging)
     expected_fields = {"schema_version", "generation", "binary_sha256", "function",
                        "address_mapping", "producer", "versions", "assessment",
                        "semantic_completeness", "diagnostics", "artifacts"}
@@ -667,7 +669,7 @@ def load(
             raise ArtifactError(
                 IntegrityStatus.STALE, "Current Project cannot be verified: " + str(error),
             ) from error
-        manifest = _load_manifest(reference.generation, reference.manifest_sha256, staging=False)
+        manifest = read_generation_manifest(reference.generation, reference.manifest_sha256, staging=False)
         mapping = manifest["address_mapping"]
         if (current.binary_id != function.binary or current.function_rva != function.rva
                 or current.selected_va != mapping["selected_va"]
@@ -706,7 +708,7 @@ def publish(
     payloads = _payloads(inputs, module, cfg, provenance, report)
     generation_name = "generation-" + uuid4().hex
     manifest = _manifest(inputs, module, cfg, report, tool_versions, payloads, generation_name)
-    generation, digest = _publish_generation(
+    generation, digest = publish_generation(
         root.path, generation_name, manifest, payloads,
         lambda staging, pin: _validated_generation(staging, pin, module.functions[0].function_id, staging=True),
         staging_prefix=".staging-f0-",
@@ -714,7 +716,7 @@ def publish(
     return AcquisitionRef(generation, digest)
 
 
-def _publish_generation(
+def publish_generation(
     root: Path,
     generation_name: str,
     manifest: dict,

@@ -1,6 +1,7 @@
 """Frontend-independent HIR wire records for structured source semantics."""
 from dataclasses import asdict, dataclass
 from hashlib import sha256
+import re
 from typing import Any
 
 from emtaint.core.identity import BinaryId, FunctionId
@@ -15,11 +16,16 @@ TYPE_SOURCES = frozenset({
     "DWARF", "COMPILER_EVIDENCE", "UNKNOWN_SOURCE",
 })
 TYPE_KINDS = frozenset({"Primitive", "Pointer", "Array", "Function", "Struct", "Union", "Unknown"})
-KINDS = frozenset({
-    "Block", "ExpressionStatement", "Assign", "If", "For", "Return", "VariableRef", "Constant",
-    "HelperRef", "AddressedObjectRef", "Call", "Cast", "AddressOf", "Dereference", "ArrayAccess",
-    "Binary", "Unary", "Opaque",
-})
+CHILD_LAYOUTS = {
+    "Block": r"(statement )*", "ExpressionStatement": "expression ",
+    "Assign": "x y ", "If": r"condition then (else )?", "For": "init condition step body ",
+    "Return": r"(value )?", "VariableRef": "", "Constant": "", "HelperRef": "",
+    "AddressedObjectRef": "", "Call": r"callee (argument )*", "Cast": "x ",
+    "AddressOf": "x ", "Dereference": "x ", "ArrayAccess": "x y ", "Binary": "x y ", "Unary": "x ",
+}
+STATEMENT_KINDS = {"Block", "ExpressionStatement", "If", "For", "Return"}
+STATEMENT_ROLES = {"statement", "then", "else", "body"}
+KINDS = frozenset(CHILD_LAYOUTS) | {"Opaque"}
 
 
 def validate_tree(nodes: dict, root: str) -> dict[str, int]:
@@ -75,6 +81,8 @@ def _validate(hir: HIRFunction) -> None:
     if type(hir.normalizer) is not str or not hir.normalizer or hir.assessment not in {"complete", "partial"}:
         raise ValueError("Invalid HIR producer or assessment")
     validate_tree(table(hir.nodes, MAX_NODES), hir.entry)
+    if hir.nodes[hir.entry].get("category") != "statement":
+        raise ValueError("HIR root must be a statement")
     table(hir.variables, MAX_NODES)
     table(hir.types, MAX_TYPES)
     seen_sources = set()
@@ -89,6 +97,19 @@ def _validate(hir: HIRFunction) -> None:
         seen_sources.add(source_id)
         if node["kind"] not in KINDS or node["coverage"] not in {"represented", "partial", "unsupported"}:
             raise ValueError("Invalid HIR node kind or coverage")
+        kind = node["kind"]
+        if kind != "Opaque":
+            if (category == "statement") != (kind in STATEMENT_KINDS):
+                raise ValueError("HIR category disagrees with node kind")
+            if any(child["role"].split() != [child["role"]] for child in node["children"]):
+                raise ValueError("Invalid HIR role token")
+            layout = "".join(child["role"] + " " for child in node["children"])
+            if not re.fullmatch(CHILD_LAYOUTS[kind], layout):
+                raise ValueError("Invalid mandatory HIR child roles or order")
+            for child in node["children"]:
+                expected = "statement" if child["role"] in STATEMENT_ROLES else "expression"
+                if hir.nodes[child["id"]].get("category") != expected:
+                    raise ValueError("Invalid HIR child category")
         if node["address"] is not None:
             fields(node["address"], {"domain", "value"})
             if node["address"]["domain"] not in {"IDA_EA", "LINKED_VA", "RVA", "FILE_OFFSET", "RUNTIME_VA"}:
@@ -100,8 +121,13 @@ def _validate(hir: HIRFunction) -> None:
             raise ValueError("Invalid HIR payload or evaluation")
         if node["value_role"] not in {"value", "lvalue", "address_only", "statement"}:
             raise ValueError("Invalid HIR value role")
+        if (node["value_role"] == "statement") != (category == "statement"):
+            raise ValueError("HIR value role disagrees with category")
         if node["kind"] == "VariableRef" and node["payload"].get("variable") not in hir.variables:
             raise ValueError("Dangling HIR variable")
+        if node["kind"] == "For" and node["evaluation"].get("roles") != [
+                "init", "condition", "body", "step", "condition"]:
+            raise ValueError("Invalid HIR for-loop execution order")
         if node["kind"] == "Call":
             evaluation = node["evaluation"]
             fields(evaluation, {"order", "result_used", "guards"})
@@ -111,14 +137,25 @@ def _validate(hir: HIRFunction) -> None:
                 raise ValueError("Invalid call evaluation")
             for guard in evaluation["guards"]:
                 fields(guard, {"node", "polarity"})
-                if guard["node"] not in hir.nodes or type(guard["polarity"]) is not bool:
+                if (hir.nodes.get(guard["node"], {}).get("category") != "expression"
+                        or type(guard["polarity"]) is not bool):
                     raise ValueError("Invalid call guard reference")
         if node["kind"] == "Opaque":
-            fields(node["payload"], {"raw", "opcode", "opcode_value", "reason", "subtree", "footprint"})
-            if not node["payload"]["reason"] or node["payload"]["subtree"] not in {
+            payload = node["payload"]
+            fields(payload, {"raw", "opcode", "opcode_value", "reason", "subtree", "footprint"})
+            fields(payload["footprint"], {"read", "write", "control"})
+            if (type(payload["raw"]) is not dict or type(payload["opcode"]) is not str or not payload["opcode"]
+                    or type(payload["opcode_value"]) is not int or type(payload["reason"]) is not str
+                    or not payload["reason"] or any(type(flag) is not bool for flag in payload["footprint"].values())
+                    or not any(payload["footprint"].values()) or payload["subtree"] not in {
                 "KNOWN_CHILDREN", "UNKNOWN_CHILDREN", "TRUNCATED",
-            } or node["coverage"] != "unsupported":
+            } or node["coverage"] != "unsupported"):
                 raise ValueError("Invalid Opaque coverage")
+            children = payload["raw"].get("children")
+            projected = [{**child, "id": hir.nodes[child["id"]]["source_id"]} for child in node["children"]]
+            if (children is not None and children != projected or children is None and
+                    (projected or payload["subtree"] == "KNOWN_CHILDREN")):
+                raise ValueError("Opaque visible children disagree with source payload")
     seen_indices = set()
     for variable_id, variable in hir.variables.items():
         fields(variable, {"index", "name", "role", "storage", "definition_address", "size_bytes",
@@ -127,12 +164,15 @@ def _validate(hir: HIRFunction) -> None:
         if (type(index) is not int or index < 0 or index in seen_indices
                 or variable_id != hir.identity("variable", str(index))
                 or variable["role"] not in {"parameter", "local"}
+                or type(variable["storage"]) is not dict or type(variable["name"]) is not str
+                or any(type(variable[flag]) is not bool for flag in ("user_type", "user_name"))
                 or (variable["type_id"] is not None and variable["type_id"] not in hir.types)):
             raise ValueError("Invalid HIR variable")
         seen_indices.add(index)
     for type_id, record in hir.types.items():
         fields(record, {"source_id", "kind", "display", "evidence", "facts", "references"})
         if (type_id != hir.identity("type", record["source_id"]) or record["kind"] not in TYPE_KINDS
+                or type(record["references"]) is not dict or type(record["evidence"]) is not dict
                 or record["evidence"].get("source") not in TYPE_SOURCES):
             raise ValueError("Invalid HIR type evidence")
         for references in record["references"].values():

@@ -2,13 +2,18 @@
 from dataclasses import dataclass
 from functools import cached_property
 
-from emtaint.core.wire_json import fields
+from emtaint.core.wire_json import digest_text, fields
 
 SCHEMA = "Representation-Provenance-v1"
 KINDS = {"source", "hir", "block", "effect", "definition", "use", "instruction"}
 MAPPINGS = {"mapped", "partial", "ambiguous", "unavailable"}
 COVERAGE = {"lowered", "partial", "unsupported", "no_effect"}
-RELATIONS = {"normalizes_to", "derives", "lowers_to", "corresponds_to"}
+RELATIONS = {
+    "normalizes_to": ("source", {"hir"}),
+    "derives": ("hir", {"block", "definition", "use"}),
+    "lowers_to": ("hir", {"effect", "definition", "use"}),
+    "corresponds_to": ("effect", {"instruction"}),
+}
 CONFIDENCE = {"BINARY_CONFIRMED", "DECOMPILER_RECOVERED", "ANALYSIS_DERIVED", "UNKNOWN"}
 
 
@@ -43,11 +48,15 @@ class ProvenanceGraph:
         """Validate every saved reference against decoded artifact inventories."""
         fields(record, {"schema_version", "function", "namespaces", "edges", "coverage", "conflicts"})
         if (record["schema_version"] != SCHEMA or record["function"] != function
-                or record["namespaces"] != namespaces or set(inventories) != KINDS):
+                or record["namespaces"] != namespaces or set(namespaces) != KINDS or set(inventories) != KINDS):
             raise ValueError("Incompatible provenance scope")
+        digest_text(function)
+        for digest in namespaces.values():
+            digest_text(digest)
 
         def endpoint(value: object) -> None:
-            if (type(value) is not list or len(value) != 2 or value[0] not in inventories
+            if (type(value) is not list or len(value) != 2 or any(type(part) is not str for part in value)
+                    or value[0] not in inventories
                     or value[1] not in inventories[value[0]]):
                 raise ValueError("Dangling provenance endpoint")
 
@@ -56,6 +65,7 @@ class ProvenanceGraph:
         seen = set()
         normalized = set()
         lowered = set()
+        represented = set()
         for edge in record["edges"]:
             fields(edge, {"source", "target", "relation", "status", "confidence", "method", "reason"})
             endpoint(edge["source"])
@@ -64,23 +74,28 @@ class ProvenanceGraph:
                     or edge["confidence"] not in CONFIDENCE
                     or any(type(edge[key]) is not str or not edge[key] for key in ("method", "reason"))):
                 raise ValueError("Invalid provenance relation")
+            source_kind, target_kinds = RELATIONS[edge["relation"]]
+            if edge["source"][0] != source_kind or edge["target"][0] not in target_kinds:
+                raise ValueError("Invalid provenance relation direction")
             key = (tuple(edge["source"]), tuple(edge["target"]), edge["relation"], edge["method"])
             if key in seen:
                 raise ValueError("Duplicate provenance relation")
             seen.add(key)
             if edge["relation"] == "normalizes_to":
-                if edge["source"][0] != "source" or edge["target"][0] != "hir":
-                    raise ValueError("Invalid normalization edge")
                 normalized.add(edge["source"][1])
+                represented.add(edge["target"][1])
             if edge["relation"] == "lowers_to" and edge["target"][0] == "effect":
                 lowered.add(edge["source"][1])
         coverage = record["coverage"]
-        if type(coverage) is not dict or set(coverage) != inventories["hir"] or normalized != inventories["source"]:
+        if (type(coverage) is not dict or set(coverage) != inventories["hir"]
+                or normalized != inventories["source"] or represented != inventories["hir"]):
             raise ValueError("Missing HIR coverage or source mapping")
         for node, row in coverage.items():
             fields(row, {"lowering", "instruction_mapping", "reason"})
             if (row["lowering"] not in COVERAGE or row["instruction_mapping"] not in MAPPINGS
-                    or not row["reason"] or (row["lowering"] == "no_effect" and node in lowered)):
+                    or type(row["reason"]) is not str or not row["reason"]
+                    or (row["lowering"] == "no_effect" and node in lowered)
+                    or (row["lowering"] in {"lowered", "partial"} and node not in lowered)):
                 raise ValueError("Invalid HIR coverage")
         seen_conflicts = set()
         for conflict in record["conflicts"]:
@@ -92,4 +107,6 @@ class ProvenanceGraph:
             seen_conflicts.add(conflict["id"])
             for fact in conflict["facts"]:
                 endpoint(fact)
+            if len({tuple(fact) for fact in conflict["facts"]}) < 2:
+                raise ValueError("Provenance conflict requires distinct facts")
         return cls(function, namespaces, tuple(record["edges"]), coverage, tuple(record["conflicts"]))

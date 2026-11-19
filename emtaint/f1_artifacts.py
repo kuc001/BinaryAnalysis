@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from emtaint.analysis_debugging import representation_provenance as provenance_wire
 from emtaint.artifacts import (
-    ArtifactError, IntegrityStatus, SemanticCompleteness, _load_manifest,
-    _publish_generation, _read_checked,
+    ArtifactError, IntegrityStatus, SemanticCompleteness, read_generation_manifest,
+    publish_generation, read_generation_artifact,
 )
 from emtaint.core.identity import BinaryId, FunctionId
 from emtaint.core.wire_json import canonical_json, digest_text, fields, read_record
@@ -113,7 +113,7 @@ def _artifacts(generation: Path, manifest: dict) -> dict[str, bytes]:
             raise ArtifactError(IntegrityStatus.INCOMPATIBLE, f"Unsupported F1 artifact schema: {kind}")
         if descriptor["path"] != path:
             raise ArtifactError(IntegrityStatus.CORRUPT, f"Invalid F1 artifact path: {kind}")
-        payloads[kind] = _read_checked(generation, path, descriptor["size"], descriptor["sha256"])
+        payloads[kind] = read_generation_artifact(generation, path, descriptor["size"], descriptor["sha256"])
     return payloads
 
 
@@ -142,31 +142,49 @@ def _validate_links(source: ctree_source.ValidatedCTree, hir: hir_wire.HIRFuncti
         if projected != (row["children"] or []) or address != (
                 {"domain": "IDA_EA", "value": row["ea"]} if row["ea"] is not None else None):
             raise ValueError("HIR source order or address differs from CTree")
-        if not any(edge["relation"] == "normalizes_to" and edge["source"] == ["source", node["source_id"]]
-                   for edge in provenance.related("hir", key)):
-            raise ValueError("Missing HIR source provenance")
+        sources = {edge["source"][1] for edge in provenance.related("hir", key)
+                   if edge["relation"] == "normalizes_to" and edge["target"] == ["hir", key]}
+        if sources != {node["source_id"]}:
+            raise ValueError("HIR normalization provenance disagrees with its source identity")
     for definition in cir.definitions.values():
         if definition["variable"] is not None and definition["variable"] not in hir.variables:
             raise ValueError("CIR definition refers to an unknown variable")
+    machine_by_hir = {}
     for block in cir.blocks.values():
         for effect in block["effects"]:
+            expected_sources = set(effect["provenance"])
+            endpoints = [("effect", effect["id"])]
+            endpoints.extend(("definition", definition) for definition in effect["outputs"])
+            endpoints.extend(("use", use["id"]) for use in effect["uses"])
+            for kind, identity in endpoints:
+                sources = {edge["source"][1] for edge in provenance.related(kind, identity)
+                           if edge["relation"] == "lowers_to"}
+                if not sources or sources != expected_sources:
+                    raise ValueError("Invalid CIR-to-HIR reference")
             related = provenance.related("effect", effect["id"])
-            if (not effect["provenance"] or any(node not in hir.nodes or not any(
-                    edge["source"] == ["hir", node] and edge["relation"] == "lowers_to" for edge in related)
-                    for node in effect["provenance"])):
-                raise ValueError("Invalid CIR-to-HIR reference")
             instruction = effect["instruction_origin"]
-            if instruction is not None and (instruction not in evidence["instructions"] or not any(
-                    edge["target"] == ["instruction", instruction] for edge in related)):
-                raise ValueError("Invalid CIR-to-instruction reference")
-            allowed = {machine for node in effect["provenance"]
-                       for machine in evidence["witnesses"].get(hir.nodes[node]["source_id"], {}).get("instructions", ())}
-            if any(edge["target"][0] == "instruction" and edge["target"][1] not in allowed for edge in related):
-                raise ValueError("CIR-to-instruction edge lacks a saved correspondence witness")
+            witnessed = {}
+            for node in expected_sources:
+                witness = evidence["witnesses"].get(hir.nodes[node]["source_id"], {})
+                if instruction is None or instruction not in witness.get("instructions", ()):
+                    continue
+                status = "ambiguous" if witness.get("helper") else "partial"
+                machine_by_hir[node] = status
+                if effect["op"] == "call" and effect["data"]["target"] != {
+                        "kind": "direct_address", "domain": "LINKED_VA", "address": witness.get("branch_target")}:
+                    raise ValueError("CIR call target disagrees with the machine witness")
+                for machine in witness["instructions"] if effect["op"] == "branch" else (instruction,):
+                    witnessed[machine] = status
+            actual = {edge["target"][1]: edge["status"] for edge in related if edge["relation"] == "corresponds_to"}
+            if (instruction is not None and instruction not in witnessed) or actual != witnessed:
+                raise ValueError("CIR-to-instruction edges disagree with saved correspondence witnesses")
+    for node, coverage in provenance.coverage.items():
+        if coverage["instruction_mapping"] != machine_by_hir.get(node, "unavailable"):
+            raise ValueError("Provenance coverage disagrees with machine mapping")
 
 
 def _load(path: Path, pin: str, *, staging: bool) -> F1Inputs:
-    manifest = _load_manifest(path, pin, staging=staging, schema=MANIFEST)
+    manifest = read_generation_manifest(path, pin, staging=staging, schema=MANIFEST)
     fields(manifest, {"schema_version", "generation", "function", "address_mapping", "source_fingerprint",
                       "producer", "semantic_completeness", "diagnostics", "artifacts"})
     payloads = _artifacts(path, manifest)
@@ -186,8 +204,7 @@ def _load(path: Path, pin: str, *, staging: bool) -> F1Inputs:
             or manifest["producer"] != _producer(source, hir, cir)
             or manifest["semantic_completeness"] != cir.completeness or manifest["diagnostics"] != cir.diagnostics):
         raise ValueError("Manifest source, producer or assessment mismatch")
-    if read_record(payloads["cfg"]) != wire_v2.cfg_record(cir):
-        raise ValueError("Saved CFG disagrees with CIR")
+    wire_v2.validate_cfg_record(read_record(payloads["cfg"]), cir)
     evidence = read_record(payloads["evidence"])
     validate_evidence(evidence, source)
     provenance = provenance_wire.ProvenanceGraph.from_record(
@@ -244,7 +261,7 @@ def publish_f1(root: Path, source_bytes: bytes, source: ctree_source.ValidatedCT
                              "size": len(payloads[kind]), "sha256": _pin(payloads[kind])}
                       for kind, (path, schema) in ARTIFACTS.items()},
     }
-    generation, pin = _publish_generation(
+    generation, pin = publish_generation(
         root, name, manifest, payloads, lambda path, pin: _load(path, pin, staging=True),
         staging_prefix=".staging-f1-",
     )

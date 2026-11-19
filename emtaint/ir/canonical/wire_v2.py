@@ -5,7 +5,7 @@ from typing import Any
 
 from emtaint.core.identity import BinaryId, FunctionId, ProgramBlockId
 from emtaint.core.program import Completeness
-from emtaint.core.wire_json import canonical_json, fields, read_record, table
+from emtaint.core.wire_json import canonical_json, fields, hex_address, read_record, table
 from emtaint.graph.program_graphs import ControlFlowGraph, FlowEdge, FlowKind
 
 SCHEMA = "CIR-Wire-v2"
@@ -18,6 +18,90 @@ OPS = {
 TERMINATORS = {"branch", "jump", "return", "unknown_exit"}
 TARGETS = {"direct_address", "resolved_function", "candidate", "unknown"}
 TYPE_KINDS = {"integer", "boolean", "pointer", "memory", "unknown"}
+ADDRESS_DOMAINS = {"LINKED_VA", "IDA_EA", "RVA", "RUNTIME_VA"}
+RESULT_OPERANDS = {
+    "add": (("left", "right"),), "compare_ne": (("left", "right"),),
+    "copy": (("source",), ("value",), ("address",)),
+    "cast": (("operand",),), "is_zero": (("operand",),), "nonzero": (("operand",),),
+    "object_address": ((),), "symbolic_address": ((), ("base", "index")), "constant": ((),),
+}
+
+
+def _address(value: object) -> None:
+    if type(value) is str:
+        hex_address(value)
+    elif type(value) is not int or not 0 <= value < 1 << 64:
+        raise ValueError("Invalid CIR address")
+
+
+def _footprint(record: dict) -> None:
+    fields(record, {"read", "write", "clobber", "unknown"})
+    if (type(record["unknown"]) is not bool or any(type(record[role]) is not list or
+            any(type(region) is not str or not region for region in record[role])
+            for role in ("read", "write", "clobber"))):
+        raise ValueError("Invalid CIR footprint")
+    if record["unknown"] and any(record[role] != ["*"] for role in ("read", "write", "clobber")):
+        raise ValueError("Unknown effects require a conservative footprint")
+
+
+def _validate_effect_shape(effect: dict, definitions: dict) -> None:
+    op, data = effect["op"], effect["data"]
+    roles = tuple(use["role"] for use in effect["uses"])
+    outputs = effect["outputs"]
+    if "partial" in data and type(data["partial"]) is not bool:
+        raise ValueError("Invalid effect partial flag")
+    if op in RESULT_OPERANDS and (roles not in RESULT_OPERANDS[op] or len(outputs) != 1):
+        raise ValueError("Invalid scalar effect input or output shape")
+    if op in {"branch", "jump", "return", "unknown_exit"} and outputs:
+        raise ValueError("CIR terminator cannot define a result")
+    if op == "branch":
+        fields(data, {"true", "false"})
+        if any(type(target) is not str or not target for target in data.values()):
+            raise ValueError("Invalid branch successor")
+    if op == "jump":
+        fields(data, {"target"})
+        if roles or type(data["target"]) is not str or not data["target"]:
+            raise ValueError("Invalid jump successor or operands")
+    if op == "return" and (data or any(role != "return" for role in roles)):
+        raise ValueError("Invalid return data or operands")
+    if op == "unknown_exit":
+        fields(data, {"reason"})
+        if roles or type(data["reason"]) is not str or not data["reason"]:
+            raise ValueError("Unknown exit requires a reason")
+    if op == "unknown":
+        fields(data, {"reason", "footprint", "may_change_control"})
+        if (type(data["reason"]) is not str or not data["reason"] or type(data["may_change_control"]) is not bool
+                or (not outputs or data["may_change_control"]) and data["footprint"] is None):
+            raise ValueError("Unknown effect lacks an explicit result or footprint")
+        if data["footprint"] is not None:
+            _footprint(data["footprint"])
+            if not any(data["footprint"][role] for role in ("read", "write", "clobber")) and not data["may_change_control"]:
+                raise ValueError("Unknown effect has an empty footprint")
+    if op == "havoc":
+        _footprint(data.get("footprint"))
+        if not any(data["footprint"][role] for role in ("write", "clobber")):
+            raise ValueError("Havoc requires affected state")
+    if op == "constant":
+        scalar = "value" in data
+        if scalar == ("literal" in data) or (scalar and type(data["value"]) not in {int, bool}) or (
+                not scalar and type(data["literal"]) is not str):
+            raise ValueError("Invalid CIR constant")
+        if scalar and type(data["value"]) is bool and definitions[outputs[0]]["type"]["kind"] != "boolean":
+            raise ValueError("Boolean constant needs a Boolean type")
+    if op == "object_address":
+        fields(data.get("candidate"), {"domain", "value"})
+        if data["candidate"]["domain"] not in ADDRESS_DOMAINS:
+            raise ValueError("Invalid CIR object address domain")
+        _address(data["candidate"]["value"])
+    if op in {"compare_ne", "is_zero", "nonzero"} and definitions[outputs[0]]["type"] != {"kind": "boolean", "bits": 1}:
+        raise ValueError("Comparison must define a Boolean")
+    if op in {"copy", "add"}:
+        result_type = definitions[outputs[0]]["type"]
+        for use in effect["uses"]:
+            operand_type = definitions.get(use["definition"], {}).get("type", {})
+            if (operand_type and "unknown" not in {operand_type["kind"], result_type["kind"]}
+                    and operand_type != result_type):
+                raise ValueError("Scalar effect operand and result types disagree")
 
 
 @dataclass(frozen=True)
@@ -56,7 +140,7 @@ def _destinations(terminal: dict) -> tuple[tuple[str, FlowKind], ...]:
 
 
 def graph(cir: CIRFunctionV2) -> ControlFlowGraph:
-    """Project the body to the shared CFG without assuming machine addresses."""
+    """Project structured flow independently of value and machine evidence."""
     blocks = {key: ProgramBlockId(cir.function, key, row["origin_kind"],
                                  row["anchor_domain"], row["anchor_address"])
               for key, row in cir.blocks.items()}
@@ -66,7 +150,9 @@ def graph(cir: CIRFunctionV2) -> ControlFlowGraph:
                       for target, kind in _destinations(row["effects"][-1]))
     exits = frozenset(blocks[key] for key, row in cir.blocks.items()
                       if row["effects"][-1]["op"] in {"return", "unknown_exit"})
-    status = Completeness.COMPLETE if cir.completeness == "complete" else Completeness.INCOMPLETE
+    unknown_flow = any(effect["op"] == "unknown_exit" or effect["data"].get("may_change_control") is True
+                       for row in cir.blocks.values() for effect in row["effects"])
+    status = Completeness.INCOMPLETE if unknown_flow else Completeness.COMPLETE
     return ControlFlowGraph(cir.function, frozenset(blocks.values()), edges, blocks[cir.entry], exits,
                             status, "Structured CIR control flow; see CIR assessment")
 
@@ -85,6 +171,16 @@ def cfg_record(cir: CIRFunctionV2) -> dict:
     }
 
 
+def validate_cfg_record(record: dict, cir: CIRFunctionV2) -> None:
+    """Require all structured edges, accepting the historical pessimistic status."""
+    expected = cfg_record(cir)
+    legacy = ("complete" if cir.completeness == "complete" else "incomplete")
+    if record != expected and not (
+            expected["status"] == "complete" and legacy == "incomplete"
+            and record == {**expected, "status": legacy}):
+        raise ValueError("Saved CFG disagrees with CIR")
+
+
 def phi_use_id(definition_id: str, predecessor: str) -> str:
     """Identify an incoming use by its predecessor rather than list position."""
     return f"{definition_id}/incoming/{predecessor}"
@@ -97,6 +193,15 @@ def _validate(cir: CIRFunctionV2) -> None:
             or type(cir.producer) is not str or not cir.producer
             or type(cir.diagnostics) is not list or any(type(reason) is not str for reason in cir.diagnostics)):
         raise ValueError("Invalid CIR header")
+    for row in definitions.values():
+        fields(row, {"kind", "type", "variable"})
+        fields(row["type"], {"kind", "bits"})
+        kind, bits = row["type"]["kind"], row["type"]["bits"]
+        if (kind not in TYPE_KINDS
+                or (bits is not None and (type(bits) is not int or bits < 1))
+                or (kind == "boolean" and bits != 1)
+                or (row["variable"] is not None and type(row["variable"]) is not str)):
+            raise ValueError("Invalid typed CIR definition")
     producers: dict[str, tuple[str, int, str]] = {}
     uses: list[tuple[str, int, str]] = []
     predecessors: dict[str, set[str]] = {block: set() for block in blocks}
@@ -147,7 +252,7 @@ def _validate(cir: CIRFunctionV2) -> None:
             for use in effect["uses"]:
                 fields(use, {"id", "definition", "role", "ordinal"})
                 role = use["role"]
-                if type(role) is not str or not role or "/" in role:
+                if type(role) is not str or not role or "/" in role or type(use["definition"]) is not str:
                     raise ValueError("Invalid use role")
                 index = role_ordinals.get(role, 0)
                 if (type(use["ordinal"]) is not int or use["ordinal"] != index
@@ -159,6 +264,7 @@ def _validate(cir: CIRFunctionV2) -> None:
                 if definition != f"{effect_id}/result/{index}":
                     raise ValueError("Invalid CIR effect output identity")
                 define(definition, block, ordinal, "unknown" if op == "unknown" else "effect")
+            _validate_effect_shape(effect, definitions)
             if op == "branch":
                 if len(effect["uses"]) != 1 or effect["uses"][0]["role"] != "guard":
                     raise ValueError("Branch requires one guard")
@@ -168,25 +274,34 @@ def _validate(cir: CIRFunctionV2) -> None:
             if op == "call":
                 target = effect_data.get("target")
                 if (type(target) is not dict or target.get("kind") not in TARGETS
-                        or effect_data.get("argument_count") != role_ordinals.get("argument", 0)):
+                        or type(effect_data.get("argument_count")) is not int
+                        or effect_data["argument_count"] != role_ordinals.get("argument", 0)):
                     raise ValueError("Invalid call target or argument count")
                 target_kind = target["kind"]
-                if target_kind in {"direct_address", "candidate"} and (
-                        target.get("domain") not in {"LINKED_VA", "IDA_EA", "RVA", "RUNTIME_VA"}
-                        or type(target.get("address")) not in {str, int}):
-                    raise ValueError("Missing call target address evidence")
-                if target_kind == "resolved_function" and not target.get("function"):
-                    raise ValueError("Missing resolved function identity")
+                if target_kind in {"direct_address", "candidate"}:
+                    fields(target, {"kind", "domain", "address"})
+                    if target["domain"] not in ADDRESS_DOMAINS:
+                        raise ValueError("Missing call target address domain")
+                    _address(target["address"])
+                elif target_kind == "resolved_function":
+                    fields(target, {"kind", "function"})
+                    fields(target["function"], {"binary", "rva"})
+                    fields(target["function"]["binary"], {"sha256"})
+                    FunctionId(BinaryId(target["function"]["binary"]["sha256"]), target["function"]["rva"])
+                elif type(target.get("reason")) is not str or not target["reason"]:
+                    raise ValueError("Unknown call target requires a reason")
                 if len(effect["uses"]) != role_ordinals.get("argument", 0) + 1 or role_ordinals.get("callee") != 1:
                     raise ValueError("Invalid call use roles")
+                if (effect["uses"][0]["role"] != "callee"
+                        or type(effect_data.get("result_used")) is not bool
+                        or bool(effect["outputs"]) != effect_data["result_used"]
+                        or effect_data.get("evaluation_order") not in {"unknown", "ordered"}):
+                    raise ValueError("Invalid call evaluation or result usage")
                 if effect_data.get("guard") != {"kind": "block_reachability", "block": block}:
                     raise ValueError("Invalid call guard")
                 footprint = effect_data.get("footprint")
-                if type(footprint) is not dict or type(footprint.get("unknown")) is not bool:
-                    raise ValueError("Missing call effects")
+                _footprint(footprint)
                 if footprint["unknown"]:
-                    if any(footprint.get(role) != ["*"] for role in ("read", "write", "clobber")):
-                        raise ValueError("Unknown call effects require a conservative footprint")
                     incomplete = True
             if op in {"read_memory", "write_memory"}:
                 width = effect_data.get("width_bytes")
@@ -211,14 +326,8 @@ def _validate(cir: CIRFunctionV2) -> None:
     if set(producers) != set(definitions) or predecessors[cir.entry]:
         raise ValueError("Invalid CIR definition or entry table")
     for definition, row in definitions.items():
-        fields(row, {"kind", "type", "variable"})
-        fields(row["type"], {"kind", "bits"})
-        kind, bits = row["type"]["kind"], row["type"]["bits"]
-        if (row["kind"] != producers[definition][2] or kind not in TYPE_KINDS
-                or (bits is not None and (type(bits) is not int or bits < 1))
-                or (kind == "boolean" and bits != 1)
-                or (row["variable"] is not None and type(row["variable"]) is not str)):
-            raise ValueError("Invalid typed CIR definition")
+        if row["kind"] != producers[definition][2]:
+            raise ValueError("CIR definition kind disagrees with its producer")
     if incomplete and cir.completeness == "complete":
         raise ValueError("Complete CIR cannot contain incomplete effects")
     # Uses from an incoming parameter are evaluated on the predecessor edge.

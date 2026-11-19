@@ -8,6 +8,8 @@ Status: **ADR-004/010/012 architecture directions Accepted; the bounded F0 Proje
 
 ## 1. Ownership and interfaces
 
+Both Manifest codecs use the public `publish_generation`, `read_generation_manifest` and `read_generation_artifact` API in `emtaint.artifacts`. These operations own immutable publication, external pin checks and safe bounded reads. Each codec owns its versioned manifest, payload inventory, and semantic link validation.
+
 Acquisition Service resolves project inputs, selects independent or joint frontends, requests exports, validates/lower representations and publishes **analysis inputs**. Frontend Export is immutable IDA CFG/VEX, CTree or future Microcode source data with producer/version and completeness. HIR Artifact stores structured high-level semantics; CIR Artifact stores common effects; Provenance Artifact stores mapping edges/conflicts. Module metadata contains binary/loader/segments/symbol/type input facts. Artifact Store holds immutable bytes and manifests. Acquisition Cache maps semantic build keys to validated artifact IDs; it is an index, not a source of truth.
 
 Analysis Result Store holds computed CFG refinements/CG, def-use, MemoryVersion, alias, summaries, taint and vulnerability results with exact input IDs and algorithm configuration. Analysis Result Cache keys those computations. Debug/Evidence Store holds trace, query events, provenance projections and explanations linked to result IDs. Neither Analysis Results nor Debug artifacts are inputs to Acquisition. A stored source CFG hint is acquisition data; a resolved CG edge is an analysis result.

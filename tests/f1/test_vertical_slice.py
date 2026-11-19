@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from fixture_config import ROOT, require_file
 
 from emtaint.artifacts import ArtifactError, IntegrityStatus
 from emtaint.core.identity import BinaryId, ProgramBlockId
@@ -23,9 +24,8 @@ from emtaint.frontends.inputs import ELFImage
 from emtaint.ir.canonical.wire_v2 import CIRFunctionV2, decode_cir, encode_cir
 from emtaint.ir.hir.model import decode_hir, encode_hir
 
-ROOT = Path(__file__).resolve().parents[2]
-CTREE = ROOT / ".f1-input/ctree/ctree_632f8_39ebd8aca9.json"
-BINARY = Path(os.environ.get("F1_BINARY", r"D:\Codes\firmware-binaries\rv130_v44\httpd"))
+CTREE = Path(os.environ.get("F1_CTREE_SOURCE", ROOT / ".f1-input/ctree/ctree_632f8_39ebd8aca9.json"))
+BINARY = Path(os.environ.get("F1_BINARY", ROOT.parent / "firmware-binaries/rv130_v44/httpd"))
 BINARY_ID = BinaryId("334907567ea77265a6c7c67398781adef01e1dbc22fc1f0bbece4c38e564a787")
 PIN = ExpectedExport(
     "209e40012ce07ae79ce95847b5a3792a687536951772877fbd5847ebd06c4c3e",
@@ -44,6 +44,8 @@ def repin(document: dict) -> tuple[bytes, ExpectedExport]:
 class F1Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        require_file(BINARY, "F1_BINARY")
+        require_file(CTREE, "F1_CTREE_SOURCE")
         cls.directory = tempfile.TemporaryDirectory(prefix="f1-verification-")
         cls.addClassCleanup(cls.directory.cleanup)
         cls.root = Path(cls.directory.name)
@@ -165,7 +167,7 @@ class F1Tests(unittest.TestCase):
         self.assertEqual(access["op"], "symbolic_address")
         self.assertIsNone(access["data"]["byte_offset"])
         self.assertEqual(len(loaded.cfg.exits), 1)
-        self.assertEqual(loaded.cfg.status.value, "incomplete")
+        self.assertEqual(loaded.cfg.status.value, "complete")
         returned = next(effect for effect in effects if effect["op"] == "return")
         return_def = returned["uses"][0]["definition"]
         self.assertEqual(next(effect["data"]["value"] for effect in effects if return_def in effect["outputs"]), 0)
@@ -238,6 +240,73 @@ assert not {'idaapi', 'ida_hexrays', 'angr', 'cle', 'pyvex', 'archinfo'} & sys.m
         path = self.root / label / self.reference.generation.name
         shutil.copytree(self.reference.generation, path)
         return replace(self.reference, generation=path)
+
+    def _repin_artifact(self, label: str, kind: str, edit) -> F1Reference:
+        ref = self._copy(label)
+        manifest = deepcopy(self.inputs.manifest)
+        row = manifest["artifacts"][kind]
+        path = ref.generation / row["path"]
+        record = json.loads(path.read_bytes())
+        edit(record)
+        payload = canonical_json(record)
+        path.write_bytes(payload)
+        row.update(sha256=hashlib.sha256(payload).hexdigest(), size=len(payload))
+        pin_data = canonical_json(manifest)
+        (ref.generation / "manifest.json").write_bytes(pin_data)
+        return replace(ref, manifest_sha256=hashlib.sha256(pin_data).hexdigest())
+
+    def test_repinned_provenance_semantic_rejections(self) -> None:
+        def edge_index(record, relation):
+            return next(i for i, edge in enumerate(record["edges"]) if edge["relation"] == relation)
+
+        def swapped_source(record):
+            first, second = [edge for edge in record["edges"] if edge["relation"] == "normalizes_to"][:2]
+            first["source"], second["source"] = second["source"], first["source"]
+
+        def foreign_instruction(record):
+            record["edges"][edge_index(record, "corresponds_to")]["target"] = ["instruction", "foreign-function:arm:63368"]
+
+        def hir_to_instruction(record):
+            edge = record["edges"][edge_index(record, "corresponds_to")]
+            edge["source"] = ["hir", next(iter(self.inputs.hir.nodes))]
+
+        def definition_to_source(record):
+            edge = record["edges"][edge_index(record, "normalizes_to")]
+            edge["target"] = edge["source"]
+            edge["source"] = ["definition", next(iter(self.inputs.cir.definitions))]
+
+        def missing_lowering(record):
+            index = next(i for i, edge in enumerate(record["edges"])
+                         if edge["relation"] == "lowers_to" and edge["target"][0] == "effect")
+            record["edges"].pop(index)
+
+        def contradicted_coverage(record):
+            edge = next(edge for edge in record["edges"]
+                        if edge["relation"] == "lowers_to" and edge["target"][0] == "effect")
+            record["coverage"][edge["source"][1]]["lowering"] = "no_effect"
+
+        def invalid_conflict(record):
+            record["conflicts"][0]["facts"].append(["instruction", "missing"])
+
+        for edit, message in (
+            (swapped_source, "normalization provenance"), (foreign_instruction, "endpoint"),
+            (hir_to_instruction, "direction"), (definition_to_source, "direction"),
+            (missing_lowering, "coverage|CIR-to-HIR"), (contradicted_coverage, "coverage"),
+            (invalid_conflict, "endpoint"),
+        ):
+            with self.subTest(edit=edit.__name__):
+                ref = self._repin_artifact(edit.__name__, "provenance", edit)
+                with self.assertRaisesRegex(ArtifactError, message) as error:
+                    load_f1(ref)
+                self.assertEqual(error.exception.status, IntegrityStatus.CORRUPT)
+
+    def test_repinned_cfg_missing_edge_and_legacy_status(self) -> None:
+        bad = self._repin_artifact("missing-edge", "cfg", lambda record: record["edges"].pop())
+        with self.assertRaisesRegex(ArtifactError, "CFG disagrees"):
+            load_f1(bad)
+        legacy = self._repin_artifact("legacy-cfg-status", "cfg",
+                                      lambda record: record.update(status="incomplete"))
+        self.assertEqual(load_f1(legacy).cfg.status.value, "complete")
 
     def test_detached_tamper_path_stale_version_and_partial_policy(self) -> None:
         for kind, descriptor in self.inputs.manifest["artifacts"].items():
