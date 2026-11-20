@@ -10,6 +10,9 @@ UNKNOWN = {"kind": "unknown", "bits": None}
 BOOLEAN = {"kind": "boolean", "bits": 1}
 POINTER = {"kind": "pointer", "bits": None}
 FOOTPRINT = {"read": ["*"], "write": ["*"], "clobber": ["*"], "unknown": True}
+MEMORY_READ = {"read": ["*"], "write": [], "clobber": [], "unknown": False}
+MEMORY_WRITE = {"read": [], "write": ["*"], "clobber": [], "unknown": False}
+MEMORY_UPDATE = {"read": ["*"], "write": ["*"], "clobber": [], "unknown": False}
 
 
 @dataclass(frozen=True)
@@ -96,11 +99,32 @@ class _Builder:
         return self.effect(block, node, "nonzero", (("operand", value),), result=BOOLEAN)
 
     def unknown(self, block: str, node: str, reason: str, operands: tuple = (),
-                *, value_type: dict = UNKNOWN, may_effect: bool = False) -> str:
+                *, value_type: dict = UNKNOWN, footprint: dict | None = None,
+                may_change_control: bool = False) -> str:
         self.diagnostics.append(reason)
         return self.effect(block, node, "unknown", operands, result=value_type,
-                           data={"reason": reason, "footprint": FOOTPRINT if may_effect else None,
-                                 "may_change_control": may_effect})
+                           data={"reason": reason, "footprint": footprint,
+                                 "may_change_control": may_change_control})
+
+    def opaque(self, block: str, key: str) -> str:
+        payload = self.hir.nodes[key]["payload"]
+        footprint = payload["footprint"]
+        # Opaque code may clobber unmodeled state even if its source record
+        # separately bounds its memory and control effects.
+        return self.unknown(block, key, payload["reason"], footprint={
+            "read": ["*"] if footprint["read"] else [],
+            "write": ["*"] if footprint["write"] else [],
+            "clobber": ["*"], "unknown": False,
+        }, may_change_control=footprint["control"])
+
+    def has_opaque_control(self, key: str) -> bool:
+        pending = [key]
+        while pending:
+            node = self.hir.nodes[pending.pop()]
+            if node["kind"] == "Opaque" and node["payload"]["footprint"]["control"]:
+                return True
+            pending.extend(child["id"] for child in node["children"])
+        return False
 
     def _source_use(self, block: str, key: str, variable: str, env: dict) -> str:
         type_record = self.hir.types.get(self.hir.variables[variable]["type_id"], {})
@@ -127,7 +151,8 @@ class _Builder:
         if node["kind"] == "VariableRef":
             return self.effect(block, key, "symbolic_address", result=POINTER,
                                data={"variable": node["payload"]["variable"], "object": None})
-        return self.unknown(block, key, "Unsupported lvalue address", value_type=POINTER, may_effect=True)
+        return self.unknown(block, key, "Unsupported lvalue address", value_type=POINTER,
+                            footprint=FOOTPRINT, may_change_control=self.has_opaque_control(key))
 
     def expression(self, block: str, key: str, env: dict[str, str]) -> str:
         node = self.hir.nodes[key]
@@ -155,8 +180,15 @@ class _Builder:
                 right = self.expression(block, children["y"], env)
                 target = self.hir.nodes[children["x"]]
                 if target["kind"] != "VariableRef":
+                    if target["kind"] == "Dereference":
+                        pointer = self.children(children["x"])["x"]
+                        if self.hir.nodes[pointer]["kind"] in {"VariableRef", "Constant", "AddressedObjectRef"}:
+                            address = self.expression(block, pointer, env)
+                            return self.unknown(block, key, "Unverified indirect store",
+                                                (("address", address), ("value", right)), footprint=MEMORY_WRITE)
                     return self.unknown(block, key, "Unsupported assignment target",
-                                        (("value", right),), may_effect=True)
+                                        (("value", right),), footprint=FOOTPRINT,
+                                        may_change_control=self.has_opaque_control(children["x"]))
                 variable = target["payload"]["variable"]
                 result = self.effect(block, key, "copy", (("value", right),), result=self.variable_type(variable),
                                      variable=variable, sources=(children["x"],))
@@ -169,7 +201,7 @@ class _Builder:
                 target = self.hir.nodes[children["x"]]
                 if target["kind"] != "VariableRef":
                     return self.unknown(block, key, "Unsupported preincrement target",
-                                        (("operand", value),), may_effect=True)
+                                        (("operand", value),), footprint=MEMORY_UPDATE)
                 variable = target["payload"]["variable"]
                 value_type = self.variable_type(variable)
                 if value_type["kind"] != "integer":
@@ -197,17 +229,17 @@ class _Builder:
             case "ArrayAccess":
                 address = self._address(block, key, env)
                 return self.unknown(block, key, "Unverified array access width or layout",
-                                    (("address", address),), may_effect=True)
+                                    (("address", address),), footprint=MEMORY_READ)
             case "Dereference":
                 address = self.expression(block, children["x"], env)
                 width = data.get("pointer_access_size_bytes")
                 witness = self.evidence.get(key, {})
                 if type(width) is not int or width < 1:
                     return self.unknown(block, key, "Missing dereference width", (("address", address),),
-                                        may_effect=True)
+                                        footprint=MEMORY_READ)
                 if self.definitions[address]["type"]["kind"] != "pointer":
                     return self.unknown(block, key, "Dereference address type is unknown",
-                                        (("address", address),), may_effect=True)
+                                        (("address", address),), footprint=MEMORY_READ)
                 return self.effect(block, key, "read_memory", (("address", address),),
                                    result={"kind": "integer", "bits": width * 8},
                                    data={"width_bytes": width, "object": None, "partial": True,
@@ -216,7 +248,7 @@ class _Builder:
             case "Call":
                 return self.call(block, key, env)
             case "Opaque":
-                return self.unknown(block, key, data["reason"], may_effect=True)
+                return self.opaque(block, key)
             case _:
                 raise ValueError("Unexpected HIR expression: " + kind)
 
@@ -226,7 +258,8 @@ class _Builder:
         pure_arguments = {"VariableRef", "Constant", "AddressedObjectRef", "HelperRef"}
         # For this profile only pure operands can be read in positional order.
         if any(self.hir.nodes[child["id"]]["kind"] not in pure_arguments for child in children):
-            return self.unknown(block, key, "Call operand evaluation ordering is unsupported", may_effect=True)
+            return self.unknown(block, key, "Call operand evaluation ordering is unsupported",
+                                footprint=FOOTPRINT, may_change_control=self.has_opaque_control(key))
         values = [(child["role"], self.expression(block, child["id"], env)) for child in children]
         callee = self.hir.nodes[children[0]["id"]]["payload"]
         witness = self.evidence.get(key, {})
@@ -292,9 +325,10 @@ class _Builder:
             case "For":
                 return self.lower_for(block, key, env)
             case "Opaque":
-                self.unknown(block, key, node["payload"]["reason"], may_effect=True)
-                self.effect(block, key, "unknown_exit", data={"reason": "Unknown statement continuation"})
-                return None
+                self.opaque(block, key)
+                if node["payload"]["footprint"]["control"]:
+                    self.effect(block, key, "unknown_exit", data={"reason": "Unknown statement continuation"})
+                    return None
             case _:
                 raise ValueError("Unexpected HIR statement kind")
         return block

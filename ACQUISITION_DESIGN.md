@@ -43,6 +43,8 @@ Changes invalidate descendants only. Cross-function dependencies record callee I
 
 ## 4. Multi-frontend acquisition and compatibility
 
+F1-INTEROP-0 acquired `0x632F8` with an independent F0 ProjectSpec and immutable artifact root. The original `_start` generation remains pinned for v1 regression. Keep both fixed manifest pins and function identity checks distinct. The separate IDA Machine Validation export provides evidence for the same-function verification gate. It does not modify either acquisition format. See [F1 translation validation](design/analysis/F1_TRANSLATION_VALIDATION.md).
+
 Frontends independently publish source exports, then the service assembles a function's available representations. CTree→HIR→CIR and VEX→CIR may coexist; neither silently replaces the other. Future Microcode→CIR follows the same contract. A combined view is an analysis selection referencing immutable per-frontend CIR IDs and a reconciliation/provenance result; conflicting effects remain explicit. One selected primary CIR per query plus corroborating evidence is the initial implementation recommendation; multi-CIR fusion requires its own approved semantics.
 
 Compatibility checks require matching binary ID, architecture/ABI, address conversion context, accepted schema major versions and an explicit converter for older minor versions. Historical CIR-Wire-v1 and P7 acquisition may be imported through a versioned migration adapter only after validation; they cannot be declared compatible by filename or hash alone. Schema mismatch returns INCOMPATIBLE. Display pseudocode is retained for people but not parsed for semantics.

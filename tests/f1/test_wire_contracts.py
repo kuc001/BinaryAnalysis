@@ -50,6 +50,37 @@ def make_hir() -> HIRFunction:
 
 
 class PureContracts(unittest.TestCase):
+    def test_unknown_read_has_memory_footprint_without_unknown_control(self):
+        hir = make_hir()
+        literal = next(key for key, node in hir.nodes.items() if node["kind"] == "Constant")
+        pointer = hir.identity("node:expression", "pointer")
+        hir.nodes[pointer] = {**hir.nodes[literal], "source_id": "pointer"}
+        hir.nodes[literal].update(kind="Dereference", payload={},
+                                  children=[{"id": pointer, "role": "x", "index": 0}])
+        lowered = lower_hir(decode_hir(encode_hir(hir)), {}).cir
+        cir = decode_cir(encode_cir(lowered))
+        unknown = next(e for b in cir.blocks.values() for e in b["effects"] if e["op"] == "unknown")
+        self.assertEqual(unknown["data"]["footprint"],
+                         {"read": ["*"], "write": [], "clobber": [], "unknown": False})
+        self.assertFalse(unknown["data"]["may_change_control"])
+        self.assertEqual(cir.completeness, "partial")
+        self.assertEqual(cfg_record(cir)["status"], "complete")
+
+    def test_opaque_expression_can_preserve_or_obscure_control(self):
+        for control in (False, True):
+            with self.subTest(control=control):
+                hir = make_hir()
+                literal = next(node for node in hir.nodes.values() if node["kind"] == "Constant")
+                literal.update(kind="Opaque", coverage="unsupported", payload={
+                    "raw": {"children": []}, "opcode": "unknown_expression", "opcode_value": 1000,
+                    "reason": "unknown", "subtree": "KNOWN_CHILDREN",
+                    "footprint": {"read": True, "write": False, "control": control},
+                })
+                lowered = lower_hir(decode_hir(encode_hir(replace(hir, assessment="partial"))), {}).cir
+                cir = decode_cir(encode_cir(lowered))
+                self.assertEqual(graph(cir).status.value, "incomplete" if control else "complete")
+                self.assertEqual(cir.blocks[cir.entry]["effects"][-1]["op"], "return")
+
     def test_partial_semantics_with_complete_structured_cfg(self):
         addr = "entry/input/0"
         target_type = {"kind": "input", "type": {"kind": "pointer", "bits": 32}, "variable": None}
