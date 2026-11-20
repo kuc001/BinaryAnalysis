@@ -124,6 +124,8 @@ Use contract tests and the real fixture via the approved public F1 entrypoint. R
 
 ## F1-VEX-CIR-V2-INTEROPERABILITY
 
+F1-INTEROP-1A completed local machine evidence capture for `0x632F8`. See the [level report and pinned bundle](design/analysis/F1_TRANSLATION_VALIDATION.md#f1-interop-1a--local-machine-evidence-2026-11-20). Input identity and byte coverage pass. Control and effects are partial, and semantic translation awaits the approved ACR and adapter. Acceptance for the next stage must preserve the six observed machine edges and four unresolved v1 edge records, all four physical call targets, the variadic stack argument evidence, the byte-load width and loop/return state evidence. Keep the original F0/F1 generations and independently reload converted output.
+
 **Status `PLANNED`.** The verified historical inventory remains in the [interoperability audit](design/analysis/F1_VEX_CIR_V2_INTEROPERABILITY_AUDIT.md). [ACR-F1-INTEROP-001](design/analysis/ACR-F1-INTEROP-001.md) is Proposed. Implementation awaits owner approval of the version, shared semantics and adapter scope. The new exact-entry `0x632F8` acquisition and pending IDA witness are recorded in the [translation validation report](design/analysis/F1_TRANSLATION_VALIDATION.md).
 
 - **Goal and inputs** · Use the original pinned F0 `_start` generation as the v1 regression and general semantic control. Use the separately acquired and pinned F0 `0x632F8` generation as the only VEX/CIR v1 counterpart to the F1 `0x632F8` CTree/HIR and same-function IDA Machine Validation. Produce versioned, independently reloadable Common CIR with validated effect identity, CFG and provenance. The audit and alignment report record exact data and pins.

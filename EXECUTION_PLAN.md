@@ -15,7 +15,7 @@ Baseline: `codex/architecture-reset`, HEAD `e6c1cf738f849b9bd6ad4cd40cc7c6f6fb19
 | F0 — Project-to-CIR Acquisition Vertical Slice | APPROVED | Owner approved bounded decisions A–F on 2026-11-11; real Project/Input → AngrVexFrontend → CIR/CFG/Origin → immutable Artifact Store → detached reload passed the three F0 gates; owner accepted the bounded implementation in F1-08 |
 | F1-A — Real CTree input audit and HIR contract specification | VERIFIED | Real `0x632F8` export and ELF audited. Proposed contract and task specification recorded for owner review |
 | F1 — CTree → HIR → CIR vertical slice | VERIFIED | Historical F1 gates are retained. Review fixes and focused regression results are recorded in `BUILD_LOG.md`. Final status remains with the owner |
-| F1-VEX-CIR-V2-INTEROPERABILITY | PLANNED | F1-INTEROP-0 acquired and detached-reloaded the exact `0x632F8` VEX witness. IDA Machine CFG export, owner ACR decision, adapter and translation validation remain pending |
+| F1-VEX-CIR-V2-INTEROPERABILITY | PLANNED | Exact `0x632F8` VEX and IDA machine witnesses saved. Input and byte coverage pass. Control/effects partial, semantic translation awaits owner ACR decision and adapter |
 | C1-STORE-LOAD-ALIAS-SSE | PLANNED | First existing-CIR Store/Load→memory→alias→SSE→persisted result/evidence slice; requires owner approval of exact task and affected contract/module gates, not B1/B2 cleanup |
 | C2/C3 algorithm experiments | PLANNED | Research proposals only; C1 verification and separate owner tasks required |
 | C — wider representation contracts | PLANNED | Versioned CIR v2/HIR/source identity, address/provenance and compatibility freeze remain separate from C1's minimal contract |

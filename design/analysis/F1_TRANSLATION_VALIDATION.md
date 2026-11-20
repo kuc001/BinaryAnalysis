@@ -1,6 +1,49 @@
 # F1-INTEROP-0 · Same-function translation validation
 
-Baseline `20dce43967f6d9ccc3055cf52edd212c413315ae` on `codex/architecture-reset`. The supplied baseline `b5348b7528281aa76cb2aeaf8a5878bb6a74cc1e` is its immediate parent. This report records independently verified readiness and the pending three-way acceptance. The `_start` generation remains a separate v1 regression input.
+## F1-INTEROP-1A · Local machine evidence (2026-11-20)
+
+The local batch run now supplies the genuine IDA witness for this function. The sections below record the earlier F1-INTEROP-0 baseline and pending state at that time. This section records the current results.
+
+**Environment.** Clean starting branch `codex/architecture-reset`, HEAD `1db5dca0ac19556490a820943d83e043f5bdbbf9`. IDA installation `D:\Softwares\IDA Professional 9.3`, executable file version `9.3.25.1224`. The successful process reported kernel 9.3, ARM and IDAPython 3.15.2. The firmware directory had IDA sidecars, with no standalone `httpd.i64` or `httpd.idb`. The historical CTree and F0/F1 generations loaded by their unchanged pins. The input ELF copy was separately SHA-256 verified before starting IDA.
+
+**Automation and isolation.** Non-elevated `idat.exe` and bundled `idalib` each exited 2 with no script receipt in the current host session. The hidden `ida.exe` route ran with its own workspace IDAUSR, TEMP and TMP. It created a fresh IDB from a pinned copy of the ELF. The first GUI run exited 0 and exposed an exporter classification error at `0x6333C`: the ordinary `MOV` was labeled indirect because the processor's block-end predicate was treated as an instruction transfer. The fixed exporter requires explicit transfer evidence for that classification. A second hidden run exited 0 with a separate script receipt and no exporter diagnostics. Copies into the readable evidence directory were checked byte-for-byte against the original run. All original inputs and prior runs were retained. [IDA autonomous command options](https://docs.hex-rays.com/9.1/user-guide/configuration/command-line-switches)
+
+```powershell
+.venv\Scripts\python.exe -B -m tools.interop.run_ida --ida-exe 'D:\Softwares\IDA Professional 9.3\ida.exe' --binary 'D:\Codes\firmware-binaries\rv130_v44\httpd' --output .f0-runtime/local-ida-632f8
+```
+
+The recorded child argv for the successful run was:
+
+```text
+"D:\Softwares\IDA Professional 9.3\ida.exe" -A -LD:\Codes\architecture-reset\.f0-runtime\local-ida-632f8\run-4e42kcny\ida.log -SD:\Codes\architecture-reset\tools\interop\ida_batch.py D:\Codes\architecture-reset\.f0-runtime\local-ida-632f8\run-4e42kcny\httpd
+```
+
+The accepted original machine JSON SHA-256 is `f6a75c05733b96f0d545c1d71df98edd1583b3d31a9eb260e5fb6a5320786586`. The nine-file local bundle is `.f0-runtime/local-ida-632f8/validation-54pem1hq/`, manifest pin `c4d92abdc36154ccd17be12696a097f246b11768cd8741c9c1f8aa60e8a5eab6`. It contains the original machine JSON, environment and command receipts, independent ELF rows, both source mappings, graph, control/effect matrices, and level report. The archived machine file carries its original bytes. The bundle is outside Git and is tied to this local environment.
+
+| Level | Current result | Evidence |
+| --- | --- | --- |
+| 0 · INPUT_IDENTITY | PASS | The three artifact streams bind the pinned BinaryId and FunctionId RVA `0x5B2F8`. IDA and ELF confirm one ARM chunk at `[0x632F8,0x6339C)`. All address domains are recorded |
+| 1 · INSTRUCTION_COVERAGE | PASS | 41/41 IDA instructions match ELF bytes, sizes, ARM mode and executable segment file offsets. Zero missing, overlapping or unmatched rows. 333 byte-context VEX Origin/InstructionHint rows cover 41 distinct instruction addresses, with 619 SourceHints and 498 CIR v1 effect occurrences. 21 instruction addresses have CTree location claims. Twelve CTree nodes have no machine address |
+| 2 · CONTROL_FLOW | PARTIAL | IDA machine CFG has five blocks, six edges and no unresolved successor diagnostics. Its edges match the encoded transfers and angr after splitting call continuations (two EXACT, four NORMALIZED). Saved CIR v1 still includes four unknown edges. The 12-block/14-edge F1 structured graph has two machine-witnessed candidate edges and 12 edges without direct machine correspondence |
+| 3 · EFFECT_MAPPING | PARTIAL | Four physical call targets and one byte-load width align. The graph keeps producer-provenance, byte matches and source-location claims separate across 1,150 edges. It retains typed v1 register slices and value-use occurrences, but does not prove reaching architectural state, source ABI, memory object or guard equivalence. Call clobber and memory summaries remain partial |
+| 4 · SEMANTIC_TRANSLATION | BLOCKED | Local evidence identifies the 8-bit load, the return path's `mov r0,#0` and the loop back edge. Complete validation of observable states needs the approved shared semantics and conversion implementation |
+
+| Site | Machine result | Cross-representation disposition |
+| --- | --- | --- |
+| `0x63320` | BL `0xFFF4`, IDA marks target thunk | Physical target matches VEX. CTree helper `strcpy` versus the machine call and audited memcpy presentation remains an unresolved conflict |
+| `0x63354` | BL `0x10390`, IDA marks target thunk | Physical target matches VEX. CTree has five source arguments, while v1 records four ABI register operands. The stack argument and call side effects remain to be validated |
+| `0x6335C` | BL `0x1D170` | Physical target matches VEX. One CTree argument and source result usage do not certify ABI/register behavior |
+| `0x63394` | BL `0x62B30` | Physical target matches VEX. CTree records two arguments. IDA/ELF continuation at `0x63398` returns control to `0x63374` |
+| `0x63370` / `0x6337C` | Conditional target `0x6338C` / back edge `0x63340` | Raw targets and recorded control agree locally. HIR conditional and loop-carried definitions require guard and state correspondence |
+| `0x63368` / `0x63388` | LDRB and register restore/return | One byte agrees across the encoded load, v1 LoadEffect and v2 read_memory. Memory object equivalence and return state across representations remain open |
+
+**Replay and negative check.** The validator saved the bundle at exit 0. `python -B -m tools.interop.validate --verify <bundle> --pin <manifest-pin>` independently reloaded nine files at exit 0. A copied bundle with one changed payload failed with exit 1. Source-only mode returned exit 2 and produced its partial report. The existing formal `unittest discover -s tests/f1 -v` suite passed all 30 tests.
+
+**Next stage.** Obtain an owner decision on [ACR-F1-INTEROP-001](ACR-F1-INTEROP-001.md). For the adapter stage, pin the accepted machine witness and both saved CIR inputs. Validate the two normalized CFGs with the four unresolved v1 edges retained, all four call sites and the fifth source argument at `0x63354`, register-slice/reaching state, the byte load and endian/guard behavior, then the return value and loop merges. The new representation must reload independently and preserve explicit unknown effects. C1 remains a separate authorization and witness gate.
+
+## F1-INTEROP-0 historical record
+
+Baseline `20dce43967f6d9ccc3055cf52edd212c413315ae` on `codex/architecture-reset`. The supplied baseline `b5348b7528281aa76cb2aeaf8a5878bb6a74cc1e` is its immediate parent. This record documents readiness before the IDA export. The `_start` generation remains a separate v1 regression input.
 
 ## Identity and pinned inputs
 

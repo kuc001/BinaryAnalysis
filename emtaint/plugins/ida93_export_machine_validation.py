@@ -86,8 +86,7 @@ def _instruction(ea: int, limit: int, image: bytes, t_register: int, diagnostics
     returns = not call and ida_idp.is_ret_insn(insn, ida_idp.IRI_RET_LITERALLY)
     jumps = not call and not returns and (ida_idp.is_indirect_jump_insn(insn)
                                           or insn.itype in {ida_allins.ARM_b, ida_allins.ARM_bx}
-                                          or any(ref["type"] in jump_types for ref in refs)
-                                          or ida_idp.is_basic_block_end(insn, False))
+                                          or any(ref["type"] in jump_types for ref in refs))
     category = "call" if call else "return" if returns else "branch" if jumps else "ordinary"
     if category == "ordinary":
         target = None
